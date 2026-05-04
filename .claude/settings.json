@@ -11,6 +11,12 @@
         "description": "llm-wiki: inject wiki context at session start"
       }
     ],
+    "PreToolUse": [
+      {
+        "command": ".claude/hooks/on-new-source.sh",
+        "description": "llm-wiki: auto-ingest sources when files are written"
+      }
+    ],
     "Stop": [
       {
         "command": ".claude/hooks/session-end.sh",

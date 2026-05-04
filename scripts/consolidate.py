@@ -61,6 +61,27 @@ def _days_since(iso_str: str) -> int:
         return 999
 
 
+def on_memory_write(fact: dict) -> list[dict]:
+    """Hook: check contradictions after writing a fact to any memory tier.
+
+    Called automatically after promote_episodic_to_semantic writes new facts.
+    Returns contradictions found.
+    """
+    contradictions = []
+    try:
+        from crystallize import check_contradictions
+        result = check_contradictions([fact])
+        if result:
+            for c in result:
+                print(f'CONTRADICTION: {c.get("entity_id", "?")} — '
+                      f'confidence delta: {abs(c.get("existing_confidence", 0) - c.get("new_confidence", 0)):.2f}',
+                      file=sys.stderr)
+            contradictions = result
+    except ImportError:
+        pass
+    return contradictions
+
+
 def promote_working_to_episodic() -> int:
     """Group >= 5 working memory observations into episode summaries."""
     observations = _load_json(WORKING_FILE)
@@ -148,6 +169,7 @@ def promote_episodic_to_semantic() -> int:
             if fact['id'] not in existing_ids:
                 semantic.append(fact)
                 promoted += 1
+                on_memory_write(fact)
 
     _save_json(EPISODIC_FILE, new_episodes)
     _save_json(SEMANTIC_FILE, semantic)
