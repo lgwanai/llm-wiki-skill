@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-05-04)
 
 ## Current Phase
 
-**Phase 1:** Core Knowledge & References — ✅ Complete
+**Phase 6:** Python Script Implementation — Implement core logic in all 6 automation scripts
 
 ## Phase Status
 
@@ -22,21 +22,22 @@ See: .planning/PROJECT.md (updated 2026-05-04)
 | 2 | Templates & Page Structure | ✅ Complete | 4 | 2026-05-04 |
 | 3 | Python Script Skeletons | ✅ Complete | 6 | 2026-05-04 |
 | 4 | Project Infrastructure | ✅ Complete | 5 | 2026-05-04 |
-| 5 | Claude Code Integration | 🔜 Next | 3 | — |
-| 6 | Python Script Implementation | ⏳ Pending | 6 | — |
+| 5 | Claude Code Integration | ✅ Complete | 3 | 2026-05-04 |
+| 6 | Python Script Implementation | 🔜 Next | 6 | — |
 | 7 | Testing & Validation | ⏳ Pending | 5 | — |
 
 ## Current Focus
 
-Phase 5: Claude Code Integration — Create CLAUDE.md, hook scripts, and skill registration.
+Phase 6: Python Script Implementation — Implement core logic in all 6 scripts (ingest, search,
+lint, consolidate, graph, crystallize).
 
 ## Recent Activity
 
 - 2026-05-04: Project initialized via /gsd-new-project
 - 2026-05-04: Phases 1-4 completed (skill structure fully built)
-- 2026-05-04: Git repo initialized
-- 2026-05-04: Planning artifacts created (.planning/)
+- 2026-05-04: Phase 5 completed — CLAUDE.md, .claude/hooks/, .claude/settings.json
+- 2026-05-04: Hook scripts (session-start.sh, session-end.sh) created and executable
 
 ## Next Steps
 
-Run `/gsd-discuss-phase 5` to plan Claude Code integration, or `/gsd-plan-phase 5` to plan directly.
+Run `/gsd-execute-phase 6` to implement script logic, or `/gsd-plan-phase 6` to plan first.

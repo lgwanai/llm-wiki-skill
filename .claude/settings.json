@@ -1,0 +1,21 @@
+{
+  "skills": {
+    "paths": [
+      "."
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "command": ".claude/hooks/session-start.sh",
+        "description": "llm-wiki: inject wiki context at session start"
+      }
+    ],
+    "Stop": [
+      {
+        "command": ".claude/hooks/session-end.sh",
+        "description": "llm-wiki: crystallize session to wiki at session end"
+      }
+    ]
+  }
+}
