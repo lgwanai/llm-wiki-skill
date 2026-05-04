@@ -16,6 +16,7 @@ AUDIT_FILE = os.path.join(WIKI_DIR, "audit", "trail.jsonl")
 
 ENTITIES_FILE = os.path.join(GRAPH_DIR, "entities.json")
 EDGES_FILE = os.path.join(GRAPH_DIR, "edges.json")
+EMBEDDINGS_FILE = os.path.join(GRAPH_DIR, "embeddings.json")
 
 SENSITIVE_PATTERNS: list[tuple[str, str]] = [
     (r'sk-[a-zA-Z0-9]{32,}', '[REDACTED: API key]'),
@@ -140,7 +141,43 @@ def _extract_edges(text: str, source_entity_id: str, entities: list[dict]) -> li
     return edges
 
 
-def ingest_source(source_path: str, source_type: str = "article") -> dict:
+def _embed_entities(registry: dict) -> int:
+    """Generate Ollama embeddings for new/modified entities. Returns count of embeddings created."""
+    try:
+        from _ollama import get_embedding
+    except ImportError:
+        print("Warning: _ollama module not available — skipping embeddings", file=sys.stderr)
+        return 0
+
+    embeddings = _load_json(EMBEDDINGS_FILE)
+    if not isinstance(embeddings, dict):
+        embeddings = {}
+
+    count = 0
+    for eid, entity in registry.items():
+        if eid in embeddings:
+            continue
+        meta = entity.get('attributes', {})
+        text_parts = [
+            entity.get('name', eid),
+            entity.get('type', ''),
+            str(meta.get('version', '')),
+            str(meta.get('purpose', '')),
+            str(meta.get('path', '')),
+        ]
+        text = ' '.join(filter(None, text_parts))
+        if len(text) < 3:
+            continue
+        emb = get_embedding(text)
+        if emb is not None:
+            embeddings[eid] = emb
+            count += 1
+
+    _save_json(EMBEDDINGS_FILE, embeddings)
+    return count
+
+
+def ingest_source(source_path: str, source_type: str = "article", embed: bool = False) -> dict:
     """Ingest a source file, extract entities and edges, update graph."""
     # Read source
     if source_path == '-':
@@ -197,12 +234,17 @@ def ingest_source(source_path: str, source_type: str = "article") -> dict:
         'filter_count': sum(item['count'] for item in filter_log),
     })
 
+    embedded = 0
+    if embed:
+        embedded = _embed_entities(registry)
+
     return {
         'source': source_name,
         'entities_found': len(entities),
         'entities_new': sum(1 for e in entities if e['id'] not in _load_json(ENTITIES_FILE)),
         'edges_created': len(new_edges),
         'filtered_items': sum(item['count'] for item in filter_log),
+        'embeddings_created': embedded,
     }
 
 
@@ -214,6 +256,8 @@ def _main() -> None:
                         help='Source type')
     parser.add_argument('--stdin', action='store_true', help='Read from stdin')
     parser.add_argument('--batch', help='Process all files in a directory')
+    parser.add_argument('--embed', action='store_true',
+                        help='Generate Ollama vector embeddings for new entities')
     args = parser.parse_args()
 
     if args.batch:
@@ -225,7 +269,7 @@ def _main() -> None:
             filepath = os.path.join(args.batch, filename)
             if os.path.isfile(filepath):
                 try:
-                    r = ingest_source(filepath, args.source_type)
+                    r = ingest_source(filepath, args.source_type, embed=args.embed)
                     results.append(r)
                 except Exception as e:
                     print(f"Error ingesting {filename}: {e}", file=sys.stderr)
@@ -238,7 +282,7 @@ def _main() -> None:
         sys.exit(1)
 
     try:
-        result = ingest_source(source, args.source_type)
+        result = ingest_source(source, args.source_type, embed=args.embed)
         print(json.dumps(result, indent=2, ensure_ascii=False))
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)

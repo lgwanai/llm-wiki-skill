@@ -134,21 +134,40 @@ def bm25_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
 
 
 def vector_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
-    """Semantic search using stored embeddings or fallback to TF-IDF."""
-    # Attempt to load embeddings
+    """Semantic search using Ollama embeddings (qwen3-embedding:8b).
+
+    Falls back to Jaccard similarity if:
+    - Ollama is unreachable
+    - No embeddings have been generated yet (graph/embeddings.json missing)
+    """
     embeddings_path = os.path.join(WIKI_DIR, "graph", "embeddings.json")
-    embeddings_data = _load_json(embeddings_path) if os.path.exists(embeddings_path) else {}
+
+    if os.path.exists(embeddings_path):
+        embeddings_data = _load_json(embeddings_path)
+    else:
+        embeddings_data = {}
 
     if isinstance(embeddings_data, dict) and embeddings_data:
+        from _ollama import get_embedding
+
+        query_emb = get_embedding(query)
+        if query_emb is None:
+            return _jaccard_fallback(query, pages_dir, limit)
+
         result_list: list[dict] = []
         for page_id, emb in embeddings_data.items():
             if isinstance(emb, list) and len(emb) > 0:
-                sim = _cosine_similarity([0.0] * len(emb), emb)  # stub — needs query embedding
-                result_list.append({'file': page_id, 'score': round(sim, 3), 'stream': 'vector'})
+                sim = _cosine_similarity(query_emb, emb)
+                if sim > 0:
+                    result_list.append({'file': page_id, 'score': round(sim, 4), 'stream': 'vector'})
         result_list.sort(key=lambda x: -x['score'])
         return result_list[:limit]
 
-    # Fallback: simple TF-IDF cosine with query vector
+    return _jaccard_fallback(query, pages_dir, limit)
+
+
+def _jaccard_fallback(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
+    """Jaccard similarity fallback when embeddings are unavailable."""
     all_docs: dict[str, str] = {}
     for subdir in ('entities', 'decisions', 'sessions', 'patterns'):
         scan_dir = os.path.join(pages_dir, subdir)
