@@ -1,13 +1,11 @@
 # Core
 pyyaml>=6.0          # YAML frontmatter parsing in markdown pages
 numpy>=1.24          # Numerical operations, embedding math
+markitdown>=0.1      # Multi-format file → Markdown (PDF, DOCX, PPTX, XLSX, HTML, EPUB...)
 
 # Search (Level 5)
 sentence-transformers>=2.2   # Embedding generation for vector search
 faiss-cpu>=1.7              # Vector index for similarity search
-
-# Optional: full-text search
-# whoosh>=2.7    # BM25 keyword search (pure Python alternative)
 
 # Development
 pytest>=7.0        # Testing framework

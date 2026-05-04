@@ -8,7 +8,6 @@ import re
 import sys
 from datetime import datetime, timezone
 
-
 WIKI_DIR = ".wiki"
 GRAPH_DIR = os.path.join(WIKI_DIR, "graph")
 PAGES_DIR = os.path.join(WIKI_DIR, "pages")
@@ -17,6 +16,19 @@ AUDIT_FILE = os.path.join(WIKI_DIR, "audit", "trail.jsonl")
 ENTITIES_FILE = os.path.join(GRAPH_DIR, "entities.json")
 EDGES_FILE = os.path.join(GRAPH_DIR, "edges.json")
 EMBEDDINGS_FILE = os.path.join(GRAPH_DIR, "embeddings.json")
+
+TEXT_EXTENSIONS = {
+    '.md', '.txt', '.rst', '.adoc', '.org', '.tex', '.log',
+    '.py', '.js', '.ts', '.tsx', '.jsx', '.go', '.rs', '.java',
+    '.c', '.cpp', '.h', '.hpp', '.rb', '.php', '.swift', '.kt',
+    '.sh', '.bash', '.zsh', '.fish',
+    '.json', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf',
+    '.xml', '.svg', '.sql', '.graphql',
+    '.css', '.scss', '.less', '.html', '.htm',
+    '.env', '.dockerfile', '.makefile',
+}
+
+IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.tif', '.webp'}
 
 SENSITIVE_PATTERNS: list[tuple[str, str]] = [
     (r'sk-[a-zA-Z0-9]{32,}', '[REDACTED: API key]'),
@@ -58,6 +70,74 @@ def _log_audit(op: str, details: dict) -> None:
     entry = {"op": op, **details, "ts": _now()}
     with open(AUDIT_FILE, 'a', encoding='utf-8') as f:
         f.write(json.dumps(entry, ensure_ascii=False, default=str) + '\n')
+
+
+def _parse_with_markitdown(filepath: str) -> str:
+    """Convert any supported file to Markdown using Microsoft's MarkItDown.
+
+    Supports: PDF, DOCX, PPTX, XLSX, HTML, EPUB, CSV, JSON, XML, ZIP, and more.
+    Does NOT use built-in OCR — images are handled separately by _parse_image_with_ocr.
+    """
+    try:
+        from markitdown import MarkItDown
+    except ImportError:
+        raise RuntimeError(
+            "markitdown not installed. Run: pip install markitdown"
+        )
+
+    md = MarkItDown(enable_plugins=False)
+    result = md.convert(filepath)
+    return result.text_content
+
+
+def _parse_image_with_ocr(filepath: str, lang: str = "eng") -> str:
+    """Extract text from image using Tesseract OCR.
+
+    Requires system-level Tesseract installation:
+      macOS:  brew install tesseract tesseract-lang
+      Linux:  apt install tesseract-ocr tesseract-ocr-eng
+    Python deps: pip install pytesseract Pillow
+    """
+    try:
+        import pytesseract
+        from PIL import Image
+    except ImportError:
+        raise RuntimeError(
+            "pytesseract or Pillow not installed. Run: pip install pytesseract Pillow"
+        )
+
+    try:
+        img = Image.open(filepath)
+        text = pytesseract.image_to_string(img, lang=lang)
+        return text.strip()
+    except Exception as e:
+        raise RuntimeError(f"OCR failed for {filepath}: {e}")
+
+
+def _parse_file(filepath: str, use_ocr: bool = False) -> str:
+    """Detect file type and parse to plain text.
+
+    Dispatch logic:
+    - Text files (.md, .py, .json, ...) → open().read() (fast, no deps)
+    - Image files (.png, .jpg, ...) → OCR if use_ocr=True, else raise
+    - Everything else (.pdf, .docx, ...) → MarkItDown
+    """
+    ext = os.path.splitext(filepath)[1].lower()
+
+    if ext in TEXT_EXTENSIONS:
+        with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
+            return f.read()
+
+    if ext in IMAGE_EXTENSIONS:
+        if use_ocr:
+            return _parse_image_with_ocr(filepath)
+        raise RuntimeError(
+            f"Image file '{filepath}' requires --ocr flag for OCR processing.\n"
+            f"Install: pip install pytesseract Pillow\n"
+            f"System:   brew install tesseract (macOS) / apt install tesseract-ocr (Linux)"
+        )
+
+    return _parse_with_markitdown(filepath)
 
 
 def filter_sensitive(content: str) -> tuple[str, list[dict]]:
@@ -177,17 +257,15 @@ def _embed_entities(registry: dict) -> int:
     return count
 
 
-def ingest_source(source_path: str, source_type: str = "article", embed: bool = False) -> dict:
+def ingest_source(source_path: str, source_type: str = "article", embed: bool = False, use_ocr: bool = False) -> dict:
     """Ingest a source file, extract entities and edges, update graph."""
-    # Read source
     if source_path == '-':
         content = sys.stdin.read()
         source_name = 'stdin'
     else:
         if not os.path.exists(source_path):
             raise FileNotFoundError(f"Source not found: {source_path}")
-        with open(source_path, 'r', encoding='utf-8') as f:
-            content = f.read()
+        content = _parse_file(source_path, use_ocr=use_ocr)
         source_name = os.path.basename(source_path)
 
     # Filter sensitive data
@@ -258,6 +336,8 @@ def _main() -> None:
     parser.add_argument('--batch', help='Process all files in a directory')
     parser.add_argument('--embed', action='store_true',
                         help='Generate Ollama vector embeddings for new entities')
+    parser.add_argument('--ocr', action='store_true',
+                        help='Enable OCR for image files (.png, .jpg, etc.)')
     args = parser.parse_args()
 
     if args.batch:
@@ -269,7 +349,7 @@ def _main() -> None:
             filepath = os.path.join(args.batch, filename)
             if os.path.isfile(filepath):
                 try:
-                    r = ingest_source(filepath, args.source_type, embed=args.embed)
+                    r = ingest_source(filepath, args.source_type, embed=args.embed, use_ocr=args.ocr)
                     results.append(r)
                 except Exception as e:
                     print(f"Error ingesting {filename}: {e}", file=sys.stderr)
@@ -282,7 +362,7 @@ def _main() -> None:
         sys.exit(1)
 
     try:
-        result = ingest_source(source, args.source_type, embed=args.embed)
+        result = ingest_source(source, args.source_type, embed=args.embed, use_ocr=args.ocr)
         print(json.dumps(result, indent=2, ensure_ascii=False))
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
