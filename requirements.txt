@@ -1,0 +1,17 @@
+# Core
+pyyaml>=6.0          # YAML frontmatter parsing in markdown pages
+numpy>=1.24          # Numerical operations, embedding math
+
+# Search (Level 5)
+sentence-transformers>=2.2   # Embedding generation for vector search
+faiss-cpu>=1.7              # Vector index for similarity search
+
+# Optional: full-text search
+# whoosh>=2.7    # BM25 keyword search (pure Python alternative)
+
+# Development
+pytest>=7.0        # Testing framework
+pytest-cov>=4.0    # Test coverage
+black>=23.0        # Code formatter
+isort>=5.12        # Import sorting
+ruff>=0.1          # Linter

@@ -1,0 +1,35 @@
+{
+  "skill_name": "llm-wiki",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I want to set up a personal wiki to remember everything I learn from our coding sessions. Can you help me get started?",
+      "expected_output": "Creates .wiki/ directory structure with schema.md, index.md, and config.json. Explains the ingest/query/lint workflow. Starts at Level 1.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "I just finished a debugging session where I found out that the Redis connection pool was misconfigured, which was causing timeouts in the auth service. The fix was to add maxConnections: 50 to the Redis config. Can you file this away?",
+      "expected_output": "Crystallizes the session: creates session digest, extracts facts about Redis config and auth service timeout, creates/updates entity pages, updates knowledge graph with the 'caused' and 'fixed' relationships.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "What do we know about the auth service? I need to understand all its dependencies and recent changes before I start working on it.",
+      "expected_output": "Searches wiki for auth-service entity, traverses graph for depends_on/uses edges, shows recent session digests mentioning auth. Produces structured overview with confidence scores.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "My wiki has been growing for a few weeks now. Can you check if it's healthy? I feel like some information might be outdated.",
+      "expected_output": "Runs lint pass: finds orphan pages, stale claims, broken links, contradictions. Auto-heals what it can. Produces a health report with issues that need attention.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "We have multiple AI agents working on this project. How do I set up the wiki so they all can contribute without stepping on each other?",
+      "expected_output": "Explains mesh sync pattern, shared vs private scoping, coordination file. Sets up collaboration infrastructure at Level 5.",
+      "files": []
+    }
+  ]
+}
