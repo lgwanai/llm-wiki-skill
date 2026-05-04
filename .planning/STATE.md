@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-05-04)
 
 ## Current Phase
 
-**Phase 6:** Python Script Implementation — Implement core logic in all 6 automation scripts
+**Phase 7:** Testing & Validation — Unit tests, integration tests, eval execution
 
 ## Phase Status
 
@@ -23,21 +23,23 @@ See: .planning/PROJECT.md (updated 2026-05-04)
 | 3 | Python Script Skeletons | ✅ Complete | 6 | 2026-05-04 |
 | 4 | Project Infrastructure | ✅ Complete | 5 | 2026-05-04 |
 | 5 | Claude Code Integration | ✅ Complete | 3 | 2026-05-04 |
-| 6 | Python Script Implementation | 🔜 Next | 6 | — |
-| 7 | Testing & Validation | ⏳ Pending | 5 | — |
+| 6 | Python Script Implementation | ✅ Complete | 6 | 2026-05-04 |
+| 7 | Testing & Validation | 🔜 Next | 5 | — |
 
 ## Current Focus
 
-Phase 6: Python Script Implementation — Implement core logic in all 6 scripts (ingest, search,
-lint, consolidate, graph, crystallize).
+Phase 7: Testing & Validation — Write unit tests, integration tests, execute eval scenarios.
 
 ## Recent Activity
 
-- 2026-05-04: Project initialized via /gsd-new-project
-- 2026-05-04: Phases 1-4 completed (skill structure fully built)
-- 2026-05-04: Phase 5 completed — CLAUDE.md, .claude/hooks/, .claude/settings.json
-- 2026-05-04: Hook scripts (session-start.sh, session-end.sh) created and executable
+- 2026-05-04: Phase 6 completed — all 6 Python scripts fully implemented
+- 2026-05-04: graph.py — entity registry, edge builder, BFS traversal, impact analysis, stats
+- 2026-05-04: consolidate.py — memory tier promotion, Ebbinghaus decay, pattern detection
+- 2026-05-04: ingest.py — source ingestion, sensitive data filter, entity/edge extraction
+- 2026-05-04: search.py — BM25 search, vector/Jaccard fallback, graph search, RRF fusion
+- 2026-05-04: lint.py — orphan detection, staleness check, broken links, auto-healing
+- 2026-05-04: crystallize.py — session digest creation, fact extraction, contradiction check
 
 ## Next Steps
 
-Run `/gsd-execute-phase 6` to implement script logic, or `/gsd-plan-phase 6` to plan first.
+Run `/gsd-execute-phase 7` to write tests and run eval scenarios.

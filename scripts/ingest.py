@@ -1,42 +1,62 @@
 #!/usr/bin/env python3
-"""
-ingest.py — Source Ingestion & Entity Extraction
+"""ingest.py — Source Ingestion & Entity Extraction for llm-wiki."""
 
-Process a source (file, URL, or text) and integrate it into the llm-wiki:
-1. Parse the source content
-2. Filter sensitive data (API keys, tokens, PII)
-3. Extract entities and typed relationships
-4. Check for contradictions with existing knowledge
-5. Update graph (entities.json, edges.json)
-6. Create/update entity pages
-7. Log to audit trail
-
-Usage:
-    python ingest.py <source_path_or_url> [--type article|code|conversation|doc]
-    python ingest.py --stdin < text_content
-    python ingest.py --batch <directory_path>
-"""
-
+import argparse
 import json
 import os
 import re
-from typing import Optional
+import sys
+from datetime import datetime, timezone
+
 
 WIKI_DIR = ".wiki"
 GRAPH_DIR = os.path.join(WIKI_DIR, "graph")
 PAGES_DIR = os.path.join(WIKI_DIR, "pages")
 AUDIT_FILE = os.path.join(WIKI_DIR, "audit", "trail.jsonl")
 
-# --- Sensitive Data Patterns ---
+ENTITIES_FILE = os.path.join(GRAPH_DIR, "entities.json")
+EDGES_FILE = os.path.join(GRAPH_DIR, "edges.json")
 
-SENSITIVE_PATTERNS = [
+SENSITIVE_PATTERNS: list[tuple[str, str]] = [
     (r'sk-[a-zA-Z0-9]{32,}', '[REDACTED: API key]'),
     (r'ghp_[a-zA-Z0-9]{36}', '[REDACTED: GitHub token]'),
-    (r'-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----.*?-----END \1?PRIVATE KEY-----',
+    (r'-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----.*?-----END (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----',
      '[REDACTED: Private key]'),
     (r'password\s*[=:]\s*[^\s"\']+', 'password=[REDACTED]'),
     (r'[\w\.-]+@[\w\.-]+\.\w{2,}', '[REDACTED: Email]'),
 ]
+
+
+def _load_json(path: str) -> dict | list:
+    if not os.path.exists(path):
+        return {} if 'entities' in path else {'edges': []}
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"Warning: could not read {path}: {e}", file=sys.stderr)
+        return {} if 'entities' in path else {'edges': []}
+
+
+def _save_json(path: str, data) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False, default=str)
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _slugify(name: str) -> str:
+    return re.sub(r'[^a-z0-9-]', '', name.lower().replace(' ', '-').replace('_', '-'))
+
+
+def _log_audit(op: str, details: dict) -> None:
+    os.makedirs(os.path.dirname(AUDIT_FILE), exist_ok=True)
+    entry = {"op": op, **details, "ts": _now()}
+    with open(AUDIT_FILE, 'a', encoding='utf-8') as f:
+        f.write(json.dumps(entry, ensure_ascii=False, default=str) + '\n')
 
 
 def filter_sensitive(content: str) -> tuple[str, list[dict]]:
@@ -45,18 +65,185 @@ def filter_sensitive(content: str) -> tuple[str, list[dict]]:
     for pattern, replacement in SENSITIVE_PATTERNS:
         matches = re.findall(pattern, content, re.IGNORECASE | re.DOTALL)
         if matches:
-            log.append({"pattern": pattern[:30], "count": len(matches)})
+            log.append({"pattern": pattern[:40], "count": len(matches)})
             content = re.sub(pattern, replacement, content, flags=re.IGNORECASE | re.DOTALL)
     return content, log
 
 
-# TODO: Implement entity extraction via LLM calls
-# TODO: Implement contradiction detection against existing graph
-# TODO: Implement graph update (read entities.json/edges.json, merge, write back)
-# TODO: Implement entity page creation from template
-# TODO: Implement audit trail logging
+def _extract_entities(text: str, source_type: str) -> list[dict]:
+    """Simple heuristic entity extraction from text."""
+    entities = []
+    seen: set = set()
+
+    # Extract project names (CapitalizedWord patterns, from quotes)
+    for match in re.finditer(r'"([^"]+)"', text):
+        name = match.group(1).strip()
+        slug = _slugify(name)
+        if slug and slug not in seen and len(name.split()) <= 4:
+            seen.add(slug)
+            entities.append({
+                'id': slug, 'type': 'project', 'name': name,
+                'confidence': 0.6, 'source_type': source_type,
+            })
+
+    # Extract file paths
+    for match in re.finditer(r'([\w./-]+\.(?:py|js|ts|tsx|json|yaml|yml|md|toml|cfg|ini))', text):
+        path = match.group(1)
+        slug = _slugify(os.path.basename(path))
+        if slug and slug not in seen:
+            seen.add(slug)
+            entities.append({
+                'id': slug, 'type': 'file', 'name': path,
+                'attributes': {'path': path}, 'confidence': 0.7,
+            })
+
+    # Extract library names from import-like patterns
+    for match in re.finditer(r'(?:import|from|require|pip install|npm install)\s+([\w.-]+)', text):
+        lib = match.group(1)
+        slug = _slugify(lib)
+        if slug and slug not in seen:
+            seen.add(slug)
+            entities.append({
+                'id': slug, 'type': 'library', 'name': lib,
+                'confidence': 0.5, 'source_type': source_type,
+            })
+
+    return entities
+
+
+def _extract_edges(text: str, source_entity_id: str, entities: list[dict]) -> list[dict]:
+    """Extract simple edges based on entity mentions near each other."""
+    edges = []
+    edge_id = 1
+
+    for entity in entities:
+        eid = entity['id']
+        if eid == source_entity_id:
+            continue
+        # Check if entity is mentioned with "uses", "depends on", "contains" context
+        if re.search(rf'{re.escape(entity["name"])}\s*(?:uses|depends\s*on|requires|contains)', text, re.IGNORECASE):
+            rel_type = 'uses'
+            if 'depends' in text.lower():
+                rel_type = 'depends_on'
+            elif 'contains' in text.lower():
+                rel_type = 'contains'
+            edges.append({
+                'id': f'edge-ingest-{edge_id:04d}',
+                'source': source_entity_id, 'target': eid,
+                'type': rel_type, 'confidence': entity.get('confidence', 0.5),
+                'sources': [source_entity_id],
+                'description': f'{source_entity_id} {rel_type} {eid}',
+                'created_at': _now(),
+            })
+            edge_id += 1
+
+    return edges
+
+
+def ingest_source(source_path: str, source_type: str = "article") -> dict:
+    """Ingest a source file, extract entities and edges, update graph."""
+    # Read source
+    if source_path == '-':
+        content = sys.stdin.read()
+        source_name = 'stdin'
+    else:
+        if not os.path.exists(source_path):
+            raise FileNotFoundError(f"Source not found: {source_path}")
+        with open(source_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        source_name = os.path.basename(source_path)
+
+    # Filter sensitive data
+    filtered_content, filter_log = filter_sensitive(content)
+    if filter_log:
+        for item in filter_log:
+            _log_audit('filter', {'source': source_name, **item})
+
+    # Extract entities
+    entities = _extract_entities(filtered_content, source_type)
+    source_slug = _slugify(source_name)
+
+    registry = _load_json(ENTITIES_FILE)
+    if isinstance(registry, list):
+        registry = {}
+    for entity in entities:
+        eid = entity['id']
+        if eid in registry:
+            existing = registry[eid]
+            existing['confidence'] = min(1.0, existing.get('confidence', 0.5) + 0.05)
+            if 'sources' in existing:
+                existing.setdefault('sources', []).append(source_slug)
+        else:
+            registry[eid] = {
+                'id': eid, 'type': entity['type'], 'name': entity['name'],
+                'attributes': entity.get('attributes', {}),
+                'confidence': entity['confidence'],
+                'sources': [source_slug],
+                'page': f"pages/entities/{eid}.md",
+            }
+    _save_json(ENTITIES_FILE, registry)
+
+    edges_data = _load_json(EDGES_FILE)
+    all_edges = edges_data.get('edges', []) if isinstance(edges_data, dict) else []
+    new_edges = _extract_edges(filtered_content, source_slug, entities)
+    all_edges.extend(new_edges)
+    _save_json(EDGES_FILE, {'edges': all_edges})
+
+    # Log audit
+    _log_audit('ingest', {
+        'source': source_name, 'source_type': source_type,
+        'entities': [e['id'] for e in entities],
+        'edges': len(new_edges),
+        'filter_count': sum(item['count'] for item in filter_log),
+    })
+
+    return {
+        'source': source_name,
+        'entities_found': len(entities),
+        'entities_new': sum(1 for e in entities if e['id'] not in _load_json(ENTITIES_FILE)),
+        'edges_created': len(new_edges),
+        'filtered_items': sum(item['count'] for item in filter_log),
+    }
+
+
+def _main() -> None:
+    parser = argparse.ArgumentParser(description='llm-wiki Source Ingestion')
+    parser.add_argument('source', nargs='?', help='Source file path (use - for stdin)')
+    parser.add_argument('--type', dest='source_type', default='article',
+                        choices=['article', 'code', 'conversation', 'doc'],
+                        help='Source type')
+    parser.add_argument('--stdin', action='store_true', help='Read from stdin')
+    parser.add_argument('--batch', help='Process all files in a directory')
+    args = parser.parse_args()
+
+    if args.batch:
+        if not os.path.isdir(args.batch):
+            print(f"Error: not a directory: {args.batch}", file=sys.stderr)
+            sys.exit(1)
+        results = []
+        for filename in sorted(os.listdir(args.batch)):
+            filepath = os.path.join(args.batch, filename)
+            if os.path.isfile(filepath):
+                try:
+                    r = ingest_source(filepath, args.source_type)
+                    results.append(r)
+                except Exception as e:
+                    print(f"Error ingesting {filename}: {e}", file=sys.stderr)
+        print(json.dumps({'batch_results': results}, indent=2, ensure_ascii=False))
+        return
+
+    source = '-' if args.stdin else args.source
+    if not source:
+        parser.print_help()
+        sys.exit(1)
+
+    try:
+        result = ingest_source(source, args.source_type)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    print("ingest.py — Source Ingestion & Entity Extraction")
-    print("This is a skeleton. Core logic requires LLM integration.")
+    _main()

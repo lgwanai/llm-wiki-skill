@@ -1,52 +1,241 @@
 #!/usr/bin/env python3
-"""
-crystallize.py — Session → Digest Pipeline
+"""crystallize.py — Session → Digest Pipeline for llm-wiki."""
 
-Distills a completed working session into structured knowledge:
-1. Review conversation for insights
-2. Create session digest from template
-3. Extract standalone facts for working memory
-4. Update knowledge graph with new entities/edges
-5. Check for contradictions with existing knowledge
-
-Usage:
-    python crystallize.py --session-file <path> --topic <topic>
-"""
-
+import argparse
 import json
 import os
-from typing import Optional
+import re
+from datetime import datetime, timezone
 
 WIKI_DIR = ".wiki"
 PAGES_DIR = os.path.join(WIKI_DIR, "pages")
 MEMORY_DIR = os.path.join(WIKI_DIR, "memory")
+GRAPH_DIR = os.path.join(WIKI_DIR, "graph")
+WORKING_FILE = os.path.join(MEMORY_DIR, "working.json")
+ENTITIES_FILE = os.path.join(GRAPH_DIR, "entities.json")
+EDGES_FILE = os.path.join(GRAPH_DIR, "edges.json")
+
+
+def _load_json(path: str) -> dict | list:
+    if not os.path.exists(path):
+        return [] if 'working' in path or 'memory' in path else ({'edges': []} if 'edges' in path else {})
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return [] if 'working' in path else ({'edges': []} if 'edges' in path else {})
+
+
+def _save_json(path: str, data) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False, default=str)
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _slugify(name: str) -> str:
+    return re.sub(r'[^a-z0-9-]', '', name.lower().replace(' ', '-').replace('_', '-'))
 
 
 def create_digest(session_file: str, topic: str, date: str) -> str:
-    """Create a session digest page from template."""
-    # TODO: Parse session content, extract findings/entities/decisions
-    # TODO: Render using templates/session-digest.md
-    pass
+    """Create a session digest page from session content."""
+    if not os.path.exists(session_file):
+        raise FileNotFoundError(f"Session file not found: {session_file}")
+
+    with open(session_file, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    slug = _slugify(topic)
+    digest_id = f'session-{date}-{slug}'
+
+    entities = []
+    for match in re.finditer(r'\[\[([^\]]+)\]\]', content):
+        target = match.group(1).split('|')[0].strip()
+        if target:
+            entities.append(target)
+
+    findings = []
+    for line in content.split('\n'):
+        line = line.strip()
+        if line.startswith('- ') and len(line) > 10:
+            findings.append(line[2:].strip())
+
+    digest = f"""---
+id: {digest_id}
+type: session
+date: {date}
+topic: {topic}
+entities: {json.dumps(entities[:10])}
+quality_score: 0.7
+confidence: 0.6
+scope: private
+---
+
+# Session Digest — {date} — {topic}
+
+## Summary
+
+Session captured from {os.path.basename(session_file)}. Topic: {topic}.
+
+## Context
+
+Auto-crystallized from working session.
+
+## Key Findings
+
+"""
+    for f in findings[:10]:
+        digest += f'- {f}\n'
+
+    digest += """
+## Entities Discovered or Updated
+
+"""
+    for e in list(set(entities))[:10]:
+        digest += f'| [[{e}]] | unknown | identified | 0.5 |\n'
+
+    if entities:
+        digest = digest[:digest.rfind('\n')] + '\n'
+
+    digest += """
+## Open Questions
+
+- [ ] Review and verify auto-extracted findings
+- [ ] Add manual context and decisions
+
+## Source Quality
+
+- **Source type**: session transcript
+- **Primary sources**: auto-extracted from conversation
+- **Verification needed**: All claims need human review
+"""
+
+    sessions_dir = os.path.join(PAGES_DIR, "sessions")
+    os.makedirs(sessions_dir, exist_ok=True)
+    digest_path = os.path.join(sessions_dir, f'{digest_id}.md')
+    with open(digest_path, 'w', encoding='utf-8') as f:
+        f.write(digest)
+
+    return digest_path
 
 
 def extract_facts(digest_content: str) -> list[dict]:
     """Extract standalone facts from digest for working memory."""
-    # TODO: Identify single claims about single entities
-    pass
+    facts = []
+    lines = digest_content.split('\n')
+    in_findings = False
+
+    for line in lines:
+        if '## Key Findings' in line:
+            in_findings = True
+            continue
+        if in_findings and line.startswith('##'):
+            break
+        if in_findings and line.startswith('- ') and len(line) > 5:
+            claim = line[2:].strip()
+            fact_id = f'fact-{_slugify(claim[:30])}'
+            facts.append({
+                'id': fact_id,
+                'content': claim,
+                'source': 'session-digest',
+                'entity_ids': [],
+                'timestamp': _now(),
+                'confidence': 0.5,
+            })
+
+    return facts
 
 
 def update_graph(entities: list[dict], edges: list[dict]):
     """Update entities.json and edges.json with session discoveries."""
-    # TODO: Merge with existing graph, update confidence scores
-    pass
+    registry = _load_json(ENTITIES_FILE)
+    if isinstance(registry, list):
+        registry = {}
+    for entity in entities:
+        eid = entity.get('id', '')
+        if eid and eid not in registry:
+            registry[eid] = {
+                'id': eid, 'type': entity.get('type', 'unknown'),
+                'name': entity.get('name', eid),
+                'attributes': entity.get('attributes', {}),
+                'confidence': entity.get('confidence', 0.5),
+                'sources': [entity.get('source', 'crystallize')],
+                'page': f'pages/entities/{eid}.md',
+            }
+    _save_json(ENTITIES_FILE, registry)
+
+    edges_data = _load_json(EDGES_FILE)
+    all_edges = edges_data.get('edges', []) if isinstance(edges_data, dict) else []
+    for edge in edges:
+        edge['created_at'] = _now()
+        all_edges.append(edge)
+    _save_json(EDGES_FILE, {'edges': all_edges})
 
 
 def check_contradictions(facts: list[dict]) -> list[dict]:
     """Compare new facts against existing knowledge for contradictions."""
-    # TODO: Load existing claims, compare with new facts
-    pass
+    entities_data = _load_json(ENTITIES_FILE)
+    if not isinstance(entities_data, dict):
+        return []
+
+    contradictions = []
+    for fact in facts:
+        claim = fact.get('content', '')
+        for eid, entity in entities_data.items():
+            name = entity.get('name', '')
+            if name and name.lower() in claim.lower():
+                existing_conf = entity.get('confidence', 0)
+                new_conf = fact.get('confidence', 0)
+                if abs(existing_conf - new_conf) > 0.4:
+                    contradictions.append({
+                        'fact_id': fact.get('id'),
+                        'existing_entity': eid,
+                        'existing_confidence': existing_conf,
+                        'new_confidence': new_conf,
+                        'claim': claim[:80],
+                    })
+    return contradictions
+
+
+def _main() -> None:
+    parser = argparse.ArgumentParser(description='llm-wiki Session Crystallization')
+    parser.add_argument('--session-file', required=True, help='Path to session transcript')
+    parser.add_argument('--topic', required=True, help='Session topic')
+    parser.add_argument('--date', help='Session date (default: today)')
+    parser.add_argument('--auto', action='store_true', help='Run without interaction')
+    args = parser.parse_args()
+
+    date = args.date or datetime.now(timezone.utc).strftime('%Y-%m-%d')
+
+    digest_path = create_digest(args.session_file, args.topic, date)
+
+    with open(digest_path, 'r', encoding='utf-8') as f:
+        digest_content = f.read()
+
+    facts = extract_facts(digest_content)
+
+    working = _load_json(WORKING_FILE)
+    if not isinstance(working, list):
+        working = []
+    working.extend(facts)
+    _save_json(WORKING_FILE, working)
+
+    contradictions = check_contradictions(facts)
+
+    output = {
+        'digest_path': digest_path,
+        'facts_extracted': len(facts),
+        'working_memory_size': len(working),
+        'contradictions_found': len(contradictions),
+    }
+    if contradictions:
+        output['contradiction_details'] = contradictions
+
+    print(json.dumps(output, indent=2, ensure_ascii=False, default=str))
 
 
 if __name__ == "__main__":
-    print("crystallize.py — Session Crystallization")
-    print("This is a skeleton. Requires LLM integration for content analysis.")
+    _main()
