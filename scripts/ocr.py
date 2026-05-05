@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
-"""ocr.py — Image OCR for llm-wiki.
-
-Extracts text from images using Tesseract OCR and optionally ingests into wiki.
+"""ocr.py — Image & PDF OCR using local PaddleOCR-VL-1.5 server.
 
 Requirements:
-  System:  brew install tesseract tesseract-lang (macOS)
-           apt install tesseract-ocr (Linux)
-  Python:  pip install pytesseract Pillow
+  Server: python scripts/ocr_server.py  (must be running)
+  Model:  ~/.models/PaddleOCR-VL-1.5/  (download via scripts/download_models.py)
 
 Usage:
-  python ocr.py image.png              # Extract text only
-  python ocr.py image.png --ingest     # Extract + ingest into wiki
-  python ocr.py image.png --lang chi_sim   # Chinese OCR
+  python ocr.py image.png              # OCR single image
+  python ocr.py document.pdf           # OCR PDF (all pages)
+  python ocr.py image.png --ingest     # OCR + ingest into wiki
   python ocr.py --batch screenshots/   # Batch process directory
 """
 
@@ -21,35 +18,31 @@ import os
 import sys
 
 
-def ocr_image(filepath: str, lang: str = "eng") -> str:
-    """Extract text from a single image using Tesseract."""
-    if not os.path.exists(filepath):
-        raise FileNotFoundError(f"Image not found: {filepath}")
+def ocr_file(filepath: str, server_url: str = "http://127.0.0.1:8765") -> str:
+    """OCR an image or PDF using the local PaddleOCR server."""
+    from _paddle_ocr import PaddleOCRLocal
 
-    try:
-        import pytesseract
-        from PIL import Image
-    except ImportError:
+    ocr = PaddleOCRLocal(server_url)
+    if not ocr.ping():
         raise RuntimeError(
-            "pytesseract or Pillow not installed.\n"
-            "Run: pip install pytesseract Pillow"
+            f"OCR server not reachable at {server_url}.\n"
+            f"Start it with: python scripts/ocr_server.py"
         )
 
-    try:
-        img = Image.open(filepath)
-    except Exception as e:
-        raise RuntimeError(f"Cannot open image {filepath}: {e}")
-
-    text = pytesseract.image_to_string(img, lang=lang)
-    return text.strip()
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext == ".pdf":
+        return ocr.pdf(filepath) or ""
+    return ocr.image(filepath) or ""
 
 
 def _main():
-    parser = argparse.ArgumentParser(description="llm-wiki Image OCR")
-    parser.add_argument("image", nargs="?", help="Image file path")
-    parser.add_argument("--lang", default="eng", help="Tesseract language code (default: eng)")
-    parser.add_argument("--ingest", action="store_true", help="Ingest OCR result into wiki")
-    parser.add_argument("--batch", help="Process all images in a directory")
+    parser = argparse.ArgumentParser(description="llm-wiki PaddleOCR-VL-1.5 OCR")
+    parser.add_argument("file", nargs="?", help="Image or PDF file path")
+    parser.add_argument("--server", default="http://127.0.0.1:8765",
+                        help="OCR server URL")
+    parser.add_argument("--ingest", action="store_true",
+                        help="Ingest OCR result into wiki")
+    parser.add_argument("--batch", help="Process all images/PDFs in a directory")
     args = parser.parse_args()
 
     if args.batch:
@@ -57,20 +50,21 @@ def _main():
             print(f"Error: not a directory: {args.batch}", file=sys.stderr)
             sys.exit(1)
         results = []
+        supported = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.tif', '.webp', '.pdf'}
         for fname in sorted(os.listdir(args.batch)):
-            fpath = os.path.join(args.batch, fname)
             ext = os.path.splitext(fname)[1].lower()
-            if ext not in {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.tif', '.webp'}:
+            if ext not in supported:
                 continue
+            fpath = os.path.join(args.batch, fname)
             if not os.path.isfile(fpath):
                 continue
             try:
-                text = ocr_image(fpath, args.lang)
+                text = ocr_file(fpath, args.server)
                 results.append({"file": fname, "text_length": len(text)})
                 if args.ingest:
                     from ingest import ingest_source
-                    tmp = f"/tmp/llm-wiki-ocr-{fname}.txt"
-                    with open(tmp, 'w') as f:
+                    tmp = f"/tmp/llm-wiki-ocr-{fname}.md"
+                    with open(tmp, 'w', encoding='utf-8') as f:
                         f.write(text)
                     ingest_source(tmp, source_type="doc")
                     os.remove(tmp)
@@ -79,12 +73,12 @@ def _main():
         print(json.dumps({"ocr_results": results}, indent=2, ensure_ascii=False))
         return
 
-    if not args.image:
+    if not args.file:
         parser.print_help()
         sys.exit(1)
 
     try:
-        text = ocr_image(args.image, args.lang)
+        text = ocr_file(args.file, args.server)
         print(text)
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)

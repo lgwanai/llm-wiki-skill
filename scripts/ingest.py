@@ -73,10 +73,9 @@ def _log_audit(op: str, details: dict) -> None:
 
 
 def _parse_with_markitdown(filepath: str) -> str:
-    """Convert any supported file to Markdown using Microsoft's MarkItDown.
+    """Convert supported formats (DOCX, PPTX, XLSX, HTML, EPUB, CSV, etc.) to Markdown.
 
-    Supports: PDF, DOCX, PPTX, XLSX, HTML, EPUB, CSV, JSON, XML, ZIP, and more.
-    Does NOT use built-in OCR — images are handled separately by _parse_image_with_ocr.
+    PDFs and images are NOT handled here — they go through PaddleOCR server.
     """
     try:
         from markitdown import MarkItDown
@@ -90,37 +89,37 @@ def _parse_with_markitdown(filepath: str) -> str:
     return result.text_content
 
 
-def _parse_image_with_ocr(filepath: str, lang: str = "eng") -> str:
-    """Extract text from image using Tesseract OCR.
+def _parse_with_paddleocr(filepath: str, server_url: str = "http://127.0.0.1:8765") -> str:
+    """Parse images and PDFs using the local PaddleOCR-VL-1.5 server.
 
-    Requires system-level Tesseract installation:
-      macOS:  brew install tesseract tesseract-lang
-      Linux:  apt install tesseract-ocr tesseract-ocr-eng
-    Python deps: pip install pytesseract Pillow
+    Requires ocr_server.py to be running.
     """
     try:
-        import pytesseract
-        from PIL import Image
+        from _paddle_ocr import PaddleOCRLocal
     except ImportError:
+        raise RuntimeError("_paddle_ocr module not found in scripts/")
+
+    ocr = PaddleOCRLocal(server_url)
+    if not ocr.ping():
         raise RuntimeError(
-            "pytesseract or Pillow not installed. Run: pip install pytesseract Pillow"
+            f"PaddleOCR server not reachable at {server_url}.\n"
+            f"Start it with: python scripts/ocr_server.py\n"
+            f"Download model first: python scripts/download_models.py"
         )
 
-    try:
-        img = Image.open(filepath)
-        text = pytesseract.image_to_string(img, lang=lang)
-        return text.strip()
-    except Exception as e:
-        raise RuntimeError(f"OCR failed for {filepath}: {e}")
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext == ".pdf":
+        return ocr.pdf(filepath) or ""
+    return ocr.image(filepath) or ""
 
 
-def _parse_file(filepath: str, use_ocr: bool = False) -> str:
+def _parse_file(filepath: str, use_ocr: bool = False, ocr_server: str = "http://127.0.0.1:8765") -> str:
     """Detect file type and parse to plain text.
 
     Dispatch logic:
     - Text files (.md, .py, .json, ...) → open().read() (fast, no deps)
-    - Image files (.png, .jpg, ...) → OCR if use_ocr=True, else raise
-    - Everything else (.pdf, .docx, ...) → MarkItDown
+    - PDF + Images (.png, .jpg, ...) → PaddleOCR server if use_ocr=True
+    - Everything else (.docx, .pptx, ...) → MarkItDown
     """
     ext = os.path.splitext(filepath)[1].lower()
 
@@ -128,13 +127,13 @@ def _parse_file(filepath: str, use_ocr: bool = False) -> str:
         with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
             return f.read()
 
-    if ext in IMAGE_EXTENSIONS:
+    if ext in IMAGE_EXTENSIONS or ext == ".pdf":
         if use_ocr:
-            return _parse_image_with_ocr(filepath)
+            return _parse_with_paddleocr(filepath, ocr_server)
         raise RuntimeError(
-            f"Image file '{filepath}' requires --ocr flag for OCR processing.\n"
-            f"Install: pip install pytesseract Pillow\n"
-            f"System:   brew install tesseract (macOS) / apt install tesseract-ocr (Linux)"
+            f"Image/PDF file '{filepath}' requires --ocr flag.\n"
+            f"Start PaddleOCR server: python scripts/ocr_server.py\n"
+            f"Then retry with --ocr flag."
         )
 
     return _parse_with_markitdown(filepath)
@@ -257,7 +256,7 @@ def _embed_entities(registry: dict) -> int:
     return count
 
 
-def ingest_source(source_path: str, source_type: str = "article", embed: bool = False, use_ocr: bool = False) -> dict:
+def ingest_source(source_path: str, source_type: str = "article", embed: bool = False, use_ocr: bool = False, ocr_server: str = "http://127.0.0.1:8765") -> dict:
     """Ingest a source file, extract entities and edges, update graph."""
     if source_path == '-':
         content = sys.stdin.read()
@@ -265,7 +264,7 @@ def ingest_source(source_path: str, source_type: str = "article", embed: bool = 
     else:
         if not os.path.exists(source_path):
             raise FileNotFoundError(f"Source not found: {source_path}")
-        content = _parse_file(source_path, use_ocr=use_ocr)
+        content = _parse_file(source_path, use_ocr=use_ocr, ocr_server=ocr_server)
         source_name = os.path.basename(source_path)
 
     # Filter sensitive data
@@ -337,7 +336,9 @@ def _main() -> None:
     parser.add_argument('--embed', action='store_true',
                         help='Generate Ollama vector embeddings for new entities')
     parser.add_argument('--ocr', action='store_true',
-                        help='Enable OCR for image files (.png, .jpg, etc.)')
+                        help='Enable OCR for image/PDF files via local PaddleOCR server')
+    parser.add_argument('--ocr-server', default='http://127.0.0.1:8765',
+                        help='PaddleOCR server URL (default: http://127.0.0.1:8765)')
     args = parser.parse_args()
 
     if args.batch:
@@ -349,7 +350,7 @@ def _main() -> None:
             filepath = os.path.join(args.batch, filename)
             if os.path.isfile(filepath):
                 try:
-                    r = ingest_source(filepath, args.source_type, embed=args.embed, use_ocr=args.ocr)
+                    r = ingest_source(filepath, args.source_type, embed=args.embed, use_ocr=args.ocr, ocr_server=args.ocr_server)
                     results.append(r)
                 except Exception as e:
                     print(f"Error ingesting {filename}: {e}", file=sys.stderr)
@@ -362,7 +363,7 @@ def _main() -> None:
         sys.exit(1)
 
     try:
-        result = ingest_source(source, args.source_type, embed=args.embed, use_ocr=args.ocr)
+        result = ingest_source(source, args.source_type, embed=args.embed, use_ocr=args.ocr, ocr_server=args.ocr_server)
         print(json.dumps(result, indent=2, ensure_ascii=False))
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)

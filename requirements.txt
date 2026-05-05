@@ -7,6 +7,14 @@ markitdown>=0.1      # Multi-format file → Markdown (PDF, DOCX, PPTX, XLSX, HT
 sentence-transformers>=2.2   # Embedding generation for vector search
 faiss-cpu>=1.7              # Vector index for similarity search
 
+# OCR Server (PaddleOCR-VL-1.5)
+torch>=2.0                    # PyTorch backend
+transformers>=4.46            # HuggingFace model loading
+flask>=3.0                    # HTTP server for OCR API
+Pillow>=10.0                  # Image loading
+PyMuPDF>=1.24                 # PDF page rendering (for ocr_server.py)
+huggingface_hub>=0.25         # Model download
+
 # Development
 pytest>=7.0        # Testing framework
 pytest-cov>=4.0    # Test coverage
