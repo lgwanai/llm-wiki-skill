@@ -281,8 +281,7 @@ python scripts/url2markdown.py "https://example.com/article" \
 
 **Requirements:**
 - lightpanda installed (`which lightpanda`)
-- Local LLM API running at `http://127.0.0.1:12345`
-- Model: `jinaai-ReaderLM-v2`, Key: `lingting`
+- Local LLM API configured in `scripts/wiki_config.yaml` (copy from `wiki_config.yaml.example`)
 
 #### Step 2: Office Documents → Markdown
 

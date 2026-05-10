@@ -145,13 +145,19 @@ class LLMExtractor:
 
     @classmethod
     def from_config(cls, path: Optional[Path] = None) -> "LLMExtractor":
+        """Create instance from YAML config (llm section) or environment variables."""
+        import os as _os
         config_path = path or CONFIG_PATH
-        config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-        llm = config["llm"]
+        if config_path.exists():
+            config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            llm = config.get("llm", {})
+        else:
+            llm = {}
+
         return cls(
-            api_key=llm["api_key"],
-            base_url=llm["base_url"],
-            model=llm["model"],
+            api_key=llm.get("api_key") or _os.environ.get("LLM_API_KEY", ""),
+            base_url=llm.get("base_url") or _os.environ.get("LLM_BASE_URL", "https://api.deepseek.com"),
+            model=llm.get("model") or _os.environ.get("LLM_MODEL", "deepseek-v4-flash"),
             temperature=llm.get("temperature", 0.3),
         )
 

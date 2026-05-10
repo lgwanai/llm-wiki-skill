@@ -74,7 +74,7 @@ wiki init             # Initialize structure
 
 **Requirements:**
 - lightpanda: Install from https://lightpanda.io/docs/open-source/installation
-- ReaderLM-v2 API: `http://127.0.0.1:12345`, model: `jinaai-ReaderLM-v2`, key: `lingting`
+- ReaderLM-v2 API: configure in `scripts/wiki_config.yaml` (see `wiki_config.yaml.example`)
 
 ## Capability Levels
 

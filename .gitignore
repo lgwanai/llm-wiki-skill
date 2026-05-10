@@ -33,6 +33,11 @@ htmlcov/
 .env
 .env.local
 
+# Configuration files with secrets (MUST NOT be committed)
+scripts/wiki_config.yaml
+*.secret.*
+*.local.yaml
+
 # Wiki artifacts (generated, not committed)
 .wiki/
 
