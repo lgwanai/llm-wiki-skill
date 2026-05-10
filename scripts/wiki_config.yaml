@@ -1,0 +1,16 @@
+# Wiki pipeline configuration
+#   OCR: local DeepSeek-OCR service for document processing
+#   LLM: remote API for entity extraction and knowledge compilation
+
+ocr:
+  api_url: "http://127.0.0.1:12345/v1/chat/completions"
+  api_key: "lingting"
+  model: "DeepSeek-OCR-4bit"
+  pdf_dpi: 150
+
+llm:
+  provider: deepseek
+  api_key: "sk-29d70f9065d84a389e1860343e4b1101"
+  base_url: "https://api.deepseek.com"
+  model: "deepseek-v4-flash"
+  temperature: 0.3

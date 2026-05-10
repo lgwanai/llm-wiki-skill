@@ -38,11 +38,37 @@ structure, schema, and index.
 
 When triggered, Claude becomes a disciplined knowledge librarian that:
 
-1. **Ingests sources** — extracts entities, builds knowledge graph, creates structured pages
-2. **Answers questions** — searches across wiki pages, graph, and embeddings with confidence scores
-3. **Maintains quality** — auto-lints, detects contradictions, heals broken links
-4. **Consolidates knowledge** — promotes observations through memory tiers, applies retention decay
-5. **Crystallizes sessions** — distills working sessions into digestible summaries that compound over time
+1. **Converts sources** — URLs, files, documents → Markdown using appropriate tools
+2. **Ingests sources** — extracts entities, builds knowledge graph, creates structured pages
+3. **Answers questions** — searches across wiki pages, graph, and embeddings with confidence scores
+4. **Maintains quality** — auto-lints, detects contradictions, heals broken links
+5. **Consolidates knowledge** — promotes observations through memory tiers, applies retention decay
+6. **Crystallizes sessions** — distills working sessions into digestible summaries that compound over time
+
+## Source Conversion Pipeline
+
+Automatically convert any input to Markdown and build your wiki:
+
+| Input | Tool | Command |
+|-------|------|---------|
+| URLs | lightpanda + ReaderLM-v2 | `wiki add <url>` |
+| PDFs/Images | PaddleOCR-VL (remote) | `wiki add <file>` |
+| Office docs | markitdown | `wiki add <file>` |
+| Code/Text | Direct read | `wiki add <file>` |
+| Raw content | None | `wiki add "text"` |
+
+**Unified CLI:**
+```bash
+wiki add <source>     # Add source & build wiki
+wiki query <query>    # Search wiki
+wiki lint             # Quality check
+wiki status           # Wiki statistics
+wiki init             # Initialize structure
+```
+
+**Requirements:**
+- lightpanda: Install from https://lightpanda.io/docs/open-source/installation
+- ReaderLM-v2 API: `http://127.0.0.1:12345`, model: `jinaai-ReaderLM-v2`, key: `lingting`
 
 ## Capability Levels
 
@@ -87,7 +113,9 @@ llm-wiki-skill/
 │   └── index.md                     # Human-readable catalog
 │
 ├── scripts/                         # Automation scripts (Python)
+│   ├── wiki.py                      # Unified CLI (add, query, lint, status, init)
 │   ├── ingest.py                    # Source ingestion + entity extraction
+│   ├── url2markdown.py              # URL → Markdown (lightpanda + ReaderLM)
 │   ├── search.py                    # Hybrid search engine
 │   ├── lint.py                      # Quality linter with auto-healing
 │   ├── consolidate.py               # Memory tier promotion + decay
@@ -143,6 +171,281 @@ pip install -r requirements.txt
 For Level 5 search features:
 ```bash
 pip install -r requirements.txt  # includes sentence-transformers, faiss-cpu
+```
+
+## Hooks Configuration
+
+Hooks automate wiki operations at key points in your workflow. The skill includes
+pre-configured hooks in `.claude/hooks/` that you can enable in your project.
+
+### Available Hooks
+
+| Hook | Trigger | Purpose |
+|------|---------|---------|
+| `session-start.sh` | Session start | Inject wiki context (entity count, recent sessions) |
+| `session-end.sh` | Session end | Crystallize session insights to wiki |
+| `on-new-source.sh` | File written | Auto-ingest new markdown/text/code files |
+| `scheduled/lint-daily.sh` | Cron/schedule | Daily quality check with auto-heal |
+| `scheduled/consolidate-daily.sh` | Cron/schedule | Daily memory tier consolidation |
+| `scheduled/maintenance-weekly.sh` | Cron/schedule | Weekly cleanup and health check |
+
+### Enable Hooks
+
+Add to your project's `.claude/settings.json`:
+
+```json
+{
+  "skills": {
+    "paths": ["~/workspace/llm-wiki-skill"]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "command": ".claude/hooks/session-start.sh",
+        "description": "llm-wiki: inject wiki context"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "command": ".claude/hooks/on-new-source.sh",
+        "description": "llm-wiki: auto-ingest sources"
+      }
+    ],
+    "Stop": [
+      {
+        "command": ".claude/hooks/session-end.sh",
+        "description": "llm-wiki: crystallize session"
+      }
+    ]
+  }
+}
+```
+
+### Schedule Hooks (Cron Configuration)
+
+Cron jobs run maintenance tasks automatically at scheduled times.
+
+#### Step 1: Verify Script Paths
+
+First, ensure scripts are executable and paths are correct:
+
+```bash
+# Check your project directory
+PROJECT_DIR="$HOME/workspace/llm-wiki-skill"
+cd "$PROJECT_DIR"
+
+# Verify scripts exist
+ls -la scripts/lint.py scripts/consolidate.py
+
+# Verify hooks exist
+ls -la .claude/hooks/scheduled/
+
+# Make scripts executable (if needed)
+chmod +x scripts/*.py .claude/hooks/scheduled/*.sh
+```
+
+#### Step 2: Open Crontab Editor
+
+```bash
+crontab -e
+```
+
+If prompted to choose an editor, select one (nano is beginner-friendly):
+- `1` for nano
+- `2` for vim.basic
+- `3` for vim.tiny
+
+#### Step 3: Add Cron Entries
+
+Paste these lines at the end of the crontab file (adjust `PROJECT_DIR` path):
+
+```cron
+# llm-wiki scheduled maintenance
+# Daily lint at 9:00 AM
+0 9 * * * cd /Users/wuliang/workspace/llm-wiki-skill && /usr/bin/python3 scripts/lint.py --auto-heal --report-file .wiki/reports/lint-$(date +\%Y-\%m-\%d).md >> .wiki/logs/cron.log 2>&1
+
+# Daily consolidation at 10:00 AM
+0 10 * * * cd /Users/wuliang/workspace/llm-wiki-skill && /usr/bin/python3 scripts/consolidate.py >> .wiki/logs/cron.log 2>&1
+
+# Weekly maintenance on Monday at 8:00 AM
+0 8 * * 1 cd /Users/wuliang/workspace/llm-wiki-skill && .claude/hooks/scheduled/maintenance-weekly.sh >> .wiki/logs/cron.log 2>&1
+```
+
+**Replace `/Users/wuliang/workspace/llm-wiki-skill` with your actual project path.**
+
+#### Step 4: Create Log Directory
+
+```bash
+mkdir -p .wiki/logs
+touch .wiki/logs/cron.log
+```
+
+#### Step 5: Save and Verify
+
+Save the crontab (Ctrl+O, Enter, Ctrl+X in nano). Then verify:
+
+```bash
+# List current cron jobs
+crontab -l
+
+# Check log file exists
+ls -la .wiki/logs/cron.log
+```
+
+#### Cron Time Format
+
+```
+┌───────────── minute (0-59)
+│ ┌───────────── hour (0-23)
+│ │ ┌───────────── day of month (1-31)
+│ │ │ ┌───────────── month (1-12)
+│ │ │ │ ┌───────────── day of week (0-6, Sunday=0)
+│ │ │ │ │
+* * * * * command
+```
+
+**Common patterns:**
+
+| Schedule | Cron expression |
+|----------|-----------------|
+| Every day at 9:00 AM | `0 9 * * *` |
+| Every hour | `0 * * * *` |
+| Every Monday 8:00 AM | `0 8 * * 1` |
+| Every 6 hours | `0 */6 * * *` |
+| First day of month | `0 9 1 * *` |
+
+#### Step 6: Test Cron Job
+
+Force a cron job to run now (for testing):
+
+```bash
+# Run lint immediately
+cd /Users/wuliang/workspace/llm-wiki-skill && python3 scripts/lint.py --auto-heal
+
+# Run consolidation immediately
+cd /Users/wuliang/workspace/llm-wiki-skill && python3 scripts/consolidate.py
+
+# Check the log
+cat .wiki/logs/cron.log
+```
+
+#### Step 7: Monitor Cron Logs
+
+After cron runs, check logs and reports:
+
+```bash
+# View cron execution log
+tail -50 .wiki/logs/cron.log
+
+# View generated lint reports
+ls -la .wiki/reports/
+cat .wiki/reports/lint-*.md | head -30
+
+# View maintenance reports
+cat .wiki/reports/maintenance-*.md | head -50
+```
+
+#### Troubleshooting
+
+**Problem: Cron not running**
+
+1. Check cron service is active:
+   ```bash
+   # macOS
+   sudo service cron status  # or: launchctl list | grep cron
+   
+   # Linux
+   systemctl status cron
+   ```
+
+2. Check script permissions:
+   ```bash
+   ls -la scripts/lint.py scripts/consolidate.py
+   # Should show: -rwxr-xr-x (executable)
+   
+   # Fix if needed:
+   chmod +x scripts/*.py
+   ```
+
+3. Check Python path:
+   ```bash
+   which python3
+   # Use full path in cron: /usr/bin/python3 or /usr/local/bin/python3
+   ```
+
+4. Check working directory in cron entry:
+   ```bash
+   # Must use `cd /path/to/project &&` before command
+   # NOT: python3 /path/to/project/scripts/lint.py (wrong - relative paths fail)
+   ```
+
+**Problem: Permission denied**
+
+```bash
+# Fix script permissions
+chmod +x scripts/*.py .claude/hooks/scheduled/*.sh
+
+# Fix wiki directory permissions
+chmod -R u+w .wiki/
+```
+
+**Problem: Command not found**
+
+Use full paths in cron:
+
+```cron
+# Use full Python path
+0 9 * * * cd /Users/wuliang/workspace/llm-wiki-skill && /usr/local/bin/python3 scripts/lint.py >> .wiki/logs/cron.log 2>&1
+```
+
+Find Python path:
+```bash
+which python3
+# Output: /usr/local/bin/python3 (use this)
+```
+
+#### Disable Scheduled Hooks
+
+To disable a cron job, remove the line from crontab:
+
+```bash
+crontab -e
+# Delete the lines you want to disable
+# Save and exit
+crontab -l  # Verify changes
+```
+
+Or comment out (add `#` prefix):
+
+```cron
+# Disabled: 0 9 * * * cd /path/to/project && python3 scripts/lint.py
+```
+
+### Disable Hooks
+
+Remove the corresponding entry from `.claude/settings.json` or set `enabled: false`:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "command": ".claude/hooks/session-start.sh",
+        "description": "llm-wiki: inject wiki context",
+        "enabled": false
+      }
+    ]
+  }
+}
+```
+
+## Distribution
+
+Package the skill for distribution:
+
+```bash
+./package.sh
+# Output: dist/llm-wiki-skill-YYYY-MM-DD.zip
 ```
 
 ## License

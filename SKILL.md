@@ -9,6 +9,9 @@ description: >
   "add to wiki", "organize my knowledge", "build a second brain", "create a
   knowledge base", "set up a wiki", or any task involving accumulating and
   structuring information that compounds over time.
+  
+  COMMAND TRIGGERS: Also trigger for slash commands: /wiki-add, /wiki-update,
+  /wiki-query, /wiki-lint, /wiki-consolidate, /wiki-status, /wiki-init.
 ---
 
 # LLM Wiki v2 — Knowledge Base Builder
@@ -25,6 +28,159 @@ and LLMs eliminate it. What this v2 adds is the machinery that keeps the wiki he
 as it scales — lifecycle management, graph structure, automation, quality controls,
 and collaboration patterns proven in production.
 
+## Command Reference
+
+Slash commands for wiki operations. When user invokes a command, execute the full pipeline.
+
+### `/wiki-add <source>` — Add Source & Build Wiki
+
+Add a source (URL, file path, or content) to the wiki. Automatically:
+1. Detect input type (URL, file, raw content)
+2. Convert to Markdown using appropriate tool
+3. Store in `.wiki/source/`
+4. Extract entities and build knowledge graph
+5. Create wiki pages
+
+**Usage:**
+```
+/wiki-add https://example.com/article
+/wiki-add document.pdf
+/wiki-add notes.md
+/wiki-add "raw text content to remember"
+```
+
+**Automatic Tool Selection:**
+
+| Input | Tool | Action |
+|-------|------|--------|
+| `https://...` | lightpanda + ReaderLM | Fetch → Markdown → Build |
+| `*.pdf`, `*.png` | PaddleOCR-VL | OCR → Markdown → Build |
+| `*.docx`, `*.xlsx` | markitdown | Convert → Markdown → Build |
+| `*.py`, `*.js`, etc. | Direct read | Copy → Build |
+| `*.md`, `*.txt` | Direct read | Copy → Build |
+| Raw text | None | Store → Build |
+
+**Execution:**
+```bash
+# URL
+python scripts/url2markdown.py "<url>" --output .wiki/source/articles/slug.md
+python scripts/ingest.py .wiki/source/articles/slug.md --type article --embed
+
+# File (auto-detect type)
+python scripts/ingest.py <file> --ocr-if-needed --embed
+
+# Raw content
+echo "<content>" | python scripts/ingest.py - --type article --embed
+```
+
+### `/wiki-update <target>` — Update Wiki Content
+
+Update an existing entity, page, or source. Options:
+
+| Target | Action |
+|--------|--------|
+| `entity/<name>` | Update entity page and graph |
+| `source/<slug>` | Re-ingest source with new content |
+| `<content>` | Append/update specific knowledge |
+
+**Usage:**
+```
+/wiki-update entity/react-library
+/wiki-update source/article-slug
+/wiki-update "React 19 now supports server components"
+```
+
+**Execution:**
+1. Find target in `.wiki/pages/entities/` or `.wiki/source/`
+2. Load existing content
+3. Merge new information (don't replace)
+4. Update graph and confidence scores
+5. Log operation
+
+### `/wiki-query <query>` — Search Wiki
+
+Search the wiki for information. Supports:
+- Keyword search
+- Semantic similarity (if embeddings exist)
+- Graph traversal
+
+**Usage:**
+```
+/wiki-query How does React handle state?
+/wiki-query entity:react-library
+/wiki-query type:decision
+```
+
+**Execution:**
+```bash
+python scripts/search.py "<query>" --hybrid
+```
+
+### `/wiki-lint` — Quality Check
+
+Run quality checks on the wiki:
+- Orphan pages
+- Broken links
+- Stale content
+- Contradictions
+
+**Usage:**
+```
+/wiki-lint
+/wiki-lint --fix
+```
+
+**Execution:**
+```bash
+python scripts/lint.py [--fix]
+```
+
+### `/wiki-consolidate` — Memory Consolidation
+
+Promote observations through memory tiers:
+- Working → Episodic
+- Episodic → Semantic
+- Apply retention decay
+
+**Usage:**
+```
+/wiki-consolidate
+```
+
+**Execution:**
+```bash
+python scripts/consolidate.py
+```
+
+### `/wiki-status` — Wiki Overview
+
+Show wiki statistics and health:
+- Entity count
+- Source count
+- Recent activity
+- Quality score
+
+**Usage:**
+```
+/wiki-status
+```
+
+### `/wiki-init` — Initialize New Wiki
+
+Create `.wiki/` directory structure with defaults.
+
+**Usage:**
+```
+/wiki-init
+/wiki-init --template templates/schema.md
+```
+
+**Execution:**
+```bash
+mkdir -p .wiki/{source/{articles,documents,code,misc},pages/{entities,decisions,sessions,patterns},graph,memory,audit}
+# Create default schema.md, config.json, index.md
+```
+
 ## Directory Structure
 
 All wiki files live under `.wiki/` in the project root:
@@ -33,6 +189,11 @@ All wiki files live under `.wiki/` in the project root:
 .wiki/
 ├── schema.md              # The most important file. Defines entities, relationships,
 │                          # ingest rules, quality standards, and consolidation schedule.
+├── source/                # Raw sources converted to Markdown (input staging area)
+│   ├── articles/          # Web articles, blog posts
+│   ├── documents/         # DOCX, PPTX, XLSX, PDF files
+│   ├── code/               # Code files, configurations
+│   └── misc/               # Other text files
 ├── pages/                 # Wiki pages in markdown (human-readable content)
 │   ├── entities/          # Entity pages (people, projects, libraries, concepts, files)
 │   ├── decisions/         # Architecture decisions (ADR-style)
@@ -53,27 +214,120 @@ All wiki files live under `.wiki/` in the project root:
 
 ## Quick Start
 
-### Initializing a New Wiki
+### Initialize Wiki
 
-1. **Create the directory structure**:
-   ```bash
-   mkdir -p .wiki/{pages/{entities,decisions,sessions,patterns},graph,memory,audit}
-   ```
+```
+/wiki-init
+```
 
-2. **Create `schema.md`** using the template from `templates/schema.md`. Customize it
-   for the user's domain. The schema is co-evolved over time.
+Or manually:
+```bash
+mkdir -p .wiki/{source/{articles,documents,code,misc},pages/{entities,decisions,sessions,patterns},graph,memory,audit}
+```
 
-3. **Create `config.json`** with sensible defaults (retention curves, quality thresholds,
-   consolidation schedule).
+### Add First Source
 
-4. **Create `pages/index.md`** as the human-readable entry point.
+```
+/wiki-add https://example.com/article
+/wiki-add README.md
+/wiki-add "Important: Project uses React 19 with server components"
+```
 
-### Seeding from Existing Knowledge
+### Query Wiki
 
-If the user already has notes, documents, or a codebase:
-1. Ingest each source (document, README, discussion) following the Ingest workflow
-2. Let the LLM extract entities, build the graph, and create pages
-3. Run a lint pass to check consistency
+```
+/wiki-query What frameworks does this project use?
+```
+
+### Check Health
+
+```
+/wiki-status
+/wiki-lint
+```
+
+## Source Conversion
+
+When the user provides a source (file path, URL, or raw content), automatically select
+the appropriate tool to convert it to Markdown and store in `.wiki/source/`.
+
+### Input Type Detection
+
+| Input Type | Detection Rule | Conversion Tool | Output Directory |
+|------------|---------------|-----------------|------------------|
+| URL | Starts with `http://` or `https://` | lightpanda + ReaderLM-v2 | `source/articles/` |
+| PDF | `.pdf` extension | PaddleOCR-VL (remote) | `source/documents/` |
+| Image | `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.webp` | PaddleOCR-VL (remote) | `source/documents/` |
+| Office docs | `.docx`, `.pptx`, `.xlsx`, `.epub` | markitdown | `source/documents/` |
+| HTML | `.html`, `.htm` | ReaderLM-v2 | `source/articles/` |
+| Code | `.py`, `.js`, `.ts`, `.go`, `.rs`, `.java`, etc. | Direct read | `source/code/` |
+| Config | `.json`, `.yaml`, `.yml`, `.toml`, `.ini` | Direct read | `source/code/` |
+| Text | `.md`, `.txt`, `.rst`, `.org` | Direct read | `source/misc/` |
+
+### Conversion Pipeline
+
+```
+User Input → Detect Type → Convert to Markdown → Store in .wiki/source/ → Build Wiki
+```
+
+#### Step 1: URL → Markdown
+
+Use `scripts/url2markdown.py` for web pages:
+
+```bash
+python scripts/url2markdown.py "https://example.com/article" \
+  --output .wiki/source/articles/article-slug.md
+```
+
+**Requirements:**
+- lightpanda installed (`which lightpanda`)
+- Local LLM API running at `http://127.0.0.1:12345`
+- Model: `jinaai-ReaderLM-v2`, Key: `lingting`
+
+#### Step 2: Office Documents → Markdown
+
+Use markitdown for DOCX, PPTX, XLSX, EPUB, HTML:
+
+```bash
+python scripts/ingest.py document.docx --convert-only \
+  --output .wiki/source/documents/document.md
+```
+
+#### Step 3: Images/PDF → Markdown (OCR)
+
+Use PaddleOCR-VL remote API for OCR:
+
+```bash
+python scripts/ingest.py image.png --ocr \
+  --output .wiki/source/documents/image.md
+
+python scripts/ingest.py document.pdf --ocr \
+  --output .wiki/source/documents/document.md
+```
+
+#### Step 4: Code/Text → Markdown
+
+Direct copy with metadata header:
+
+```bash
+python scripts/ingest.py code.py --copy \
+  --output .wiki/source/code/code.py.md
+```
+
+### Full Ingest Workflow
+
+After converting source to Markdown in `.wiki/source/`:
+
+```bash
+python scripts/ingest.py .wiki/source/articles/article.md \
+  --type article --embed
+```
+
+This triggers:
+1. Entity extraction (people, projects, libraries, concepts)
+2. Knowledge graph construction
+3. Wiki page creation in `pages/entities/`
+4. Embedding generation for semantic search
 
 ## Core Workflows
 
@@ -82,21 +336,35 @@ If the user already has notes, documents, or a codebase:
 When the user provides a source (article, document, conversation, code, URL), or
 when a session produces insights worth preserving:
 
-1. **Parse the source**: Extract key claims, facts, decisions, and entities
-2. **Filter sensitive data**: Strip API keys, tokens, passwords, PII before anything
+**Automatic Pipeline:**
+
+1. **Detect input type**: URL, file path, or raw content
+2. **Convert to Markdown**: Use appropriate tool per the Source Conversion section
+3. **Store source**: Save converted Markdown to `.wiki/source/` with proper categorization
+4. **Parse the source**: Extract key claims, facts, decisions, and entities
+5. **Filter sensitive data**: Strip API keys, tokens, passwords, PII before anything
    hits the wiki. See `references/privacy-governance.md`
-3. **Extract entities**: Identify people, projects, libraries, concepts, files, decisions.
+6. **Extract entities**: Identify people, projects, libraries, concepts, files, decisions.
    Each gets a type, attributes, and relationships. See `references/knowledge-graph.md`
-4. **Score confidence**: How many sources support each claim? How recently confirmed?
+7. **Score confidence**: How many sources support each claim? How recently confirmed?
    Any contradictions? See `references/lifecycle.md`
-5. **Check for existing knowledge**: Does this contradict, confirm, or supersede
+8. **Check for existing knowledge**: Does this contradict, confirm, or supersede
    existing claims? Resolve before writing.
-6. **Write to wiki**:
+9. **Write to wiki**:
    - Entity pages in `pages/entities/` using `templates/entity-page.md`
    - Decision records in `pages/decisions/` (ADR format if applicable)
    - Update `graph/entities.json` and `graph/edges.json`
    - Add to `memory/working.json` as a new observation
-7. **Log operation** to `audit/trail.jsonl`
+10. **Log operation** to `audit/trail.jsonl`
+
+**Tool Selection Summary:**
+
+| Input | Tool | Command |
+|-------|------|---------|
+| URL | lightpanda + ReaderLM | `python scripts/url2markdown.py <url>` |
+| PDF/Image | PaddleOCR-VL | `python scripts/ingest.py <file> --ocr` |
+| Office docs | markitdown | `python scripts/ingest.py <file>` |
+| Code/Text | Direct read | `python scripts/ingest.py <file>` |
 
 ### 2. Query — From Question to Answer
 
@@ -225,11 +493,56 @@ Automation scripts in `scripts/`:
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/ingest.py` | Process a source file/URL, extract entities, write to wiki |
-| `scripts/search.py` | Hybrid search over wiki pages, graph, and embeddings |
-| `scripts/lint.py` | Quality checks: orphans, staleness, contradictions, broken links |
-| `scripts/consolidate.py` | Promote observations through memory tiers, apply decay |
-| `scripts/graph.py` | Build and query the knowledge graph |
+| `scripts/wiki.py` | Unified CLI for all wiki operations |
+| `scripts/ingest.py` | Source ingestion + entity extraction |
+| `scripts/url2markdown.py` | URL → HTML (lightpanda) → Markdown (ReaderLM) |
+| `scripts/search.py` | Hybrid search over wiki pages, graph, embeddings |
+| `scripts/lint.py` | Quality checks: orphans, staleness, contradictions |
+| `scripts/consolidate.py` | Memory tier promotion + decay |
+| `scripts/graph.py` | Build and query knowledge graph |
+
+### `wiki.py` — Unified CLI
+
+Primary entry point for all wiki operations:
+
+```bash
+python scripts/wiki.py add <source>     # Add source & build wiki
+python scripts/wiki.py query <query>    # Search wiki
+python scripts/wiki.py lint             # Quality check
+python scripts/wiki.py status           # Wiki statistics
+python scripts/wiki.py init             # Initialize structure
+python scripts/wiki.py consolidate      # Memory consolidation
+python scripts/wiki.py update <target>  # Update content
+```
+
+**`add` options:**
+- `--no-embed`: Skip embedding generation
+- `--type`: Source type (article, code, doc, conversation)
+
+**`lint` options:**
+- `--fix`: Auto-fix issues
+
+**`query` options:**
+- Default uses hybrid search (BM25 + vector + graph)
+
+### Other Script Options
+
+**`ingest.py` options:**
+- `--type`: Source type (article, code, conversation, doc)
+- `--stdin`: Read from stdin
+- `--batch <dir>`: Process all files in a directory
+- `--embed`: Generate embeddings for semantic search
+- `--ocr`: Enable OCR for images/PDFs via PaddleOCR-VL
+- `--convert-only`: Only convert to Markdown, skip entity extraction
+- `--copy`: Copy text file with metadata header (for code/text files)
+- `--output, -o`: Output file path (default: auto-detect from .wiki/source/)
+
+**`url2markdown.py` options:**
+- `--output FILE`: Save Markdown to file
+- `--timeout N`: Lightpanda timeout in milliseconds (default: 30000)
+- `--api-base URL`: Override LLM API base URL
+- `--api-key KEY`: Override API key
+- `--model NAME`: Override model name
 
 ## Schema Co-Evolution
 
