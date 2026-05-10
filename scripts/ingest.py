@@ -257,8 +257,12 @@ def _llm_extract(text: str, source_name: str = "") -> dict:
     return extractor.extract(text, source_name)
 
 
-def _create_entity_page(entity: dict, source_name: str) -> Path:
-    """Create a wiki entity page in pages/entities/."""
+def _create_entity_page(entity: dict, source_name: str, source_content: str = "") -> Path:
+    """Create a rich wiki entity page in pages/entities/.
+
+    Includes YAML frontmatter, synthesized overview from source,
+    key details, and source attribution.
+    """
     page_dir = Path(WIKI_DIR) / "pages" / "entities"
     page_dir.mkdir(parents=True, exist_ok=True)
     page_path = page_dir / f"{entity['id']}.md"
@@ -266,28 +270,92 @@ def _create_entity_page(entity: dict, source_name: str) -> Path:
     etype = entity.get("type", "concept")
     ename = entity.get("name", entity["id"])
     description = entity.get("description", "")
+    confidence = entity.get("confidence", 0.7)
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    lines = ["---"]
-    lines.append(f'id: {entity["id"]}')
-    lines.append(f'type: {etype}')
-    lines.append(f'name: "{ename}"')
-    lines.append("status: active")
-    lines.append(f'confidence: {entity.get("confidence", 0.7)}')
-    lines.append("sources:")
-    lines.append(f"  - .wiki/source/{_slugify(source_name)}")
+    # Build frontmatter
+    fm_lines = [
+        "---",
+        f'id: {entity["id"]}',
+        f'type: {etype}',
+        f'name: "{ename}"',
+        "status: active",
+        f"confidence: {confidence}",
+        f"last_confirmed: {now}",
+        "sources:",
+        f"  - {_slugify(source_name)}",
+        "reinforcements: 0",
+        "contradictions: []",
+        "tags: []",
+    ]
     if description:
-        lines.append(f'description: "{description}"')
-    lines.append("---")
-    lines.append("")
-    lines.append(f"# {ename}")
-    lines.append("")
-    if description:
-        lines.append(description)
-    lines.append("")
-    lines.append(f"> Type: {etype} | Source: {source_name}")
+        fm_lines.append(f'description: "{description}"')
+    fm_lines.append("---")
 
-    page_path.write_text("\n".join(lines), encoding="utf-8")
+    # Build body with rich content
+    body_lines = [
+        "",
+        f"# {ename}",
+        "",
+        "## Overview",
+        "",
+    ]
+    if description:
+        body_lines.append(description)
+        body_lines.append("")
+    else:
+        body_lines.append(f"A {etype} entity discovered in source: {source_name}.")
+        body_lines.append("")
+
+    # Extract relevant context from source if available
+    if source_content:
+        excerpts = _extract_relevant_excerpts(ename, source_content[:50000])
+        if excerpts:
+            body_lines.append("## Source Context")
+            body_lines.append("")
+            for excerpt in excerpts[:3]:
+                body_lines.append(f"> {excerpt}")
+                body_lines.append("")
+    else:
+        body_lines.append("## Source Context")
+        body_lines.append("")
+        body_lines.append(f"_Source: {source_name} — run compile to regenerate with source content_")
+        body_lines.append("")
+
+    body_lines.append("## Relationships")
+    body_lines.append("")
+    body_lines.append("_No relationships defined yet. Run lint or graph build to auto-detect._")
+    body_lines.append("")
+
+    body_lines.append("## History")
+    body_lines.append("")
+    body_lines.append(f"- **{now}**: Entity created from source `{source_name}` (confidence: {confidence})")
+    body_lines.append("")
+
+    page_path.write_text("\n".join(fm_lines + body_lines), encoding="utf-8")
     return page_path
+
+
+def _extract_relevant_excerpts(entity_name: str, text: str, max_excerpts: int = 3) -> list[str]:
+    """Find sentences in source text that mention the entity name."""
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    excerpts = []
+    name_lower = entity_name.lower().replace("-", " ")
+    for s in sentences:
+        if name_lower in s.lower() and len(s) > 15:
+            excerpts.append(s.strip()[:200])
+        if len(excerpts) >= max_excerpts:
+            break
+
+    # Fallback: grab surrounding context around first mention
+    if not excerpts:
+        idx = text.lower().find(name_lower)
+        if idx >= 0:
+            start = max(0, idx - 100)
+            end = min(len(text), idx + 200)
+            excerpts.append(text[start:end].strip().replace("\n", " "))
+
+    return excerpts
 
 
 def _generate_concept_pages(entities: list[dict], source_text: str, source_name: str) -> int:
@@ -372,37 +440,182 @@ def _update_log(op: str, source_name: str, entity_count: int, edge_count: int) -
         f.write(entry)
 
 
+def _extract_summary(content: str, max_len: int = 120) -> str:
+    """Extract a one-line summary from markdown content (first non-heading, non-empty line after frontmatter)."""
+    # Strip YAML frontmatter
+    body = re.sub(r'^---\s*\n.*?\n---\s*\n', '', content, flags=re.DOTALL).strip()
+    for line in body.split("\n"):
+        line = line.strip()
+        if line and not line.startswith("#"):
+            summary = line[:max_len]
+            return summary + "..." if len(line) > max_len else summary
+    return ""
+
+
+def _load_page_fm(page_path: Path) -> dict:
+    """Extract YAML frontmatter from a markdown page."""
+    try:
+        content = page_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return {}
+    match = re.match(r'^---\s*\n(.*?)\n---', content, re.DOTALL)
+    if not match:
+        return {}
+    fm = {}
+    for line in match.group(1).split("\n"):
+        line = line.strip()
+        if ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        fm[key.strip()] = value.strip().strip('"\'')
+    return fm
+
+
+def _embed_entities(registry: dict) -> int:
+    """Generate vector embeddings for entity names/descriptions via Ollama.
+
+    Embeddings are saved to graph/embeddings.json for vector search.
+    Returns number of new embeddings generated.
+    """
+    embeddings_path = Path(GRAPH_DIR) / "embeddings.json"
+    try:
+        from _ollama import get_embedding
+    except ImportError:
+        print("  Warning: _ollama module not found, skipping embeddings", file=sys.stderr)
+        return 0
+
+    try:
+        if embeddings_path.exists():
+            embeddings_data = json.loads(embeddings_path.read_text(encoding="utf-8"))
+        else:
+            embeddings_data = {}
+    except (json.JSONDecodeError, OSError):
+        embeddings_data = {}
+
+    if not isinstance(embeddings_data, dict):
+        embeddings_data = {}
+
+    count = 0
+    for eid, entity in registry.items():
+        if eid in embeddings_data:
+            continue
+        name = entity.get("name", eid)
+        desc = entity.get("description", "")
+        text = f"{name}: {desc}" if desc else name
+        emb = get_embedding(text)
+        if emb:
+            embeddings_data[eid] = emb
+            count += 1
+
+    if count > 0:
+        embeddings_path.parent.mkdir(parents=True, exist_ok=True)
+        embeddings_path.write_text(
+            json.dumps(embeddings_data, ensure_ascii=False, default=str), encoding="utf-8"
+        )
+        print(f"  Generated {count} new embeddings", file=sys.stderr)
+    return count
+
+
 def _rebuild_index() -> None:
     """Rebuild index.md — catalog of all wiki pages with one-line summaries."""
     pages_dir = Path(PAGES_DIR)
     concepts_dir = pages_dir / "concepts"
     entities_dir = pages_dir / "entities"
+    sessions_dir = pages_dir / "sessions"
+    decisions_dir = pages_dir / "decisions"
+    patterns_dir = pages_dir / "patterns"
 
-    lines = ["# Wiki Index", ""]
+    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    lines = [
+        "# Wiki Index",
+        "",
+        f"> Auto-generated at {now_utc}. Updated on every ingest or compile.",
+        "",
+    ]
 
+    # --- Concepts ---
     if concepts_dir.exists():
         lines.append("## Concepts")
         lines.append("")
         for f in sorted(concepts_dir.glob("*.md")):
             name = f.stem.replace("-", " ").title()
-            lines.append(f"- [[{f.stem}|{name}]]")
+            fm = _load_page_fm(f)
+            summary = fm.get("description", _extract_summary(f.read_text(encoding="utf-8")))
+            line = f"- [[{f.stem}|{name}]]"
+            if summary:
+                line += f" — {summary}"
+            lines.append(line)
         lines.append("")
 
+    # --- Entities ---
     if entities_dir.exists():
         lines.append("## Entities")
         lines.append("")
         for f in sorted(entities_dir.glob("*.md")):
             name = f.stem.replace("-", " ").title()
-            lines.append(f"- [[{f.stem}|{name}]]")
+            fm = _load_page_fm(f)
+            summary = fm.get("description", _extract_summary(f.read_text(encoding="utf-8")))
+            line = f"- [[{f.stem}|{name}]]"
+            if summary:
+                line += f" — {summary}"
+            lines.append(line)
         lines.append("")
 
+    # --- Sessions ---
+    if sessions_dir.exists():
+        lines.append("## Sessions")
+        lines.append("")
+        for f in sorted(sessions_dir.glob("*.md")):
+            fm = _load_page_fm(f)
+            topic = fm.get("topic", f.stem.replace("-", " ").title())
+            date = fm.get("date", "")
+            line = f"- [[{f.stem}|{topic}]]"
+            if date:
+                line += f" — {date}"
+            lines.append(line)
+        lines.append("")
+
+    # --- Decisions ---
+    if decisions_dir.exists():
+        lines.append("## Decisions")
+        lines.append("")
+        for f in sorted(decisions_dir.glob("*.md")):
+            name = f.stem.replace("-", " ").title()
+            fm = _load_page_fm(f)
+            summary = fm.get("title", _extract_summary(f.read_text(encoding="utf-8")))
+            line = f"- [[{f.stem}|{name}]]"
+            if summary:
+                line += f" — {summary}"
+            lines.append(line)
+        lines.append("")
+
+    # --- Patterns ---
+    if patterns_dir.exists():
+        lines.append("## Patterns")
+        lines.append("")
+        for f in sorted(patterns_dir.glob("*.md")):
+            name = f.stem.replace("-", " ").title()
+            fm = _load_page_fm(f)
+            summary = fm.get("category", _extract_summary(f.read_text(encoding="utf-8")))
+            line = f"- [[{f.stem}|{name}]]"
+            if summary:
+                line += f" — {summary}"
+            lines.append(line)
+        lines.append("")
+
+    # --- Sources ---
     lines.append("## Sources")
+    lines.append("")
     sources_dir = Path(SOURCE_DIR)
     if sources_dir.exists():
-        for f in sorted(sources_dir.rglob("output.md")):
-            rel = f.relative_to(WIKI_DIR)
-            name = f.parent.name
-            lines.append(f"- [{name}]({rel})")
+        for f in sorted(sources_dir.rglob("*.md")):
+            rel = f.relative_to(Path(WIKI_DIR))
+            fm = _load_page_fm(f)
+            src_type = fm.get("type", "source")
+            src_name = fm.get("source", f.stem)
+            line = f"- [{src_name}]({rel}) — type: {src_type}"
+            lines.append(line)
+    lines.append("")
 
     Path(INDEX_FILE).write_text("\n".join(lines), encoding="utf-8")
 
@@ -436,11 +649,9 @@ def ingest_source(
     print(f"  LLM extracted: {len(entities)} entities, {len(relationships)} relationships",
           file=sys.stderr)
 
-    # Update knowledge graph
     registry = _load_json(ENTITIES_FILE)
     if isinstance(registry, list):
         registry = {}
-    existing_ids = set(registry.keys())
     new_count = 0
 
     for entity in entities:
@@ -462,7 +673,7 @@ def ingest_source(
                 'page': entity_page,
             }
             new_count += 1
-            _create_entity_page(entity, source_name)
+            _create_entity_page(entity, source_name, filtered_content)
 
     _save_json(ENTITIES_FILE, registry)
     print(f"  Saved {new_count} new entities to graph", file=sys.stderr)
@@ -506,7 +717,9 @@ def ingest_source(
 
     _update_log("ingest", source_name, new_count, len(new_edges))
     _rebuild_index()
-    print(f"  Updated log.md and index.md", file=sys.stderr)
+    print(
+        "  Updated log.md and index.md", file=sys.stderr
+    )
 
     return {
         'source': source_name,
@@ -554,10 +767,8 @@ def _main() -> None:
                         r = copy_source(filepath)
                     else:
                         r = ingest_source(
-                            filepath,
-                            args.source_type,
-                            embed=args.embed,
-                            use_ocr=args.ocr,
+                            filepath, args.source_type,
+                            embed=args.embed, use_ocr=args.ocr,
                         )
                     results.append(r)
                 except Exception as e:

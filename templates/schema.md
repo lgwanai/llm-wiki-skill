@@ -21,14 +21,25 @@
 ## Entity Types
 
 <!-- Define what types of entities exist in your domain. Add, remove, or modify
-     types as your wiki evolves. Use the format:
+     types as your wiki evolves.
 
-     ### type-name
-     **Description**: What this type represents
-     **Required attributes**: Fields that every entity of this type MUST have
-     **Optional attributes**: Additional useful fields
-     **Page template**: Which template to use for pages of this type
+     PARSER TABLE (required for automated tools — keep synced with sections below):
+     | type | directory | description |
+     |------|-----------|-------------|
+
+     Each type also has a detailed section below with required/optional attributes.
 -->
+
+| type | directory | description |
+|------|-----------|-------------|
+| `person` | entities | An individual who contributes to or is relevant to the project |
+| `project` | entities | A named initiative, component, or system within the codebase |
+| `library` | entities | An external dependency or tool used by the project |
+| `concept` | concepts | An abstract idea, pattern, or architectural principle |
+| `file` | entities | A significant source file or configuration file |
+| `decision` | decisions | An architectural or design decision (ADR format) |
+| `pattern` | patterns | A recurring code pattern, workflow, or convention observed |
+| `tool` | entities | A development tool, service, or platform |
 
 ### person
 **Description**: An individual who contributes to or is relevant to the project

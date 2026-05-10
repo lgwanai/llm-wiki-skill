@@ -2,7 +2,13 @@
 
 A Claude Code skill implementing **LLM Wiki v2** — a production-hardened pattern for building personal knowledge bases that compound over time with LLM-powered automation.
 
-> This builds on [Andrej Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) and extends it with patterns proven in [agentmemory](https://github.com/rohitg00/agentmemory).
+> This builds on two foundational designs:
+>
+> **LLM Wiki** (Karpathy) — [gist.github.com/karpathy/442a6bf555914893e9891c11519de94f](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
+> The original pattern: three-layer architecture (raw sources → wiki → schema), index+log, entity/concept pages, compoundable knowledge.
+>
+> **LLM Wiki v2** (Rohit Ghumare) — [gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2](https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2)
+> Production hardening with [agentmemory](https://github.com/rohitg00/agentmemory): hybrid search (BM25+vector+graph), compile pipeline, lifecycle management, consolidation tiers.
 
 ## Quick Start
 
