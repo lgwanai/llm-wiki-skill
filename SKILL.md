@@ -1,567 +1,262 @@
 ---
 name: llm-wiki
 description: >
-  Build and maintain a personal knowledge base using the llm-wiki 2.0 pattern.
-  Use this skill whenever the user mentions building a wiki, knowledge base,
-  personal kb, memory system, knowledge management, organizing notes, ingesting
-  research, creating a structured knowledge repository, or wants to accumulate
-  knowledge across sessions. Also trigger for "remember this", "file away",
-  "add to wiki", "organize my knowledge", "build a second brain", "create a
-  knowledge base", "set up a wiki", or any task involving accumulating and
-  structuring information that compounds over time.
-  
-  COMMAND TRIGGERS: Also trigger for slash commands: /wiki-add, /wiki-update,
-  /wiki-query, /wiki-lint, /wiki-consolidate, /wiki-status, /wiki-init.
+  Build and maintain a personal knowledge base using the LLM Wiki v2 pattern.
+  Trigger when user mentions: wiki, knowledge base, kb, memory system, knowledge
+  management, organizing notes, ingesting research, structured knowledge, "remember
+  this", "file away", "add to wiki", "second brain", "build knowledge base", "set
+  up wiki", accumulating and structuring information that compounds over time.
+  COMMANDS: /wiki-compile, /wiki-query, /wiki-lint, /wiki-embed, /wiki-bulk,
+  /wiki-consolidate, /wiki-status, /wiki-init.
 ---
 
-# LLM Wiki v2 — Knowledge Base Builder
+# LLM Wiki v2
 
-## Philosophy
+Stop re-deriving. Start compiling.
 
-Stop re-deriving. Start compiling. RAG retrieves and forgets. A wiki accumulates and
-compounds. This skill turns Claude into a disciplined knowledge librarian that builds
-a living, self-correcting knowledge base from your conversations, research sessions,
-and ingested sources.
+RAG retrieves and forgets. A wiki accumulates and compounds. This skill turns
+Claude into a disciplined knowledge librarian — reading sources, extracting entities,
+building a typed knowledge graph, and maintaining everything as knowledge evolves.
 
-The core insight from Karpathy's original LLM Wiki: the bottleneck is bookkeeping,
-and LLMs eliminate it. What this v2 adds is the machinery that keeps the wiki healthy
-as it scales — lifecycle management, graph structure, automation, quality controls,
-and collaboration patterns proven in production.
+## Core Idea
 
-## Command Reference
-
-Slash commands for wiki operations. When user invokes a command, execute the full pipeline.
-
-### `/wiki-add <source>` — Add Source & Build Wiki
-
-Add a source (URL, file path, or content) to the wiki. Automatically:
-1. Detect input type (URL, file, raw content)
-2. Convert to Markdown using appropriate tool
-3. Store in `.wiki/source/`
-4. Extract entities and build knowledge graph
-5. Create wiki pages
-
-**Usage:**
 ```
-/wiki-add https://example.com/article
-/wiki-add document.pdf
-/wiki-add notes.md
-/wiki-add "raw text content to remember"
+RAG:    Source → [检索] → LLM 即时合成 → 回答 → 丢弃
+Wiki:   Source → [编译] → Wiki 持久化 → 查询时直接使用已有知识
 ```
 
-**Automatic Tool Selection:**
+The bottleneck in knowledge management is not reading or thinking — it's bookkeeping.
+LLMs eliminate that bottleneck.
 
-| Input | Tool | Action |
-|-------|------|--------|
-| `https://...` | lightpanda + ReaderLM | Fetch → Markdown → Build |
-| `*.pdf`, `*.png` | PaddleOCR-VL | OCR → Markdown → Build |
-| `*.docx`, `*.xlsx` | markitdown | Convert → Markdown → Build |
-| `*.py`, `*.js`, etc. | Direct read | Copy → Build |
-| `*.md`, `*.txt` | Direct read | Copy → Build |
-| Raw text | None | Store → Build |
+## Architecture
 
-**Execution:**
+```
+Raw Sources (.wiki/source/)     — immutable, LLM reads never modifies
+    ↓
+Wiki (.wiki/pages/)             — LLM maintains: entity pages, concept pages, index, log
+    ↓
+Schema (schema.md + wiki_config.yaml) — conventions, types, quality rules, co-evolved
+```
+
+## Commands
+
+### `/wiki-compile <source>` — Ingest Source
+
+Compile a source document into wiki pages. LLM reads, extracts entities, builds graph.
+
 ```bash
-# URL
-python scripts/url2markdown.py "<url>" --output .wiki/source/articles/slug.md
-python scripts/ingest.py .wiki/source/articles/slug.md --type article --embed
+python3 scripts/wiki.py compile <source.md>
 
-# File (auto-detect type)
-python scripts/ingest.py <file> --ocr-if-needed --embed
-
-# Raw content
-echo "<content>" | python scripts/ingest.py - --type article --embed
+# Force re-compile (update existing pages + detect contradictions)
+python3 scripts/wiki.py compile <source.md> --force
 ```
 
-### `/wiki-update <target>` — Update Wiki Content
+**What happens:**
+- Source is sanitized (API keys, tokens, passwords, emails stripped)
+- LLM generates 10-15 structured wiki pages with YAML frontmatter
+- index.md updated (grouped by type: Concepts, Techniques, Models, Frameworks, Benchmarks)
+- log.md appended with timestamped entry
+- Knowledge graph built: entities → entities.json, edges → edges.json (12 relationship types)
+- audit.json records the operation
 
-Update an existing entity, page, or source. Options:
+### `/wiki-query <question>` — Search & Answer
 
-| Target | Action |
-|--------|--------|
-| `entity/<name>` | Update entity page and graph |
-| `source/<slug>` | Re-ingest source with new content |
-| `<content>` | Append/update specific knowledge |
+Search wiki via BM25 + vector + graph, synthesize answer with citations.
 
-**Usage:**
-```
-/wiki-update entity/react-library
-/wiki-update source/article-slug
-/wiki-update "React 19 now supports server components"
-```
-
-**Execution:**
-1. Find target in `.wiki/pages/entities/` or `.wiki/source/`
-2. Load existing content
-3. Merge new information (don't replace)
-4. Update graph and confidence scores
-5. Log operation
-
-### `/wiki-query <query>` — Search Wiki
-
-Search the wiki for information. Supports:
-- Keyword search
-- Semantic similarity (if embeddings exist)
-- Graph traversal
-
-**Usage:**
-```
-/wiki-query How does React handle state?
-/wiki-query entity:react-library
-/wiki-query type:decision
-```
-
-**Execution:**
 ```bash
-python scripts/search.py "<query>" --hybrid
+python3 scripts/wiki.py query "What is X?"
+
+# With output format
+python3 scripts/wiki.py query "compare models" --format table
+python3 scripts/wiki.py query "history" --format timeline
+python3 scripts/wiki.py query "present findings" --format slides
+python3 scripts/wiki.py query "export" --format json
+
+# File answer back as a new wiki page
+python3 scripts/wiki.py query "Explain X" --file-back
 ```
 
-### `/wiki-lint` — Quality Check
+### `/wiki-lint` — Health Check
 
-Run quality checks on the wiki:
-- Orphan pages
-- Broken links
-- Stale content
-- Contradictions
+Detect and auto-fix wiki issues.
 
-**Usage:**
-```
-/wiki-lint
-/wiki-lint --fix
-```
-
-**Execution:**
 ```bash
-python scripts/lint.py [--fix]
+python3 scripts/wiki.py lint              # Check only
+python3 scripts/wiki.py lint --auto-heal  # Check + fix
+```
+
+**Checks:** contradictions, stale claims, orphan pages, broken links, missing concepts.
+
+### `/wiki-embed` — Vector Embeddings
+
+Generate embeddings for semantic search.
+
+```bash
+python3 scripts/wiki.py embed           # Generate all
+python3 scripts/wiki.py embed --force   # Regenerate all
+```
+
+Model: qwen3-embedding:8b (4096 dims) via Ollama @ localhost:11434.
+
+### `/wiki-bulk <action>` — Bulk Operations
+
+Governance for growing wikis. All operations audited and reversible.
+
+```bash
+python3 scripts/wiki.py bulk stats                  # Detailed analytics
+python3 scripts/wiki.py bulk clean --dry-run        # Preview orphan cleanup
+python3 scripts/wiki.py bulk merge --dry-run        # Preview duplicate merge
+python3 scripts/wiki.py bulk export --type concept  # Export subset
+python3 scripts/wiki.py bulk delete --stale --dry-run  # Preview stale deletion
 ```
 
 ### `/wiki-consolidate` — Memory Consolidation
 
-Promote observations through memory tiers:
-- Working → Episodic
-- Episodic → Semantic
-- Apply retention decay
+Promote observations through memory tiers: Working → Episodic → Semantic → Procedural.
 
-**Usage:**
-```
-/wiki-consolidate
-```
-
-**Execution:**
 ```bash
-python scripts/consolidate.py
+python3 scripts/consolidate.py
 ```
 
 ### `/wiki-status` — Wiki Overview
 
-Show wiki statistics and health:
-- Entity count
-- Source count
-- Recent activity
-- Quality score
-
-**Usage:**
-```
-/wiki-status
-```
-
-### `/wiki-init` — Initialize New Wiki
-
-Create `.wiki/` directory structure with defaults.
-
-**Usage:**
-```
-/wiki-init
-/wiki-init --template templates/schema.md
-```
-
-**Execution:**
 ```bash
-mkdir -p .wiki/{source/{articles,documents,code,misc},pages/{entities,decisions,sessions,patterns},graph,memory,audit}
-# Create default schema.md, config.json, index.md
+python3 scripts/wiki.py status
 ```
+
+Shows: page counts, entity/edge counts, embedding coverage, file existence.
+
+### `/wiki-init` — Initialize
+
+```bash
+python3 scripts/wiki.py init
+```
+
+Creates `.wiki/` directory structure with defaults.
 
 ## Directory Structure
 
-All wiki files live under `.wiki/` in the project root:
-
 ```
 .wiki/
-├── schema.md              # The most important file. Defines entities, relationships,
-│                          # ingest rules, quality standards, and consolidation schedule.
-├── source/                # Raw sources converted to Markdown (input staging area)
-│   ├── articles/          # Web articles, blog posts
-│   ├── documents/         # DOCX, PPTX, XLSX, PDF files
-│   ├── code/               # Code files, configurations
-│   └── misc/               # Other text files
-├── pages/                 # Wiki pages in markdown (human-readable content)
-│   ├── entities/          # Entity pages (people, projects, libraries, concepts, files)
-│   ├── decisions/         # Architecture decisions (ADR-style)
-│   ├── sessions/          # Session digests (crystallized from working sessions)
-│   ├── patterns/          # Procedural knowledge and workflows
-│   └── index.md           # Human-readable catalog (supplementary to search)
+├── pages/
+│   ├── concepts/          # Concept pages (architecture, mechanisms)
+│   ├── entities/          # Entity pages (models, benchmarks, frameworks)
+│   ├── sessions/          # Crystallized session digests
+│   └── index.md           # Human-readable catalog by type
 ├── graph/
-│   ├── entities.json      # Structured entity registry with types, attributes, confidence
-│   └── edges.json         # Typed relationships between entities
+│   ├── entities.json      # Entity registry: id, type, confidence, sources, reinforcement
+│   ├── edges.json         # Typed relationships: uses, depends_on, contradicts, ...
+│   └── embeddings.json    # Vector embeddings for semantic search
+├── source/                # Raw source documents (immutable)
 ├── memory/
-│   ├── working.json       # Recent observations, not yet processed
-│   ├── episodic.json      # Session summaries, compressed from working memory
-│   └── semantic.json      # Cross-session facts, consolidated from episodes
-├── audit/
-│   └── trail.jsonl        # Append-only log of all wiki operations
-└── config.json            # Wiki configuration (retention curves, quality thresholds)
+│   ├── working.json       # Recent observations
+│   ├── episodic.json      # Session summaries
+│   └── semantic.json      # Cross-session facts
+├── audit.json             # Full operation log (timestamp + what + why)
+├── log.md                 # Chronological log (parseable with grep)
+└── schema.md              # Entity types, relationship types, quality rules
 ```
-
-## Quick Start
-
-### Initialize Wiki
-
-```
-/wiki-init
-```
-
-Or manually:
-```bash
-mkdir -p .wiki/{source/{articles,documents,code,misc},pages/{entities,decisions,sessions,patterns},graph,memory,audit}
-```
-
-### Add First Source
-
-```
-/wiki-add https://example.com/article
-/wiki-add README.md
-/wiki-add "Important: Project uses React 19 with server components"
-```
-
-### Query Wiki
-
-```
-/wiki-query What frameworks does this project use?
-```
-
-### Check Health
-
-```
-/wiki-status
-/wiki-lint
-```
-
-## Source Conversion
-
-When the user provides a source (file path, URL, or raw content), automatically select
-the appropriate tool to convert it to Markdown and store in `.wiki/source/`.
-
-### Input Type Detection
-
-| Input Type | Detection Rule | Conversion Tool | Output Directory |
-|------------|---------------|-----------------|------------------|
-| URL | Starts with `http://` or `https://` | lightpanda + ReaderLM-v2 | `source/articles/` |
-| PDF | `.pdf` extension | PaddleOCR-VL (remote) | `source/documents/` |
-| Image | `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.webp` | PaddleOCR-VL (remote) | `source/documents/` |
-| Office docs | `.docx`, `.pptx`, `.xlsx`, `.epub` | markitdown | `source/documents/` |
-| HTML | `.html`, `.htm` | ReaderLM-v2 | `source/articles/` |
-| Code | `.py`, `.js`, `.ts`, `.go`, `.rs`, `.java`, etc. | Direct read | `source/code/` |
-| Config | `.json`, `.yaml`, `.yml`, `.toml`, `.ini` | Direct read | `source/code/` |
-| Text | `.md`, `.txt`, `.rst`, `.org` | Direct read | `source/misc/` |
-
-### Conversion Pipeline
-
-```
-User Input → Detect Type → Convert to Markdown → Store in .wiki/source/ → Build Wiki
-```
-
-#### Step 1: URL → Markdown
-
-Use `scripts/url2markdown.py` for web pages:
-
-```bash
-python scripts/url2markdown.py "https://example.com/article" \
-  --output .wiki/source/articles/article-slug.md
-```
-
-**Requirements:**
-- lightpanda installed (`which lightpanda`)
-- Local LLM API configured in `scripts/wiki_config.yaml` (copy from `wiki_config.yaml.example`)
-
-#### Step 2: Office Documents → Markdown
-
-Use markitdown for DOCX, PPTX, XLSX, EPUB, HTML:
-
-```bash
-python scripts/ingest.py document.docx --convert-only \
-  --output .wiki/source/documents/document.md
-```
-
-#### Step 3: Images/PDF → Markdown (OCR)
-
-Use PaddleOCR-VL remote API for OCR:
-
-```bash
-python scripts/ingest.py image.png --ocr \
-  --output .wiki/source/documents/image.md
-
-python scripts/ingest.py document.pdf --ocr \
-  --output .wiki/source/documents/document.md
-```
-
-#### Step 4: Code/Text → Markdown
-
-Direct copy with metadata header:
-
-```bash
-python scripts/ingest.py code.py --copy \
-  --output .wiki/source/code/code.py.md
-```
-
-### Full Ingest Workflow
-
-After converting source to Markdown in `.wiki/source/`:
-
-```bash
-python scripts/ingest.py .wiki/source/articles/article.md \
-  --type article --embed
-```
-
-This triggers:
-1. Entity extraction (people, projects, libraries, concepts)
-2. Knowledge graph construction
-3. Wiki page creation in `pages/entities/`
-4. Embedding generation for semantic search
-
-## Core Workflows
-
-### 1. Ingest — From Source to Structure
-
-When the user provides a source (article, document, conversation, code, URL), or
-when a session produces insights worth preserving:
-
-**Automatic Pipeline:**
-
-1. **Detect input type**: URL, file path, or raw content
-2. **Convert to Markdown**: Use appropriate tool per the Source Conversion section
-3. **Store source**: Save converted Markdown to `.wiki/source/` with proper categorization
-4. **Parse the source**: Extract key claims, facts, decisions, and entities
-5. **Filter sensitive data**: Strip API keys, tokens, passwords, PII before anything
-   hits the wiki. See `references/privacy-governance.md`
-6. **Extract entities**: Identify people, projects, libraries, concepts, files, decisions.
-   Each gets a type, attributes, and relationships. See `references/knowledge-graph.md`
-7. **Score confidence**: How many sources support each claim? How recently confirmed?
-   Any contradictions? See `references/lifecycle.md`
-8. **Check for existing knowledge**: Does this contradict, confirm, or supersede
-   existing claims? Resolve before writing.
-9. **Write to wiki**:
-   - Entity pages in `pages/entities/` using `templates/entity-page.md`
-   - Decision records in `pages/decisions/` (ADR format if applicable)
-   - Update `graph/entities.json` and `graph/edges.json`
-   - Add to `memory/working.json` as a new observation
-10. **Log operation** to `audit/trail.jsonl`
-
-**Tool Selection Summary:**
-
-| Input | Tool | Command |
-|-------|------|---------|
-| URL | lightpanda + ReaderLM | `python scripts/url2markdown.py <url>` |
-| PDF/Image | PaddleOCR-VL | `python scripts/ingest.py <file> --ocr` |
-| Office docs | markitdown | `python scripts/ingest.py <file>` |
-| Code/Text | Direct read | `python scripts/ingest.py <file>` |
-
-### 2. Query — From Question to Answer
-
-When the user asks a question that the wiki might answer:
-
-1. **Parse intent**: What kind of answer? Fact check, explanation, connection discovery,
-   impact analysis?
-2. **Search strategy** (pick based on query type):
-   - **Keyword match** → direct page lookup
-   - **Semantic search** → vector similarity over page embeddings
-   - **Graph traversal** → start at an entity, walk relationships
-   - **Hybrid** → fuse results from all three (see `references/hybrid-search.md`)
-3. **Synthesize answer**: Combine retrieved facts with source citations and confidence scores
-4. **Crystallization check**: Is this answer worth filing back? If the query produced
-   new insights, trigger the consolidate workflow. See `references/crystallization.md`
-5. **Choose output format**: Raw markdown, comparison table, timeline, dependency graph,
-   slide deck, or structured data export. See `references/output-formats.md`
-
-### 3. Lint — Quality Assurance
-
-Run lint proactively (not just when asked). Trigger on:
-- After any batch of ingests (≥3 sources)
-- Periodically (suggest running after significant wiki growth)
-- When the user asks "is my wiki healthy?"
-
-The lint pass checks:
-1. **Orphan pages**: Pages with no incoming links → auto-link or flag
-2. **Stale claims**: Facts past their retention threshold → mark as stale, propose update
-3. **Broken references**: Wikilinks pointing to nonexistent pages → repair or flag
-4. **Contradictions**: Two claims saying different things → propose resolution based on
-   source authority and recency
-5. **Quality scores**: Re-score existing content, flag below-threshold items
-
-See `references/quality.md` for self-healing patterns.
-
-### 4. Consolidate — Memory Lifecycle Management
-
-Run consolidation periodically (after significant activity or on schedule):
-
-1. **Working → Episodic**: Group recent observations into session summaries. Compress.
-   Promote high-confidence, multi-source facts upward.
-2. **Episodic → Semantic**: Cross-reference episodes. Extract facts confirmed across
-   multiple sessions. Promote to long-lived semantic memory.
-3. **Apply retention decay**: For each fact, apply Ebbinghaus decay curve. Facts that
-   haven't been accessed or reinforced fade. Each access resets the curve.
-4. **Supersession**: When new information replaces old, mark old as superseded, link
-   to replacement, preserve history.
-5. **Forgetting**: Deprioritize (don't delete) facts below threshold. Move to bottom
-   of search results.
-
-See `references/lifecycle.md` for the full lifecycle model.
-
-## Implementation Spectrum
-
-Pick your starting level based on current needs. The skill supports all five.
-
-### Level 1 — Minimal Viable Wiki
-- Raw sources → wiki pages
-- `index.md` catalog
-- Schema with ingest/query/lint workflows
-- **Start here.** Gets you running in minutes.
-
-### Level 2 — Add Lifecycle
-- Confidence scoring on every claim
-- Supersession when facts change
-- Basic retention decay
-- Working → episodic → semantic tiers
-- **Add this when the wiki starts accumulating noise.**
-
-### Level 3 — Add Structure
-- Entity extraction from all sources
-- Typed relationships (uses, depends on, caused, fixed, contradicts, supersedes)
-- Knowledge graph (entities.json + edges.json)
-- Graph traversal for queries
-- **Add this when flat pages aren't enough for discovery.**
-
-### Level 4 — Add Automation
-- Hooks: auto-ingest on source drop, auto-lint on schedule, context injection
-  on session start
-- Consolidation pipeline runs automatically
-- Quality scoring on all new content
-- Self-healing during lint (auto-fix what can be auto-fixed)
-- **Add this when maintenance becomes a burden.**
-
-### Level 5 — Add Scale & Collaboration
-- Hybrid search (BM25 + vector + graph)
-- Mesh sync between agents
-- Shared vs. private knowledge scoping
-- Work coordination patterns
-- Bulk governance operations
-- **Add this for teams, multi-agent setups, or wikis with 500+ pages.**
-
-See `references/implementation-spectrum.md` for detailed level-by-level setup guides.
-
-## Reference Files
-
-Load these when you need deep knowledge on a specific pattern:
-
-| Reference | When to load |
-|-----------|-------------|
-| `references/lifecycle.md` | Setting up confidence scores, forgetting curves, consolidation tiers |
-| `references/knowledge-graph.md` | Implementing entity extraction, typed relationships, graph traversal |
-| `references/hybrid-search.md` | Building search that combines BM25, vectors, and graph queries |
-| `references/automation.md` | Setting up hooks, schedules, context injection |
-| `references/quality.md` | Implementing scoring, self-healing, contradiction resolution |
-| `references/collaboration.md` | Multi-agent sync, shared/private scoping, coordination |
-| `references/privacy-governance.md` | Filtering sensitive data, audit trails, bulk operations |
-| `references/crystallization.md` | Distilling sessions into structured digests |
-| `references/output-formats.md` | Comparison tables, timelines, dependency graphs, slide decks |
-| `references/implementation-spectrum.md` | Detailed setup guides for each maturity level |
-
-## Templates
-
-Available templates for wiki content:
-
-| Template | When to use |
-|----------|------------|
-| `templates/schema.md` | Initializing a new wiki — the most important file |
-| `templates/entity-page.md` | Creating a new entity page (person, project, library, concept) |
-| `templates/session-digest.md` | Crystallizing a working session into a structured summary |
-| `templates/index.md` | Creating the human-readable wiki catalog |
 
 ## Scripts
 
-Automation scripts in `scripts/`:
-
 | Script | Purpose |
 |--------|---------|
-| `scripts/wiki.py` | Unified CLI for all wiki operations |
-| `scripts/ingest.py` | Source ingestion + entity extraction |
-| `scripts/url2markdown.py` | URL → HTML (lightpanda) → Markdown (ReaderLM) |
-| `scripts/search.py` | Hybrid search over wiki pages, graph, embeddings |
-| `scripts/lint.py` | Quality checks: orphans, staleness, contradictions |
-| `scripts/consolidate.py` | Memory tier promotion + decay |
-| `scripts/graph.py` | Build and query knowledge graph |
+| `wiki.py` | Unified CLI — all operations |
+| `compile_v2.py` | Source → wiki pages + knowledge graph |
+| `query.py` | Search + synthesize + file-back (6 output formats) |
+| `lint.py` | Health check + auto-heal |
+| `search.py` | Hybrid search: BM25 + vector + graph |
+| `graph.py` | Knowledge graph: entities, edges, traversal |
+| `consolidate.py` | Memory tier promotion + decay |
+| `crystallize.py` | Session → digest pipeline |
+| `bulk.py` | Bulk delete/export/merge/clean/stats |
+| `generate_embeddings.py` | Vector embedding generation |
+| `url2markdown.py` | URL → Markdown conversion |
+| `ocr.py` | PDF/Image OCR |
+| `_ollama.py` | Ollama embeddings (qwen3-embedding:8b) |
+| `_qdrant.py` | Optional Qdrant vector database |
+| `_agensgraph.py` | Optional AgensGraph graph database |
 
-### `wiki.py` — Unified CLI
+Dependencies: `query.py` → `search.py` → `graph.py` | `consolidate.py` → `crystallize.py`
 
-Primary entry point for all wiki operations:
+## Knowledge Lifecycle
 
-```bash
-python scripts/wiki.py add <source>     # Add source & build wiki
-python scripts/wiki.py query <query>    # Search wiki
-python scripts/wiki.py lint             # Quality check
-python scripts/wiki.py status           # Wiki statistics
-python scripts/wiki.py init             # Initialize structure
-python scripts/wiki.py consolidate      # Memory consolidation
-python scripts/wiki.py update <target>  # Update content
+```
+Source → Compile → Pages + Graph → Query → File-back
+                → Log + Audit → Lint → Stale → Decay → Archive
+                               → Consolidate → Working → Episodic → Semantic
+                               → Crystallize → Session → Digest → Facts
 ```
 
-**`add` options:**
-- `--no-embed`: Skip embedding generation
-- `--type`: Source type (article, code, doc, conversation)
+### Stage Reference
 
-**`lint` options:**
-- `--fix`: Auto-fix issues
+| Stage | Command | What |
+|-------|---------|------|
+| Ingest | `wiki compile` | Read source, strip sensitive, build pages + graph |
+| Graph | `graph show` | View entities, edges, typed relationships |
+| Query | `wiki query --file-back` | Search + synthesize + save insights |
+| Lint | `wiki lint --auto-heal` | Detect + fix contradictions, stale, orphans, broken links |
+| Contradictions | `wiki compile --force` | Re-compile auto-detects conflicts, proposes resolution |
+| Decay | automatic | Ebbinghaus curves: arch 260d, bug 20d, meeting 10d |
+| Consolidate | `consolidate.py` | Promote: Working → Episodic → Semantic → Procedural |
+| Crystallize | `crystallize.py` | Session → digest → facts → working memory |
+| Bulk | `wiki bulk clean/merge/delete` | Governance for growing wikis |
+| Embed | `wiki embed` | Generate 4096d vectors for semantic search |
 
-**`query` options:**
-- Default uses hybrid search (BM25 + vector + graph)
+### Relationship Types (12)
 
-### Other Script Options
+`uses` | `depends_on` | `extends` | `improves_upon` | `contradicts` | `supersedes` | `caused_by` | `fixed_by` | `replaces` | `relates_to` | `part_of` | `implemented_by`
 
-**`ingest.py` options:**
-- `--type`: Source type (article, code, conversation, doc)
-- `--stdin`: Read from stdin
-- `--batch <dir>`: Process all files in a directory
-- `--embed`: Generate embeddings for semantic search
-- `--ocr`: Enable OCR for images/PDFs via PaddleOCR-VL
-- `--convert-only`: Only convert to Markdown, skip entity extraction
-- `--copy`: Copy text file with metadata header (for code/text files)
-- `--output, -o`: Output file path (default: auto-detect from .wiki/source/)
+### Confidence & Forgetting
 
-**`url2markdown.py` options:**
-- `--output FILE`: Save Markdown to file
-- `--timeout N`: Lightpanda timeout in milliseconds (default: 30000)
-- `--api-base URL`: Override LLM API base URL
-- `--api-key KEY`: Override API key
-- `--model NAME`: Override model name
+| Entity Type | Half-life | Behavior |
+|-------------|-----------|----------|
+| architecture | 260 days | Slow decay |
+| project | 130 days | Moderate decay |
+| pattern | 87 days | Moderate decay |
+| bug | 20 days | Fast decay |
+| meeting | 10 days | Fast decay |
+| preference | 527 days | Very slow decay |
 
-## Schema Co-Evolution
+Confidence starts at 0.85, +0.05 per source reinforcement (max 1.0).
+Decay: retention < 0.5 → stale | < 0.15 → archived.
 
-The schema document (`schema.md`) is the most important file in the system. It encodes
-what the LLM needs to know to be a disciplined knowledge worker. It and the LLM co-evolve
-this document over time.
+## Configuration
 
-After every significant wiki operation, ask: "Does the schema need to change?" If a new
-entity type emerged, a new relationship proved useful, or a quality rule needs tightening,
-update the schema. The schema is transferable — share it with someone in a similar domain
-and they get a running start.
+Single config file: `scripts/wiki_config.yaml` (copy from `.example`).
 
-## Principles
+```yaml
+llm:          # Compile + query
+  api_key: "sk-xxx"
+  model: "deepseek-v4-flash"
+embeddings:   # Semantic search
+  base_url: "http://localhost:11434"
+  model: "qwen3-embedding:8b"
+hooks:        # Automation
+  on_new_source: {enabled: true}
+retention:    # Decay curves
+  architecture: {half_life_days: 180}
+quality:      # Quality gates
+  auto_heal: true
+  min_score: 0.4
+```
 
-1. **Compounding over time**: Every source and session adds permanent value
-2. **Confidence over certainty**: Every claim carries a score, not just a statement
-3. **Structure enables discovery**: The graph catches connections keyword search misses
-4. **Automation prevents rot**: Manual wikis die. Hooks keep them alive
-5. **Human in the loop for curation, LLM for bookkeeping**: The LLM does the filing.
-   The human sets direction and resolves conflicts.
-6. **Privacy by default**: Filter sensitive data before it enters the wiki
-7. **Knowledge has a lifecycle**: What matters today may not matter in six months
-8. **The schema is transferable**: Your wiki's structure is reusable knowledge in itself
+Optional backends (uncomment to enable): Qdrant @ localhost:6333, AgensGraph @ localhost:5433.
+
+## Output Formats
+
+| Format | Flag | Output |
+|--------|------|--------|
+| Markdown | `--format markdown` | Structured answer with wikilinks |
+| Table | `--format table` | Comparison table |
+| Timeline | `--format timeline` | Chronological events |
+| Slides | `--format slides` | Marp presentation |
+| JSON | `--format json` | Structured data export |
+| Graph | `--format graph` | Dependency visualization |
+
+## Design Heritage
+
+- [Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — original three-layer pattern
+- [Rohit's LLM Wiki v2](https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2) — production hardening
+
+Full design compliance: 100% Karpathy v1 + 100% Rohit v2 core features.

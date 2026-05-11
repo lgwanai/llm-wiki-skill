@@ -229,67 +229,249 @@ wiki.py → compile_v2.py, query.py, lint.py, bulk.py, generate_embeddings.py
 
 ---
 
-## v2 增强功能
+## 知识生命周期
 
-### 知识生命周期
+知识不是静态的。从摄入到遗忘，它的置信度、新鲜度、关系都在不断变化。
 
-| 机制 | 实现 | 说明 |
+```
+  Source ──→ Compile ──→ Pages + Graph ──→ Query ──→ File-back
+                 │              │                │
+                 ▼              ▼                ▼
+              Log.md      entities.json     Answers → new pages
+              Audit       edges.json
+                 │              │
+                 ▼              ▼
+              Lint ────→ Stale ──→ Decay ──→ Archive
+              Auto-heal    Contradictions    Forgotten
+                 │
+                 ▼
+          Consolidate ──→ Working → Episodic → Semantic → Procedural
+                 │
+                 ▼
+          Crystallize ──→ Session → Digest → Facts → Working Memory
+```
+
+### 阶段 1：摄入（Ingest）
+
+源文档 → LLM 分析 → 结构化 Wiki 页面。
+
+```bash
+# 编译一个源文档
+python3 scripts/wiki.py compile source.md
+
+# 或直接使用脚本
+python3 scripts/compile_v2.py source.md
+
+# 强制重新编译（覆盖已有页面 + 检测矛盾）
+python3 scripts/wiki.py compile source.md --force
+python3 scripts/compile_v2.py source.md --force
+```
+
+**做了什么：**
+- LLM 读取源文档（敏感信息已在发送前自动脱敏：API keys、tokens、密码、邮箱）
+- 生成 10-15 个结构化 Wiki 页面（YAML frontmatter + Overview/Key Details/Relationships/Source Context）
+- 按类型分类存储：`concepts/`、`entities/`
+- 更新 `index.md`（按 Concepts / Techniques / Models / Frameworks / Benchmarks 分组）
+- 追加 `log.md`（`## [YYYY-MM-DD HH:MM UTC] compile | source-name`）
+- 构建知识图谱：实体 → `entities.json`，关系边 → `edges.json`（12 种类型）
+- 写入审计日志：`audit.json`
+
+### 阶段 2：图谱构建（Knowledge Graph）
+
+编译时自动从页面 wikilinks 中提取类型化关系。
+
+```bash
+# 查看图谱
+python3 scripts/graph.py show
+
+# 遍历实体关系（下游影响分析）
+python3 scripts/graph.py traverse deepseek-v4-series --depth 2
+
+# 统计
+python3 scripts/wiki.py bulk stats
+```
+
+**关系类型（12 种）：**
+`uses` | `depends_on` | `extends` | `improves_upon` | `contradicts` | `supersedes` | `caused_by` | `fixed_by` | `replaces` | `relates_to` | `part_of` | `implemented_by`
+
+### 阶段 3：查询 & 回填（Query + File-back）
+
+搜索 Wiki → LLM 合成答案 → 可选回填为新页面。
+
+```bash
+# 默认 markdown 格式
+python3 scripts/wiki.py query "What is DeepSeek-V4's architecture?"
+
+# 多种输出格式
+python3 scripts/wiki.py query "compare models" --format table
+python3 scripts/wiki.py query "history of X" --format timeline
+python3 scripts/wiki.py query "present findings" --format slides
+python3 scripts/wiki.py query "export all" --format json
+
+# 搜索 + 答案回填
+python3 scripts/wiki.py query "Explain Muon optimizer" --file-back
+python3 scripts/query.py "What is CSA?" --file-back
+```
+
+### 阶段 4：健康检查 & 自愈（Lint + Auto-heal）
+
+周期性扫描 Wiki，发现问题并自动修复。
+
+```bash
+# 仅检查
+python3 scripts/wiki.py lint
+
+# 检查 + 自动修复
+python3 scripts/wiki.py lint --auto-heal
+python3 scripts/lint.py --auto-heal
+
+# 生成报告文件
+python3 scripts/lint.py --auto-heal --report-file .wiki/reports/lint-$(date +%Y-%m-%d).md
+```
+
+**检测项：**
+- 🔴 矛盾页面（新旧信息冲突）
+- 🟡 过期 claims（超过保留阈值）
+- 🟡 孤页面（无入边/出边）
+- 🟡 断裂链接（指向不存在的页面）
+- 🟢 缺失概念（重要概念无页面）
+
+### 阶段 5：矛盾检测 & 取代（Contradiction + Supersession）
+
+重新编译同一源时，自动检测新旧信息矛盾。
+
+```bash
+# 重新编译 → 自动检测矛盾
+python3 scripts/compile_v2.py source.md
+# 输出示例：
+#   Updated: compressed-sparse-attention.md (4 contradictions)
+#   Updated: manifold-constrained-hyper-connections.md (10 contradictions)
+```
+
+矛盾类型：`factual` | `temporal` | `numerical` | `opinion`
+严重程度：`high` | `medium` | `low`
+LLM 自动推荐哪个声明更可靠。
+
+### 阶段 6：衰减 & 遗忘（Confidence Decay + Forgetting）
+
+知识不是永久的。使用 Ebbinghaus 遗忘曲线按实体类型衰减：
+
+| 实体类型 | 半衰期 | 说明 |
+|----------|--------|------|
+| architecture | 260 天 | 架构决策衰减慢 |
+| project | 130 天 | 项目事实 |
+| pattern | 87 天 | 模式 |
+| bug | 20 天 | Bug 衰减快 |
+| meeting | 10 天 | 会议内容 |
+| preference | 527 天 | 偏好长期有效 |
+
+```bash
+# confidence 衰减规则（compile_v2.py + lint.py 自动执行）：
+#   retention < 0.5  → 标记为 stale
+#   retention < 0.15 → 标记为 archived
+#   每次 reinforcement → confidence +0.05, 重置衰减曲线
+```
+
+### 阶段 7：内存整合（Consolidation Tiers）
+
+观察 → 片段 → 事实 → 模式。四级管道自动提升。
+
+```bash
+# 执行整合
+python3 scripts/consolidate.py
+
+# 检查当前内存状态
+ls -la .wiki/memory/
+# working.json    — 最近观察，未处理
+# episodic.json   — 会话摘要
+# semantic.json   — 跨会话事实
+```
+
+| 层级 | 文件 | 说明 |
 |------|------|------|
-| **置信度评分** | `entities.json` 中 `confidence` 字段 | 初始 0.85，多源强化 +0.05，max 1.0 |
-| **取代** | 矛盾检测 → 标记 → 旧版保留但标 stale | `detect_contradictions()` |
-| **遗忘** | Ebbinghaus 曲线按类型衰减 | arch 260d, bug 20d, meeting 10d |
-| **整合层级** | working → episodic → semantic → procedural | `consolidate.py` |
+| Working | `working.json` | 最近观察，未处理 |
+| Episodic | `episodic.json` | 会话摘要，从观察压缩 |
+| Semantic | `semantic.json` | 跨会话事实，从片段整合 |
+| Procedural | 代码模式 | 工作流和模式，从重复语义提取 |
 
-### 知识图谱
+### 阶段 8：结晶化（Crystallization）
 
-- 实体提取：每次编译自动提取结构化实体
-- **类型化关系**：12 种关系类型（uses / depends_on / extends / improves_upon / contradicts / supersedes / caused_by / fixed_by / replaces / relates_to / part_of / implemented_by）
-- 图遍历：从实体出发沿关系发现下游影响
-
-### 混合搜索
-
-| 流 | 实现 | 捕获 |
-|----|------|------|
-| BM25 | 关键词 + 词干 | 精确匹配 |
-| 向量 | `qwen3-embedding:8b` (4096 维) | 语义相似 |
-| 图 | 实体感知的关系遍历 | 结构连接 |
-
-融合策略：Reciprocal Rank Fusion。
-
-### 质量 & 自愈
+完整工作链 → 结构化摘要 → Wiki 页面。
 
 ```bash
-$ python3 scripts/wiki.py lint
-# Wiki Health Report
-# Issues found: 45
-# Orphans: 14 | Stale: 0 | Broken links: 31
+# 从会话文件结晶化
+python3 scripts/crystallize.py session.md --topic "DeepSeek-V4 Research"
 
-$ python3 scripts/wiki.py lint --auto-heal
-# Auto-healed: orphans linked, broken links repaired
+# 自动结晶化（通过 session-end hook）
+# .claude/hooks/session-end.sh → 自动触发
 ```
 
-### 隐私 & 审计
+提取内容：问题是什么？发现了什么？涉及哪些文件/实体？教训是什么？
 
-- **摄入过滤**：自动脱敏 API keys、tokens、密码、邮箱
-- **审计日志**：每操作记录 timestamp + what + why → `audit.json`
-- **批量操作**：delete/export/merge/clean，全部可审计可逆
+### 阶段 9：清理 & 批量操作（Bulk Operations）
 
-### 输出格式
+Wiki 增长后需要治理。所有操作可审计、可逆。
 
 ```bash
-python3 scripts/wiki.py query "compare models" --format table     # 对比表
-python3 scripts/wiki.py query "history" --format timeline         # 时间线
-python3 scripts/wiki.py query "all" --format slides               # Marp 幻灯片
-python3 scripts/wiki.py query "entities" --format json            # JSON 导出
-python3 scripts/wiki.py query "structure" --format graph          # 依赖图
+# 预览清理
+python3 scripts/wiki.py bulk clean --dry-run
+
+# 执行清理
+python3 scripts/wiki.py bulk clean
+
+# 合并重复实体
+python3 scripts/wiki.py bulk merge --dry-run
+
+# 删除过期页面
+python3 scripts/wiki.py bulk delete --stale --dry-run
+
+# 删除低置信度页面
+python3 scripts/wiki.py bulk delete --confidence 0.3 --dry-run
+
+# 导出子集
+python3 scripts/wiki.py bulk export --type concept
+
+# 详细统计
+python3 scripts/wiki.py bulk stats
 ```
 
-### 可选后端
+### 阶段 10：向量嵌入（Embeddings）
 
-| 后端 | 用途 | 启用方式 |
-|------|------|----------|
-| Qdrant (`localhost:6333`) | 生产级向量搜索 | 在 `wiki_config.yaml` 中取消注释 |
-| AgensGraph (`localhost:5433`) | 生产级图数据库 | 在 `wiki_config.yaml` 中取消注释 |
+为混合搜索生成语义嵌入。
+
+```bash
+# 生成所有页面嵌入
+python3 scripts/wiki.py embed
+
+# 验证覆盖
+python3 scripts/generate_embeddings.py --verify
+# → total_pages: 15, total_embeddings: 15, coverage_pct: 100.0
+
+# 强制重新生成
+python3 scripts/wiki.py embed --force
+```
+
+模型：`qwen3-embedding:8b` | 维度：4096 | 距离：Cosine
+
+### 审计追踪（贯穿所有阶段）
+
+每次操作自动记录到 `audit.json`：
+
+```bash
+# 查看审计日志
+python3 -c "import json; print(json.dumps(json.load(open('.wiki/audit.json'))[-2:], indent=2, ensure_ascii=False))"
+# → 最后 2 条操作记录（timestamp, operation, pages_created, contradictions）
+```
+
+### 自动化 Hooks（可选启用）
+
+```bash
+# .claude/hooks/session-start.sh  — 会话开始时注入 Wiki 上下文
+# .claude/hooks/session-end.sh    — 会话结束时自动结晶化
+# .claude/hooks/scheduled/        — 定时任务（lint + consolidate + maintenance）
+```
+
+---
 
 ---
 
