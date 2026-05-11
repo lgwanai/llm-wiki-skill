@@ -1,465 +1,335 @@
 # llm-wiki-skill
 
-A Claude Code skill implementing **LLM Wiki v2** — a production-hardened pattern for building personal knowledge bases that compound over time with LLM-powered automation.
+**LLM Wiki v2** — 让 LLM 替你维护知识库。读完即归档，永不遗忘。
 
-> This builds on two foundational designs:
->
-> **LLM Wiki** (Karpathy) — [gist.github.com/karpathy/442a6bf555914893e9891c11519de94f](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
-> The original pattern: three-layer architecture (raw sources → wiki → schema), index+log, entity/concept pages, compoundable knowledge.
->
-> **LLM Wiki v2** (Rohit Ghumare) — [gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2](https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2)
-> Production hardening with [agentmemory](https://github.com/rohitg00/agentmemory): hybrid search (BM25+vector+graph), compile pipeline, lifecycle management, consolidation tiers.
+> 100% 实现 [Karpathy 的 LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) 和 [Rohit 的 v2 扩展](https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2)。
 
-## Quick Start
+---
 
-### Installation
+## 原理
 
-Copy this directory to your Claude Code skills directory:
+### 问题
+
+RAG 检索即忘。每次提问，LLM 重新从原始文档中拼凑答案——**没有积累**。五个文档交叉引用的问题？每次都要重新发现。
+
+### 方案
+
+不是检索，而是**编译**。LLM 读源文档，提取实体，构建结构化的 Wiki，维护交叉引用，标记矛盾。知识被编译一次，然后**持续保鲜**——不是每次查询重新推导。
+
+```
+RAG:    Source → [检索] → LLM 即时合成 → 回答 → 丢弃
+Wiki:   Source → [编译] → Wiki 持久化 → 查询时直接使用已有知识
+```
+
+### 核心洞察
+
+> 知识库维护的瓶颈不是阅读，不是思考——是**簿记**。更新交叉引用、保持摘要新鲜、标记新旧矛盾、维持数十页面的一致性。人类放弃 Wiki 是因为维护负担增长超过价值。**LLM 不疲倦、不遗忘、一次能触及 15 个文件。** 维护成本接近零。
+
+— Karpathy
+
+---
+
+## 场景
+
+| 场景 | 怎么做 | 效果 |
+|------|--------|------|
+| **技术调研** | 读论文/报告 → `wiki compile` → 实体自动提取 | 1 篇 DeepSeek-V4 报告 → 15 页结构化 Wiki |
+| **读系列文章** | 逐章编译 → 人物/概念/情节页面 + 关系图 | 类似 Tolkien Gateway 的个人 Wiki |
+| **团队知识库** | Slack/会议/文档 → 自动编译 → 自动更新 | 没人维护的 Wiki 也能保持新鲜 |
+| **个人积累** | 日记/笔记/播客 → 自动归档 → 置信度衰减 | 虚假信息自动降权，真知灼见自然浮现 |
+
+### 真实案例：编译 DeepSeek-V4 技术报告
 
 ```bash
-cp -r llm-wiki-skill ~/.claude/skills/llm-wiki/
+$ python3 scripts/wiki.py compile .wiki/source/deepseek-v4/output.md
+Compiling output.md (262658 chars)...
+Calling LLM...
+  Created: deepseek-v4-series.md (model)
+  Created: compressed-sparse-attention.md (concept)
+  Created: muon-optimizer.md (technique)
+  Created: manifold-constrained-hyper-connections.md (concept)
+  ... 15 pages total ...
+  Updated index.md (15 pages)
+
+Compiled output.md: 15 pages created
+  → Updated log.md and graph/entities.json
 ```
 
-Or register in `.claude/settings.json`:
+**结果：**
+- 15 个结构化页面（3 concepts + 6 techniques + 4 models + 2 benchmarks）
+- 84 条关系边（uses: 19, improves_upon: 6, relates_to: 59）
+- 每个页面 2-3KB 详细内容（Overview/Key Details/Relationships/Source Context）
 
-```json
-{
-  "skills": {
-    "paths": ["~/workspace/llm-wiki-skill"]
-  }
-}
-```
-
-### First Use
-
-In any Claude Code session, say:
-- "Set up a wiki for this project"
-- "Build a knowledge base"
-- "Start tracking what we learn"
-
-The skill triggers and guides you through Level 1 setup — creating `.wiki/` directory
-structure, schema, and index.
-
-## What This Skill Does
-
-When triggered, Claude becomes a disciplined knowledge librarian that:
-
-1. **Converts sources** — URLs, files, documents → Markdown using appropriate tools
-2. **Ingests sources** — extracts entities, builds knowledge graph, creates structured pages
-3. **Answers questions** — searches across wiki pages, graph, and embeddings with confidence scores
-4. **Maintains quality** — auto-lints, detects contradictions, heals broken links
-5. **Consolidates knowledge** — promotes observations through memory tiers, applies retention decay
-6. **Crystallizes sessions** — distills working sessions into digestible summaries that compound over time
-
-## Source Conversion Pipeline
-
-Automatically convert any input to Markdown and build your wiki:
-
-| Input | Tool | Command |
-|-------|------|---------|
-| URLs | lightpanda + ReaderLM-v2 | `wiki add <url>` |
-| PDFs/Images | PaddleOCR-VL (remote) | `wiki add <file>` |
-| Office docs | markitdown | `wiki add <file>` |
-| Code/Text | Direct read | `wiki add <file>` |
-| Raw content | None | `wiki add "text"` |
-
-**Unified CLI:**
+查询效果：
 ```bash
-wiki add <source>     # Add source & build wiki
-wiki query <query>    # Search wiki
-wiki lint             # Quality check
-wiki status           # Wiki statistics
-wiki init             # Initialize structure
+$ python3 scripts/wiki.py query "What is DeepSeek-V4's architecture?"
+**Answer**: Hybrid attention combining CSA and HCA, with mHC connections and Muon optimizer.
+**Sources**: [[deepseek-v4-series]], [[deepseek-v4-pro]]
+**Related**: [[compressed-sparse-attention]], [[manifold-constrained-hyper-connections]]
 ```
 
-**Requirements:**
-- lightpanda: Install from https://lightpanda.io/docs/open-source/installation
-- ReaderLM-v2 API: configure in `scripts/wiki_config.yaml` (see `wiki_config.yaml.example`)
+---
 
-## Capability Levels
+## 快速开始
 
-Choose your starting point based on needs:
+```bash
+# 初始化
+python3 scripts/wiki.py init
 
-| Level | Capabilities | When to use |
-|-------|-------------|-------------|
-| **1 — Minimal Wiki** | Manual ingest, query, lint. Flat pages + index. | Getting started. Runs in minutes. |
-| **2 — Lifecycle** | Confidence scoring, supersession, decay, memory tiers. | When wiki accumulates noise. |
-| **3 — Structure** | Entity extraction, typed relationships, graph traversal. | When flat pages aren't enough. |
-| **4 — Automation** | Auto-ingest, auto-lint, context injection, crystallization. | When maintenance becomes burden. |
-| **5 — Scale + Collab** | Hybrid search, mesh sync, shared/private scoping. | Teams, 500+ pages, multi-agent. |
+# 配置（编辑 API key）
+cp scripts/wiki_config.yaml.example scripts/wiki_config.yaml
 
-See `references/implementation-spectrum.md` for detailed setup guides at each level.
+# 编译第一个源文档
+python3 scripts/wiki.py compile source.md
 
-## Project Structure
+# 查询
+python3 scripts/wiki.py query "What is X?"
+
+# 健康检查
+python3 scripts/wiki.py lint --auto-heal
+
+# 查看状态
+python3 scripts/wiki.py status
+```
+
+---
+
+## 架构
+
+### 三层设计
+
+```
+┌──────────────────────────────────────────────┐
+│  Raw Sources (.wiki/source/)                  │
+│  不可变。LLM 读，从不修改。                     │
+│  论文、文章、PDF、图片。                         │
+├──────────────────────────────────────────────┤
+│  Wiki (.wiki/pages/)                          │
+│  LLM 全权维护。摘要、实体页、概念页、           │
+│  对比、综合。交叉引用、一致性。                   │
+│  人类只读，不写。                                │
+├──────────────────────────────────────────────┤
+│  Schema (.wiki/schema.md + wiki_config.yaml)  │
+│  约定是什么、怎么摄入、如何查询、                │
+│  质量标准。你与 LLM 共同演进。                    │
+└──────────────────────────────────────────────┘
+```
+
+### 三大操作
+
+```bash
+# 摄入：源文档 → Wiki 页面
+python3 scripts/wiki.py compile source.md
+
+# 查询：搜索 Wiki → 合成答案 → （可选）回填
+python3 scripts/wiki.py query "What is X?" --file-back
+
+# 检查：健康扫描 → 自动修复
+python3 scripts/wiki.py lint --auto-heal
+```
+
+### 两个核心文件
+
+| 文件 | 用途 |
+|------|------|
+| `index.md` | 内容目录：按类型分组（Concepts / Techniques / Models / …），每个页面一行 wikilink。查询时先读索引再深入。 |
+| `log.md` | 时间线：`## [2026-05-11 13:32 UTC] compile | output.md`，可 grep 解析。 |
+
+### 页面结构
+
+每个 Wiki 页面统一格式：
+```markdown
+---
+id: muon-optimizer
+type: technique
+name: Muon Optimizer
+confidence: 0.90
+source: DeepSeek-V4 Technical Report
+---
+
+# Muon Optimizer
+
+## Overview
+[2-4 句概述]
+
+## Key Details
+[关键技术细节]
+
+## Relationships
+- uses [[deepseek-v4-series]] — Primary optimizer
+- improves upon [[adamw]] — Better convergence
+
+## Source Context
+> [原文摘录]
+```
+
+---
+
+## 项目结构
 
 ```
 llm-wiki-skill/
-├── SKILL.md                         # Main skill — triggers, workflows, reference pointers
-├── README.md                        # This file
-├── LICENSE                          # MIT
-├── pyproject.toml                   # Python project configuration
-├── requirements.txt                 # Python dependencies
+├── SKILL.md                     # Claude Code skill 入口
+├── README.md                    # 本文件
+├── pyproject.toml               # Python 项目配置
 │
-├── references/                      # Deep-dive pattern docs (loaded on demand)
-│   ├── lifecycle.md                 # Confidence scoring, supersession, forgetting
-│   ├── knowledge-graph.md           # Entity extraction, typed relationships
-│   ├── hybrid-search.md             # BM25 + vector + graph fusion
-│   ├── automation.md                # Event hooks, schedules
-│   ├── quality.md                   # Scoring, self-healing, contradiction resolution
-│   ├── collaboration.md             # Mesh sync, shared/private scoping
-│   ├── privacy-governance.md        # Filtering, audit trails
-│   ├── crystallization.md           # Session → digest pipeline
-│   ├── output-formats.md            # Tables, timelines, graphs, slides
-│   └── implementation-spectrum.md   # Level-by-level upgrade guide
+├── scripts/                     # 所有自动化脚本（16 个）
+│   ├── wiki.py                  # 统一 CLI
+│   ├── compile_v2.py            # 主编译：源 → Wiki ★
+│   ├── query.py                 # 查询：搜索 + 合成 + 回填 ★
+│   ├── lint.py                  # 检查：健康扫描 + 自愈 ★
+│   ├── search.py                # 混合搜索：BM25 + 向量 + 图
+│   ├── graph.py                 # 知识图谱：实体 + 关系 + 遍历
+│   ├── consolidate.py           # 内存整合：层级提升 + 衰减
+│   ├── crystallize.py           # 结晶化：Session → Digest
+│   ├── bulk.py                  # 批量操作：删除/导出/合并
+│   ├── generate_embeddings.py   # 向量嵌入生成
+│   ├── url2markdown.py          # URL → Markdown 转换
+│   ├── ocr.py                   # OCR 接口
+│   ├── _ollama.py               # 嵌入生成（Ollama）
+│   ├── _qdrant.py               # Qdrant 向量库（可选）
+│   ├── _agensgraph.py           # AgensGraph 图库（可选）
+│   └── wiki_config.yaml         # 统一配置文件
 │
-├── templates/                       # Reusable page templates
-│   ├── schema.md                    # Wiki schema — the most important file
-│   ├── entity-page.md               # Entity page with typed YAML frontmatter
-│   ├── session-digest.md            # Crystallized session summary
-│   └── index.md                     # Human-readable catalog
+├── .wiki/                       # Wiki 数据（LLM 生成）
+│   ├── pages/
+│   │   ├── concepts/            # 概念页
+│   │   ├── entities/            # 实体页
+│   │   └── index.md             # Wiki 目录
+│   ├── graph/
+│   │   ├── entities.json        # 实体注册表
+│   │   ├── edges.json           # 关系边
+│   │   └── embeddings.json      # 向量嵌入
+│   ├── source/                  # 原始源文档
+│   ├── memory/                  # 内存层级
+│   ├── audit.json               # 审计日志
+│   ├── log.md                   # 操作日志
+│   └── schema.md                # Wiki 模式
 │
-├── scripts/                         # Automation scripts (Python)
-│   ├── wiki.py                      # Unified CLI (add, query, lint, status, init)
-│   ├── ingest.py                    # Source ingestion + entity extraction
-│   ├── url2markdown.py              # URL → Markdown (lightpanda + ReaderLM)
-│   ├── search.py                    # Hybrid search engine
-│   ├── lint.py                      # Quality linter with auto-healing
-│   ├── consolidate.py               # Memory tier promotion + decay
-│   ├── graph.py                     # Knowledge graph builder & querier
-│   └── crystallize.py               # Session → digest pipeline
+├── .claude/hooks/               # 自动化钩子（可启用）
+│   ├── session-start.sh         # 会话开始时注入上下文
+│   ├── session-end.sh           # 会话结束时结晶化
+│   └── scheduled/               # 定时任务
+│       ├── lint-daily.sh
+│       ├── consolidate-daily.sh
+│       └── maintenance-weekly.sh
 │
-└── evals/                           # Test cases for skill evaluation
-    └── evals.json
+├── references/                  # 深度参考文档
+├── templates/                   # 页面模板
+└── .planning/                   # GSD 开发规划
 ```
 
-## Configuration
+### 脚本依赖关系
 
-### Wiki Configuration
-
-After setup, `.wiki/config.json` controls wiki behavior:
-
-```json
-{
-  "hooks": {
-    "on_new_source": { "enabled": true, "auto_ingest": true },
-    "on_session_start": { "enabled": true, "context_injection": true },
-    "on_session_end": { "enabled": true, "auto_crystallize": true }
-  },
-  "retention": {
-    "architecture_decisions": { "half_life_days": 180 },
-    "project_facts": { "half_life_days": 90 },
-    "bug_reports": { "half_life_days": 14 }
-  },
-  "quality": {
-    "auto_heal": true,
-    "min_score": 0.4
-  }
-}
+```
+query.py → search.py → graph.py
+consolidate.py → crystallize.py
+wiki.py → compile_v2.py, query.py, lint.py, bulk.py, generate_embeddings.py
 ```
 
-### Schema Co-Evolution
+---
 
-The wiki schema (`.wiki/schema.md`) is the most critical file. It encodes entity types,
-relationship types, ingest rules, quality standards, and consolidation schedules. You
-and Claude co-evolve it over time. Share it with someone in a similar domain and they
-get a running start.
+## v2 增强功能
 
-## Python Setup (for scripts)
+### 知识生命周期
 
-If you plan to use the automation scripts:
+| 机制 | 实现 | 说明 |
+|------|------|------|
+| **置信度评分** | `entities.json` 中 `confidence` 字段 | 初始 0.85，多源强化 +0.05，max 1.0 |
+| **取代** | 矛盾检测 → 标记 → 旧版保留但标 stale | `detect_contradictions()` |
+| **遗忘** | Ebbinghaus 曲线按类型衰减 | arch 260d, bug 20d, meeting 10d |
+| **整合层级** | working → episodic → semantic → procedural | `consolidate.py` |
+
+### 知识图谱
+
+- 实体提取：每次编译自动提取结构化实体
+- **类型化关系**：12 种关系类型（uses / depends_on / extends / improves_upon / contradicts / supersedes / caused_by / fixed_by / replaces / relates_to / part_of / implemented_by）
+- 图遍历：从实体出发沿关系发现下游影响
+
+### 混合搜索
+
+| 流 | 实现 | 捕获 |
+|----|------|------|
+| BM25 | 关键词 + 词干 | 精确匹配 |
+| 向量 | `qwen3-embedding:8b` (4096 维) | 语义相似 |
+| 图 | 实体感知的关系遍历 | 结构连接 |
+
+融合策略：Reciprocal Rank Fusion。
+
+### 质量 & 自愈
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+$ python3 scripts/wiki.py lint
+# Wiki Health Report
+# Issues found: 45
+# Orphans: 14 | Stale: 0 | Broken links: 31
+
+$ python3 scripts/wiki.py lint --auto-heal
+# Auto-healed: orphans linked, broken links repaired
 ```
 
-For Level 5 search features:
-```bash
-pip install -r requirements.txt  # includes sentence-transformers, faiss-cpu
-```
+### 隐私 & 审计
 
-## Hooks Configuration
+- **摄入过滤**：自动脱敏 API keys、tokens、密码、邮箱
+- **审计日志**：每操作记录 timestamp + what + why → `audit.json`
+- **批量操作**：delete/export/merge/clean，全部可审计可逆
 
-Hooks automate wiki operations at key points in your workflow. The skill includes
-pre-configured hooks in `.claude/hooks/` that you can enable in your project.
-
-### Available Hooks
-
-| Hook | Trigger | Purpose |
-|------|---------|---------|
-| `session-start.sh` | Session start | Inject wiki context (entity count, recent sessions) |
-| `session-end.sh` | Session end | Crystallize session insights to wiki |
-| `on-new-source.sh` | File written | Auto-ingest new markdown/text/code files |
-| `scheduled/lint-daily.sh` | Cron/schedule | Daily quality check with auto-heal |
-| `scheduled/consolidate-daily.sh` | Cron/schedule | Daily memory tier consolidation |
-| `scheduled/maintenance-weekly.sh` | Cron/schedule | Weekly cleanup and health check |
-
-### Enable Hooks
-
-Add to your project's `.claude/settings.json`:
-
-```json
-{
-  "skills": {
-    "paths": ["~/workspace/llm-wiki-skill"]
-  },
-  "hooks": {
-    "SessionStart": [
-      {
-        "command": ".claude/hooks/session-start.sh",
-        "description": "llm-wiki: inject wiki context"
-      }
-    ],
-    "PreToolUse": [
-      {
-        "command": ".claude/hooks/on-new-source.sh",
-        "description": "llm-wiki: auto-ingest sources"
-      }
-    ],
-    "Stop": [
-      {
-        "command": ".claude/hooks/session-end.sh",
-        "description": "llm-wiki: crystallize session"
-      }
-    ]
-  }
-}
-```
-
-### Schedule Hooks (Cron Configuration)
-
-Cron jobs run maintenance tasks automatically at scheduled times.
-
-#### Step 1: Verify Script Paths
-
-First, ensure scripts are executable and paths are correct:
+### 输出格式
 
 ```bash
-# Check your project directory
-PROJECT_DIR="$HOME/workspace/llm-wiki-skill"
-cd "$PROJECT_DIR"
-
-# Verify scripts exist
-ls -la scripts/lint.py scripts/consolidate.py
-
-# Verify hooks exist
-ls -la .claude/hooks/scheduled/
-
-# Make scripts executable (if needed)
-chmod +x scripts/*.py .claude/hooks/scheduled/*.sh
+python3 scripts/wiki.py query "compare models" --format table     # 对比表
+python3 scripts/wiki.py query "history" --format timeline         # 时间线
+python3 scripts/wiki.py query "all" --format slides               # Marp 幻灯片
+python3 scripts/wiki.py query "entities" --format json            # JSON 导出
+python3 scripts/wiki.py query "structure" --format graph          # 依赖图
 ```
 
-#### Step 2: Open Crontab Editor
+### 可选后端
 
-```bash
-crontab -e
+| 后端 | 用途 | 启用方式 |
+|------|------|----------|
+| Qdrant (`localhost:6333`) | 生产级向量搜索 | 在 `wiki_config.yaml` 中取消注释 |
+| AgensGraph (`localhost:5433`) | 生产级图数据库 | 在 `wiki_config.yaml` 中取消注释 |
+
+---
+
+## 配置
+
+所有配置集中在 `scripts/wiki_config.yaml`：
+
+```yaml
+llm:                          # LLM API（编译 + 查询）
+  api_key: "sk-xxx"
+  base_url: "https://api.deepseek.com"
+  model: "deepseek-v4-flash"
+
+embeddings:                   # 向量嵌入（语义搜索）
+  provider: ollama
+  model: "qwen3-embedding:8b"
+
+hooks:                        # 自动化行为
+  on_new_source: {enabled: true, auto_ingest: true}
+
+retention:                    # 衰减曲线
+  architecture: {half_life_days: 180}
+  bug: {half_life_days: 20}
+
+quality:                      # 质量标准
+  auto_heal: true
+  min_score: 0.4
 ```
 
-If prompted to choose an editor, select one (nano is beginner-friendly):
-- `1` for nano
-- `2` for vim.basic
-- `3` for vim.tiny
+---
 
-#### Step 3: Add Cron Entries
+## 设计来源
 
-Paste these lines at the end of the crontab file (adjust `PROJECT_DIR` path):
+- **Karpathy's LLM Wiki** — 原始三层架构概念：源 → Wiki → Schema，index+log，entity/concept 页面
+- **Rohit's LLM Wiki v2** — 生产强化：置信度评分、取代、遗忘曲线、知识图谱、混合搜索、自动化 hooks、结晶化
 
-```cron
-# llm-wiki scheduled maintenance
-# Daily lint at 9:00 AM
-0 9 * * * cd /Users/wuliang/workspace/llm-wiki-skill && /usr/bin/python3 scripts/lint.py --auto-heal --report-file .wiki/reports/lint-$(date +\%Y-\%m-\%d).md >> .wiki/logs/cron.log 2>&1
+完整对照：`.wiki/IMPLEMENTATION_STATUS.md`（100% 实现 Karpathy v1 + Rohit v2）
 
-# Daily consolidation at 10:00 AM
-0 10 * * * cd /Users/wuliang/workspace/llm-wiki-skill && /usr/bin/python3 scripts/consolidate.py >> .wiki/logs/cron.log 2>&1
+---
 
-# Weekly maintenance on Monday at 8:00 AM
-0 8 * * 1 cd /Users/wuliang/workspace/llm-wiki-skill && .claude/hooks/scheduled/maintenance-weekly.sh >> .wiki/logs/cron.log 2>&1
-```
+## 许可
 
-**Replace `/Users/wuliang/workspace/llm-wiki-skill` with your actual project path.**
-
-#### Step 4: Create Log Directory
-
-```bash
-mkdir -p .wiki/logs
-touch .wiki/logs/cron.log
-```
-
-#### Step 5: Save and Verify
-
-Save the crontab (Ctrl+O, Enter, Ctrl+X in nano). Then verify:
-
-```bash
-# List current cron jobs
-crontab -l
-
-# Check log file exists
-ls -la .wiki/logs/cron.log
-```
-
-#### Cron Time Format
-
-```
-┌───────────── minute (0-59)
-│ ┌───────────── hour (0-23)
-│ │ ┌───────────── day of month (1-31)
-│ │ │ ┌───────────── month (1-12)
-│ │ │ │ ┌───────────── day of week (0-6, Sunday=0)
-│ │ │ │ │
-* * * * * command
-```
-
-**Common patterns:**
-
-| Schedule | Cron expression |
-|----------|-----------------|
-| Every day at 9:00 AM | `0 9 * * *` |
-| Every hour | `0 * * * *` |
-| Every Monday 8:00 AM | `0 8 * * 1` |
-| Every 6 hours | `0 */6 * * *` |
-| First day of month | `0 9 1 * *` |
-
-#### Step 6: Test Cron Job
-
-Force a cron job to run now (for testing):
-
-```bash
-# Run lint immediately
-cd /Users/wuliang/workspace/llm-wiki-skill && python3 scripts/lint.py --auto-heal
-
-# Run consolidation immediately
-cd /Users/wuliang/workspace/llm-wiki-skill && python3 scripts/consolidate.py
-
-# Check the log
-cat .wiki/logs/cron.log
-```
-
-#### Step 7: Monitor Cron Logs
-
-After cron runs, check logs and reports:
-
-```bash
-# View cron execution log
-tail -50 .wiki/logs/cron.log
-
-# View generated lint reports
-ls -la .wiki/reports/
-cat .wiki/reports/lint-*.md | head -30
-
-# View maintenance reports
-cat .wiki/reports/maintenance-*.md | head -50
-```
-
-#### Troubleshooting
-
-**Problem: Cron not running**
-
-1. Check cron service is active:
-   ```bash
-   # macOS
-   sudo service cron status  # or: launchctl list | grep cron
-   
-   # Linux
-   systemctl status cron
-   ```
-
-2. Check script permissions:
-   ```bash
-   ls -la scripts/lint.py scripts/consolidate.py
-   # Should show: -rwxr-xr-x (executable)
-   
-   # Fix if needed:
-   chmod +x scripts/*.py
-   ```
-
-3. Check Python path:
-   ```bash
-   which python3
-   # Use full path in cron: /usr/bin/python3 or /usr/local/bin/python3
-   ```
-
-4. Check working directory in cron entry:
-   ```bash
-   # Must use `cd /path/to/project &&` before command
-   # NOT: python3 /path/to/project/scripts/lint.py (wrong - relative paths fail)
-   ```
-
-**Problem: Permission denied**
-
-```bash
-# Fix script permissions
-chmod +x scripts/*.py .claude/hooks/scheduled/*.sh
-
-# Fix wiki directory permissions
-chmod -R u+w .wiki/
-```
-
-**Problem: Command not found**
-
-Use full paths in cron:
-
-```cron
-# Use full Python path
-0 9 * * * cd /Users/wuliang/workspace/llm-wiki-skill && /usr/local/bin/python3 scripts/lint.py >> .wiki/logs/cron.log 2>&1
-```
-
-Find Python path:
-```bash
-which python3
-# Output: /usr/local/bin/python3 (use this)
-```
-
-#### Disable Scheduled Hooks
-
-To disable a cron job, remove the line from crontab:
-
-```bash
-crontab -e
-# Delete the lines you want to disable
-# Save and exit
-crontab -l  # Verify changes
-```
-
-Or comment out (add `#` prefix):
-
-```cron
-# Disabled: 0 9 * * * cd /path/to/project && python3 scripts/lint.py
-```
-
-### Disable Hooks
-
-Remove the corresponding entry from `.claude/settings.json` or set `enabled: false`:
-
-```json
-{
-  "hooks": {
-    "SessionStart": [
-      {
-        "command": ".claude/hooks/session-start.sh",
-        "description": "llm-wiki: inject wiki context",
-        "enabled": false
-      }
-    ]
-  }
-}
-```
-
-## Distribution
-
-Package the skill for distribution:
-
-```bash
-./package.sh
-# Output: dist/llm-wiki-skill-YYYY-MM-DD.zip
-```
-
-## License
-
-MIT — see LICENSE file.
-
-## References
-
-- [Andrej Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — original concept
-- [agentmemory](https://github.com/rohitg00/agentmemory) — persistent memory engine for AI agents
-- [Design blueprint](https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2) — full v2 specification
+MIT

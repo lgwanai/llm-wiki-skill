@@ -12,7 +12,6 @@ from typing import Optional
 WIKI_DIR = ".wiki"
 PAGES_DIR = os.path.join(WIKI_DIR, "pages")
 GRAPH_DIR = os.path.join(WIKI_DIR, "graph")
-CONFIG_FILE = os.path.join(WIKI_DIR, "config.json")
 ENTITIES_FILE = os.path.join(GRAPH_DIR, "entities.json")
 EDGES_FILE = os.path.join(GRAPH_DIR, "edges.json")
 

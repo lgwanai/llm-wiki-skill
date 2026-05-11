@@ -10,6 +10,7 @@ import json
 import os
 import re
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional
 
@@ -95,31 +96,72 @@ _type_lines = "\n".join(
 )
 _rel_lines = "\n".join(f"- **{r}**: entity A {r} entity B" for r in RELATIONSHIP_TYPES)
 
-EXTRACTION_PROMPT = f"""You are a knowledge graph builder. Analyze the following document and extract ALL significant entities and their relationships.
+EXTRACTION_PROMPT = f"""You are building a knowledge wiki. Extract ONLY the most important entities and relationships.
 
-## Entity Types (choose the most appropriate for each entity)
+## Entity Types
 {_type_lines}
 
 ## Relationship Types
 {_rel_lines}
 
-## Requirements
-1. Extract every significant entity mentioned - be thorough
-2. For each entity provide: id (slug), name (display), type (from the list above), brief description (1-2 sentences)
-3. Describe relationships between entities using the types above
-4. Identify the main entity and group related entities under it
-5. Output ONLY valid JSON, no preamble or explanation
+## CRITICAL RULES
+
+### 1. Entity Consolidation (MOST IMPORTANT)
+**Normalize entity names to canonical forms. These are THE SAME entity:**
+- "DeepSeek-V3.2", "DeepSeek-V3-2", "deepseek-v3.2", "DeepSeek V3.2" → use `deepseek-v3.2`
+- "DeepSeek-V4-Pro", "deepseek-v4-pro", "DeepSeek V4 Pro" → use `deepseek-v4-pro`
+- "CSA", "Compressed Sparse Attention", "compressed-sparse-attention" → use `compressed-sparse-attention`
+- "mHC", "Manifold-Constrained Hyper-Connections", "manifold-constrained-hyper-connections" → use `manifold-constrained-hyper-connections`
+
+**ID format**: lowercase-with-hyphens (e.g., `muon-optimizer`, `kv-cache`)
+**Name format**: Title Case (e.g., "Muon Optimizer", "KV Cache")
+
+### 2. Entity Type Classification
+- `concept`: Core architecture/mechanism (attention mechanisms, compression, optimization algorithms)
+- `model`: AI model series or variants (DeepSeek-V4, GPT-5.4, Gemini-3.1-Pro)
+- `technique`: Training methods (GRPO, on-policy distillation, QAT)
+- `benchmark`: Evaluation datasets (MMLU, GPQA, SimpleQA)
+- `paper`: Academic publications with authors
+- `framework`: Infrastructure (TileLang, TVM, CUDA)
+- `library`: Dependencies (DeepGEMM, cuBLAS)
+- `person`: Individual authors/researchers
+
+### 3. Quality Over Quantity
+**Extract ONLY:**
+- Core concepts and mechanisms (as `concept`) - typically 5-10 per document
+- Main model/technique entities (as `model` or `technique`) - typically 2-5
+- Key benchmarks (as `benchmark`) - typically 3-8
+- Important papers with authors (as `paper` + `person`) - typically 2-5
+
+**DO NOT extract:**
+- Minor mentions without substance
+- Generic terms (the, a, both, them)
+- Numbers alone
+- Redundant variants (use canonical form)
+
+### 4. Detailed Descriptions
+Each entity MUST have a substantive description (2-4 sentences):
+- What it is
+- Why it matters
+- How it relates to the main topic
 
 ## Output Format
 {{
   "entities": [
-    {{"id": "entity-slug", "name": "Display Name", "type": "concept", "description": "Brief 1-2 sentence description"}}
+    {{
+      "id": "canonical-slug",
+      "name": "Display Name",
+      "type": "concept",
+      "description": "2-4 sentence substantive description explaining what it is and why it matters"
+    }}
   ],
   "relationships": [
     {{"source": "entity-a", "target": "entity-b", "type": "uses", "description": "A uses B for X"}}
   ],
-  "main_entity": "entity-slug"
+  "main_entity": "canonical-slug"
 }}
+
+Output ONLY valid JSON. Target 15-30 high-quality entities per document.
 
 ## Document to Analyze
 
@@ -161,7 +203,7 @@ class LLMExtractor:
             temperature=llm.get("temperature", 0.3),
         )
 
-    def _call(self, system_prompt: str, user_content: str) -> str:
+    def _call(self, system_prompt: str, user_content: str, enable_thinking: bool = False) -> str:
         payload = {
             "model": self.model,
             "temperature": self.temperature,
@@ -171,6 +213,9 @@ class LLMExtractor:
             ],
             "max_tokens": self.max_tokens,
         }
+        if not enable_thinking:
+            payload["thinking"] = {"type": "disabled"}
+        
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}",
@@ -181,8 +226,8 @@ class LLMExtractor:
         msg = data["choices"][0]["message"]
         return (msg.get("content") or msg.get("reasoning_content") or "").strip()
 
-    def _chunk_text(self, text: str, max_chars: int = 40000) -> list[str]:
-        """Split text into chunks that fit the model's context window."""
+    def _chunk_text(self, text: str, max_chars: int = 3000) -> list[str]:
+        """Split text into chunks using \n\n separator, max 3000 chars per chunk."""
         if len(text) <= max_chars:
             return [text]
 
@@ -195,7 +240,23 @@ class LLMExtractor:
             else:
                 if current:
                     chunks.append(current.strip())
-                current = p + "\n\n"
+                # If single paragraph exceeds max_chars, split it further
+                if len(p) > max_chars:
+                    # Split by sentences for very long paragraphs
+                    sentences = re.split(r'(?<=[.!?])\s+', p)
+                    sub_chunk = ""
+                    for s in sentences:
+                        if len(sub_chunk) + len(s) < max_chars:
+                            sub_chunk += s + " "
+                        else:
+                            if sub_chunk:
+                                chunks.append(sub_chunk.strip())
+                            sub_chunk = s + " "
+                    if sub_chunk:
+                        chunks.append(sub_chunk.strip())
+                    current = ""
+                else:
+                    current = p + "\n\n"
         if current:
             chunks.append(current.strip())
         return chunks
@@ -206,15 +267,52 @@ class LLMExtractor:
         rels_desc = ", ".join(get_all_relationships())
         return f"Entity types: {types_desc}\nRelationship types: {rels_desc}"
 
-    def extract(self, text: str, source_name: str = "") -> dict:
-        """Extract entities and relationships from text using LLM."""
-        chunks = self._chunk_text(text)
+    def _normalize_entity_id(self, eid: str) -> str:
+        """Normalize entity ID to canonical form (lowercase, consistent hyphens)."""
+        normalized = eid.lower().strip()
+        normalized = re.sub(r'[\s_]+', '-', normalized)
+        normalized = re.sub(r'-+', '-', normalized)
+        normalized = normalized.strip('-')
+        
+        # Common normalization patterns
+        patterns = {
+            r'v(\d+)-(\d+)': r'v\1.\2',  # v3-2 → v3.2
+            r'-(\d+)$': r'.\1',           # deepseek-v3-2 → deepseek-v3.2
+        }
+        for pattern, replacement in patterns.items():
+            normalized = re.sub(pattern, replacement, normalized)
+        
+        return normalized
+    
+    def _find_similar_entity(self, eid: str, existing_entities: dict) -> str | None:
+        """Find if a similar entity already exists. Returns canonical ID or None."""
+        normalized = self._normalize_entity_id(eid)
+        
+        for existing_id in existing_entities:
+            existing_normalized = self._normalize_entity_id(existing_id)
+            if normalized == existing_normalized:
+                return existing_id
+            
+            # Check for minor variations
+            if abs(len(normalized) - len(existing_normalized)) <= 3:
+                # Levenshtein-like check for very similar names
+                if normalized.replace('-', '') == existing_normalized.replace('-', ''):
+                    return existing_id
+                if normalized.replace('.', '-') == existing_normalized.replace('.', '-'):
+                    return existing_id
+        
+        return None
 
+    def extract(self, text: str, source_name: str = "", max_workers: int = 5) -> dict:
+        """Extract entities and relationships from text using LLM with concurrent calls."""
+        chunks = self._chunk_text(text)
+        
         if len(chunks) == 1:
             prompt = EXTRACTION_PROMPT + text[:30000]
             response = self._call(
                 "You are a precise knowledge extraction system. Always output valid JSON.",
                 prompt,
+                enable_thinking=False,
             )
             try:
                 return self._parse_response(response)
@@ -223,31 +321,68 @@ class LLMExtractor:
                 print(f"  Raw response (first 500 chars): {response[:500]}", file=sys.stderr)
                 return {"entities": [], "relationships": []}
 
-        # Multi-chunk
         all_entities = []
         all_relationships = []
-        seen_ids = set()
-
-        for i, chunk in enumerate(chunks):
-            print(f"    Chunk {i+1}/{len(chunks)} ({len(chunk)} chars) ...", file=sys.stderr)
-            prompt = f"{EXTRACTION_PROMPT}Chunk {i+1}/{len(chunks)}\n\n{chunk[:40000]}"
+        entity_registry = {}
+        
+        def extract_chunk(chunk_data: tuple[int, str]) -> dict:
+            i, chunk = chunk_data
+            prompt = f"{EXTRACTION_PROMPT}Chunk {i+1}/{len(chunks)}\n\n{chunk[:30000]}"
             try:
                 response = self._call(
                     "You are a precise knowledge extraction system. Always output valid JSON.",
                     prompt,
+                    enable_thinking=False,
                 )
                 result = self._parse_response(response)
-                for entity in result.get("entities", []):
-                    eid = entity["id"]
-                    if eid not in seen_ids:
-                        seen_ids.add(eid)
-                        all_entities.append(entity)
-                all_relationships.extend(result.get("relationships", []))
+                return {"index": i, "result": result, "success": True}
             except Exception as e:
-                print(f"  Warning: chunk {i+1} extraction failed: {e}", file=sys.stderr)
-                print(f"  Raw (first 300 chars): {response[:300] if 'response' in dir() else 'N/A'}", file=sys.stderr)
+                return {"index": i, "error": str(e), "success": False}
+        
+        print(f"    Processing {len(chunks)} chunks concurrently with {max_workers} workers ...", file=sys.stderr)
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(extract_chunk, (i, chunk)) for i, chunk in enumerate(chunks)]
+            
+            for future in as_completed(futures):
+                result_data = future.result()
+                i = result_data["index"]
+                
+                if result_data["success"]:
+                    result = result_data["result"]
+                    print(f"    Chunk {i+1}/{len(chunks)} ✓ ({len(chunks[i])} chars)", file=sys.stderr)
+                    for entity in result.get("entities", []):
+                        eid = entity["id"]
+                        similar_id = self._find_similar_entity(eid, entity_registry)
+                        
+                        if similar_id:
+                            entity_registry[similar_id]['confidence'] = min(1.0, 
+                                entity_registry[similar_id].get('confidence', 0.5) + 0.1)
+                            entity_registry[similar_id].setdefault('aliases', []).append(eid)
+                        else:
+                            canonical_id = self._normalize_entity_id(eid)
+                            entity['id'] = canonical_id
+                            entity_registry[canonical_id] = entity
+                            all_entities.append(entity)
+                    
+                    for rel in result.get("relationships", []):
+                        source = rel.get("source", "")
+                        target = rel.get("target", "")
+                        normalized_source = self._normalize_entity_id(source)
+                        normalized_target = self._normalize_entity_id(target)
+                        
+                        if normalized_source in entity_registry or normalized_target in entity_registry:
+                            rel["source"] = normalized_source
+                            rel["target"] = normalized_target
+                            all_relationships.append(rel)
+                else:
+                    print(f"    Chunk {i+1}/{len(chunks)} ✗ Error: {result_data['error']}", file=sys.stderr)
 
-        main_entity = all_entities[0]["id"] if all_entities else source_name
+        main_entity_candidates = [e for e in all_entities if e.get("type") in ["model", "concept"]]
+        main_entity = main_entity_candidates[0]["id"] if main_entity_candidates else (all_entities[0]["id"] if all_entities else source_name)
+        
+        print(f"    Extracted: {len(all_entities)} unique entities, {len(all_relationships)} relationships", file=sys.stderr)
+        
         return {
             "entities": all_entities,
             "relationships": all_relationships,

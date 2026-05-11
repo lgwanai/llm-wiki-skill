@@ -11,7 +11,6 @@ from typing import Optional
 
 WIKI_DIR = ".wiki"
 MEMORY_DIR = os.path.join(WIKI_DIR, "memory")
-CONFIG_FILE = os.path.join(WIKI_DIR, "config.json")
 
 WORKING_FILE = os.path.join(MEMORY_DIR, "working.json")
 EPISODIC_FILE = os.path.join(MEMORY_DIR, "episodic.json")
