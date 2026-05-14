@@ -15,7 +15,6 @@ set -euo pipefail
 
 WIKI_DIR=".wiki"
 WIKI_PATH="${CLAUDE_PROJECT_DIR:-$PWD}/$WIKI_DIR"
-INGEST_SCRIPT="${CLAUDE_PROJECT_DIR:-$PWD}/scripts/ingest.py"
 
 if [ ! -d "$WIKI_PATH" ]; then
     exit 0
@@ -48,13 +47,16 @@ fi
 if $AUTO_INGEST && [ -n "$TARGET_FILE" ]; then
     echo "📥 Auto-ingesting: $TARGET_FILE"
 
-    if [ -f "$INGEST_SCRIPT" ]; then
-        if python3 "$INGEST_SCRIPT" "$TARGET_FILE" --embed 2>/dev/null; then
-            echo "✓ Ingested successfully"
+    WIKI_SCRIPT="${CLAUDE_PROJECT_DIR:-$PWD}/scripts/wiki.py"
+    if [ -f "$WIKI_SCRIPT" ]; then
+        if python3 "$WIKI_SCRIPT" compile "$TARGET_FILE" 2>/dev/null; then
+            echo "✓ Compiled successfully"
+            python3 "$WIKI_SCRIPT" embed 2>/dev/null || true
+            echo "✓ Embeddings updated"
         else
-            echo "⚠ Ingest completed with warnings"
+            echo "⚠ Compilation completed with warnings or failed"
         fi
     else
-        echo "⚠ ingest.py not found — skipping auto-ingest"
+        echo "⚠ wiki.py not found — skipping auto-ingest"
     fi
 fi

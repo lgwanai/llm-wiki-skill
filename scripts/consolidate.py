@@ -7,7 +7,6 @@ import math
 import os
 import sys
 from datetime import datetime, timezone
-from typing import Optional
 
 WIKI_DIR = ".wiki"
 MEMORY_DIR = os.path.join(WIKI_DIR, "memory")
@@ -31,7 +30,7 @@ def _load_json(path: str) -> list:
     if not os.path.exists(path):
         return []
     try:
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, encoding='utf-8') as f:
             data = json.load(f)
             return data if isinstance(data, list) else []
     except (json.JSONDecodeError, OSError) as e:

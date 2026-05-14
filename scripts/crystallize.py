@@ -21,7 +21,7 @@ def _load_json(path: str) -> dict | list:
     if not os.path.exists(path):
         return [] if 'working' in path or 'memory' in path else ({'edges': []} if 'edges' in path else {})
     try:
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, encoding='utf-8') as f:
             return json.load(f)
     except (json.JSONDecodeError, OSError):
         return [] if 'working' in path else ({'edges': []} if 'edges' in path else {})
@@ -121,7 +121,7 @@ def create_digest(session_file: str, topic: str, date: str) -> str:
     if not os.path.exists(session_file):
         raise FileNotFoundError(f"Session file not found: {session_file}")
 
-    with open(session_file, 'r', encoding='utf-8') as f:
+    with open(session_file, encoding='utf-8') as f:
         content = f.read()
 
     slug = _slugify(topic)
@@ -292,14 +292,14 @@ def _main() -> None:
         if digest_path is None:
             print(json.dumps({'status': 'skipped', 'reason': 'No wiki initialized'}, indent=2))
             return
-        with open(digest_path, 'r', encoding='utf-8') as f:
+        with open(digest_path, encoding='utf-8') as f:
             digest_content = f.read()
     elif args.session_file:
         if not args.topic:
             parser.error('--topic is required when --session-file is provided')
             sys.exit(1)
         digest_path = create_digest(args.session_file, args.topic, date)
-        with open(digest_path, 'r', encoding='utf-8') as f:
+        with open(digest_path, encoding='utf-8') as f:
             digest_content = f.read()
     else:
         parser.print_help()

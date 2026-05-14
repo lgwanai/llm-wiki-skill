@@ -1,6 +1,5 @@
 """Test fixtures for llm-wiki scripts."""
 
-import json
 import os
 import shutil
 import sys
@@ -70,7 +69,7 @@ def sample_entities(wiki_dir):
     for slug, frontmatter in entity_data.items():
         page = f"---\n{frontmatter}---\n\n# {slug}\n\nDescription.\n\n"
         page += "## Relationships\n"
-        page += f"- *uses* [[" + ("redis-caching" if slug == "auth-service" else "auth-service") + "]]\n"
+        page += "- *uses* [[" + ("redis-caching" if slug == "auth-service" else "auth-service") + "]]\n"
 
         filepath = Path(wiki_dir) / ".wiki" / "pages" / "entities" / f"{slug}.md"
         filepath.write_text(page)

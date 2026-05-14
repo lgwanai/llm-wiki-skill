@@ -16,7 +16,6 @@ Usage:
 
 import argparse
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -41,9 +40,9 @@ def cmd_compile(source: str, force: bool = False) -> dict:
     args = [source]
     if force:
         args.append("--force")
-    
+
     code, output = run_script("compile_v2.py", args)
-    
+
     if code == 0:
         return {"success": True, "message": output.strip()}
     else:
@@ -56,9 +55,9 @@ def cmd_query(question: str, file_back: bool = False, fmt: str = "markdown") -> 
         args.append("--file-back")
     if fmt != "markdown":
         args.extend(["--format", fmt])
-    
+
     code, output = run_script("query.py", args)
-    
+
     if code == 0:
         return {"success": True, "answer": output}
     else:
@@ -77,25 +76,39 @@ def cmd_lint(auto_heal: bool = False) -> dict:
         "output": output
     }
 
+def cmd_consolidate(tiers: str = "working,episodic,semantic", decay_only: bool = False) -> dict:
+    args = []
+    if tiers != "working,episodic,semantic":
+        args.extend(["--tiers", tiers])
+    if decay_only:
+        args.append("--decay-only")
+        
+    code, output = run_script("consolidate.py", args)
+    
+    return {
+        "success": code == 0,
+        "output": output
+    }
+
 
 def cmd_status() -> dict:
     pages_dir = PAGES_DIR
     concepts = list((pages_dir / "concepts").glob("*.md")) if (pages_dir / "concepts").exists() else []
     entities = list((pages_dir / "entities").glob("*.md")) if (pages_dir / "entities").exists() else []
-    
+
     graph_file = GRAPH_DIR / "entities.json"
     entities_count = 0
     edges_count = 0
-    
+
     if graph_file.exists():
         data = json.loads(graph_file.read_text())
         entities_count = len(data)
-    
+
     edges_file = GRAPH_DIR / "edges.json"
     if edges_file.exists():
         edges = json.loads(edges_file.read_text())
         edges_count = len(edges)
-    
+
     return {
         "pages": {
             "concepts": len(concepts),
@@ -127,43 +140,49 @@ def cmd_init() -> dict:
         WIKI_DIR / "memory",
         WIKI_DIR / "audit",
     ]
-    
+
     for d in dirs:
         d.mkdir(parents=True, exist_ok=True)
-    
+
     index_file = PAGES_DIR / "index.md"
     if not index_file.exists():
         index_file.write_text("# Wiki Index\n\nWelcome to your knowledge base.\n")
     
+    schema_src = Path(__file__).parent.parent / "templates" / "schema.md"
+    schema_dest = WIKI_DIR / "schema.md"
+    if schema_src.exists() and not schema_dest.exists():
+        import shutil
+        shutil.copy2(schema_src, schema_dest)
+        
     log_file = WIKI_DIR / "log.md"
     if not log_file.exists():
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         log_file.write_text(f"# Wiki Log\n\nChronological record of all wiki operations.\n\n## [{now}] init | wiki initialized\n")
-    
+
     return {"success": True, "created": len(dirs)}
 
 
 def main():
     parser = argparse.ArgumentParser(description="LLM Wiki v2 CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
-    
+
     compile_parser = subparsers.add_parser("compile", help="Compile source to wiki")
     compile_parser.add_argument("source", help="Source file to compile")
     compile_parser.add_argument("--force", action="store_true", help="Force re-compile")
-    
+
     query_parser = subparsers.add_parser("query", help="Query wiki")
     query_parser.add_argument("question", help="Question to answer")
     query_parser.add_argument("--file-back", action="store_true", help="File answer to wiki")
     query_parser.add_argument("--format", choices=["markdown","table","timeline","slides","json","graph"],
                               default="markdown", help="Output format")
-    
+
     lint_parser = subparsers.add_parser("lint", help="Health check wiki")
     lint_parser.add_argument("--auto-heal", action="store_true", help="Auto-fix issues")
-    
+
     embed_parser = subparsers.add_parser("embed", help="Generate vector embeddings")
     embed_parser.add_argument("--force", action="store_true", help="Regenerate all embeddings")
-    
+
     bulk_parser = subparsers.add_parser("bulk", help="Bulk operations")
     bulk_sub = bulk_parser.add_subparsers(dest="bulk_cmd", required=True)
     bulk_sub.add_parser("stats", help="Detailed wiki statistics")
@@ -178,34 +197,42 @@ def main():
     del_sub.add_argument("--confidence", type=float, help="Delete below confidence threshold")
     del_sub.add_argument("--dry-run", action="store_true", help="Preview only")
     
+    cons_parser = subparsers.add_parser("consolidate", help="Consolidate memory tiers and apply decay")
+    cons_parser.add_argument("--tiers", default="working,episodic,semantic", help="Tiers to consolidate")
+    cons_parser.add_argument("--decay-only", action="store_true", help="Only apply retention decay")
+
     subparsers.add_parser("status", help="Show wiki statistics")
     subparsers.add_parser("init", help="Initialize wiki structure")
-    
+
     args = parser.parse_args()
-    
+
     if args.command == "compile":
         result = cmd_compile(args.source, force=args.force)
         if result.get("success"):
             print(result.get("message", "Done"))
         else:
             print(f"Error: {result.get('error', 'Unknown error')}")
-    
+
     elif args.command == "query":
         result = cmd_query(args.question, file_back=args.file_back, fmt=args.format)
         if result.get("success"):
             print(result["answer"])
         else:
             print(f"Error: {result.get('error', 'Unknown error')}")
-    
+
     elif args.command == "lint":
         result = cmd_lint(auto_heal=args.auto_heal)
         print(result["output"])
-    
+
     elif args.command == "embed":
         code, output = run_script("generate_embeddings.py",
                                    ["--force"] if args.force else [])
         print(output)
     
+    elif args.command == "consolidate":
+        result = cmd_consolidate(tiers=args.tiers, decay_only=args.decay_only)
+        print(result["output"])
+
     elif args.command == "bulk":
         bulk_args = [args.bulk_cmd]
         if hasattr(args, 'dry_run') and args.dry_run:
@@ -218,11 +245,11 @@ def main():
             bulk_args.extend(["--type", args.type])
         code, output = run_script("bulk.py", bulk_args)
         print(output)
-    
+
     elif args.command == "status":
         result = cmd_status()
         print(json.dumps(result, indent=2))
-    
+
     elif args.command == "init":
         result = cmd_init()
         print(f"Wiki initialized: {result['created']} directories created")

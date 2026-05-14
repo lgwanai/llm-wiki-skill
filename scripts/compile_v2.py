@@ -76,7 +76,7 @@ def load_config():
 def call_llm(system_prompt: str, user_content: str, config: dict) -> str:
     llm = config.get("llm", {})
     api_url = llm.get("base_url", "https://api.deepseek.com").rstrip("/") + "/v1/chat/completions"
-    
+
     payload = {
         "model": llm.get("model", "deepseek-v4-flash"),
         "temperature": llm.get("temperature", 0.3),
@@ -87,12 +87,12 @@ def call_llm(system_prompt: str, user_content: str, config: dict) -> str:
             {"role": "user", "content": user_content},
         ],
     }
-    
+
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {llm.get('api_key', '')}",
     }
-    
+
     resp = requests.post(api_url, json=payload, headers=headers, timeout=600)
     resp.raise_for_status()
     data = resp.json()
@@ -103,27 +103,27 @@ def call_llm(system_prompt: str, user_content: str, config: dict) -> str:
 def write_audit(operation: str, details: dict):
     audit_file = WIKI_DIR / "audit.json"
     audit_file.parent.mkdir(parents=True, exist_ok=True)
-    
+
     entry = {
         "operation": operation,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         **details,
     }
-    
+
     entries = []
     if audit_file.exists():
         try:
             entries = json.loads(audit_file.read_text(encoding="utf-8"))
         except:
             entries = []
-    
+
     entries.append(entry)
     audit_file.write_text(json.dumps(entries, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def detect_contradictions(page_id: str, new_content: str, existing_content: str) -> list:
     config = load_config()
-    
+
     system_prompt = """You are a contradiction detector for wiki pages.
 Compare existing content with new content and identify contradictions.
 
@@ -160,20 +160,20 @@ Find contradictions between existing and new content."""
 
 
 def compile_source(source_path: str, force: bool = False) -> dict:
-    
+
     if not os.path.exists(source_path):
         raise FileNotFoundError(f"Source not found: {source_path}")
-    
+
     with open(source_path, encoding="utf-8") as f:
         content = f.read()
-    
+
     content = strip_sensitive(content)
-    
+
     source_name = os.path.basename(source_path)
     config = load_config()
-    
+
     print(f"Compiling {source_name} ({len(content)} chars)...", file=sys.stderr)
-    
+
     system_prompt = """You are a wiki builder. Your job is to read a document and write wiki pages.
 
 ## Output Format
@@ -230,53 +230,53 @@ Target: 10-20 high-quality pages with substantive content.
 Output pages separated by ===PAGE_END==="""
     print("Calling LLM...", file=sys.stderr)
     response = call_llm(system_prompt, user_prompt, config)
-    
+
     pages = response.split("===PAGE_END===")
-    
+
     ENTITIES_DIR.mkdir(parents=True, exist_ok=True)
     CONCEPTS_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     created_pages = []
     updated_pages = []
     contradictions_found = []
-    
+
     for page_content in pages:
         page_content = page_content.strip()
         if not page_content or not page_content.startswith("---"):
             continue
-        
+
         lines = page_content.split("\n")
         frontmatter_end = 0
         for i, line in enumerate(lines):
             if i > 0 and line.strip() == "---":
                 frontmatter_end = i
                 break
-        
+
         if frontmatter_end == 0:
             continue
-        
+
         frontmatter_text = "\n".join(lines[1:frontmatter_end])
         try:
             import yaml
             frontmatter = yaml.safe_load(frontmatter_text)
         except:
             continue
-        
+
         entity_id = frontmatter.get("id", "")
         entity_type = frontmatter.get("type", "concept")
-        
+
         if not entity_id:
             continue
-        
+
         target_dir = CONCEPTS_DIR if entity_type in ["concept", "technique"] else ENTITIES_DIR
         target_dir.mkdir(parents=True, exist_ok=True)
-        
+
         page_path = target_dir / f"{entity_id}.md"
-        
+
         if page_path.exists() and not force:
             existing_content = page_path.read_text(encoding="utf-8")
             contradictions = detect_contradictions(entity_id, page_content, existing_content)
-            
+
             if contradictions:
                 contradictions_found.extend(contradictions)
                 page_content = existing_content + "\n\n## Contradictions Detected\n\n"
@@ -312,13 +312,13 @@ Output pages separated by ===PAGE_END==="""
                 "path": str(page_path),
             })
             print(f"  Created: {entity_id}.md ({entity_type})", file=sys.stderr)
-    
+
     all_pages = created_pages + updated_pages
-    
+
     update_index(all_pages, source_name)
     update_log(source_name, len(created_pages), "compile")
     update_graph(all_pages, source_name)
-    
+
     write_audit("compile", {
         "source": source_name,
         "pages_created": len(created_pages),
@@ -326,7 +326,7 @@ Output pages separated by ===PAGE_END==="""
         "contradictions": len(contradictions_found),
         "contradiction_details": contradictions_found[:10],
     })
-    
+
     return {
         "source": source_name,
         "pages_created": len(created_pages),
@@ -340,16 +340,16 @@ def update_log(source_name: str, pages_count: int, operation: str = "compile"):
     """Update log.md with new operation."""
     log_file = WIKI_DIR / "log.md"
     log_file.parent.mkdir(parents=True, exist_ok=True)
-    
+
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    
+
     entry = f"\n## [{now}] {operation} | {source_name}\n- Pages created: {pages_count}\n"
-    
+
     if log_file.exists():
         content = log_file.read_text(encoding="utf-8")
     else:
         content = "# Wiki Log\n\nChronological record of all wiki operations.\n"
-    
+
     content += entry
     log_file.write_text(content, encoding="utf-8")
 
@@ -357,22 +357,22 @@ def update_log(source_name: str, pages_count: int, operation: str = "compile"):
 def update_graph(pages: list, source_name: str):
     graph_dir = WIKI_DIR / "graph"
     graph_dir.mkdir(parents=True, exist_ok=True)
-    
+
     entities_file = graph_dir / "entities.json"
     edges_file = graph_dir / "edges.json"
-    
+
     if entities_file.exists():
         entities = json.loads(entities_file.read_text(encoding="utf-8"))
     else:
         entities = {}
-    
+
     if edges_file.exists():
         edges = json.loads(edges_file.read_text(encoding="utf-8"))
     else:
         edges = []
-    
+
     now = datetime.now(timezone.utc).isoformat()
-    
+
     for page in pages:
         eid = page["id"]
         if eid not in entities:
@@ -389,17 +389,17 @@ def update_graph(pages: list, source_name: str):
         else:
             if source_name not in entities[eid]["sources"]:
                 entities[eid]["sources"].append(source_name)
-            
+
             entities[eid]["reinforcement_count"] = entities[eid].get("reinforcement_count", 1) + 1
             entities[eid]["confidence"] = min(1.0, 0.85 + 0.05 * entities[eid]["reinforcement_count"])
             entities[eid]["last_confirmed"] = now
-    
+
     for page in pages:
         page_path = Path(page.get("path", ""))
         if page_path.exists():
             content = page_path.read_text(encoding="utf-8")
             wikilinks = re.findall(r'\[\[([^\]|]+)', content)
-            
+
             for target in wikilinks:
                 target = target.strip().lower().replace(" ", "-")
                 if target and target != page["id"]:
@@ -408,9 +408,9 @@ def update_graph(pages: list, source_name: str):
                         if f"[[{target}" in line.lower() or f"[[{target.replace('-', ' ')}" in line.lower():
                             line_context = line
                             break
-                    
+
                     edge_type = extract_edge_type(line_context) if line_context else "relates_to"
-                    
+
                     edge = {
                         "source": page["id"],
                         "target": target,
@@ -418,18 +418,18 @@ def update_graph(pages: list, source_name: str):
                         "weight": 1.0,
                         "source_file": source_name,
                     }
-                    
+
                     existing = [e for e in edges if e["source"] == page["id"] and e["target"] == target]
                     if not existing:
                         edges.append(edge)
-    
+
     entities_file.write_text(json.dumps(entities, indent=2, ensure_ascii=False), encoding="utf-8")
     edges_file.write_text(json.dumps(edges, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def update_index(pages: list, source_name: str):
     INDEX_FILE.parent.mkdir(parents=True, exist_ok=True)
-    
+
     grouped = {
         "concept": [],
         "technique": [],
@@ -438,14 +438,14 @@ def update_index(pages: list, source_name: str):
         "benchmark": [],
         "paper": [],
     }
-    
+
     for p in pages:
         ptype = p.get("type", "concept")
         if ptype in grouped:
             grouped[ptype].append(p)
         else:
             grouped["concept"].append(p)
-    
+
     lines = [
         "# Wiki Index",
         "",
@@ -453,7 +453,7 @@ def update_index(pages: list, source_name: str):
         f"> Source: {source_name}",
         "",
     ]
-    
+
     type_labels = {
         "concept": "Concepts",
         "technique": "Techniques",
@@ -462,14 +462,14 @@ def update_index(pages: list, source_name: str):
         "benchmark": "Benchmarks",
         "paper": "Papers",
     }
-    
+
     for ptype, label in type_labels.items():
         items = grouped[ptype]
         if items:
             lines.extend(["", f"## {label}", ""])
             for item in items:
                 lines.append(f"- [[{item['id']}|{item['name']}]] — {ptype}")
-    
+
     INDEX_FILE.write_text("\n".join(lines), encoding="utf-8")
     print(f"  Updated index.md ({len(pages)} pages)", file=sys.stderr)
 
@@ -480,13 +480,13 @@ def main():
     parser.add_argument('source', help='Source file to compile')
     parser.add_argument('--force', action='store_true', help='Force re-compile (overwrite existing pages)')
     args = parser.parse_args()
-    
+
     result = compile_source(args.source, force=args.force)
-    
+
     pages_created = result.get('pages_created', 0)
     pages_updated = result.get('pages_updated', 0)
     print(f"\nCompiled {result['source']}: {pages_created} pages created, {pages_updated} pages updated")
-    print(f"  → Updated log.md and graph/entities.json")
+    print("  → Updated log.md and graph/entities.json")
 
 
 if __name__ == "__main__":

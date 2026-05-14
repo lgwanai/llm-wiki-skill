@@ -7,7 +7,6 @@ import math
 import os
 import re
 from datetime import datetime, timezone
-from typing import Optional
 
 WIKI_DIR = ".wiki"
 PAGES_DIR = os.path.join(WIKI_DIR, "pages")
@@ -17,10 +16,11 @@ EDGES_FILE = os.path.join(GRAPH_DIR, "edges.json")
 
 
 def _load_json(path: str) -> dict | list:
-    if not os.path.exists(path):
-        return {} if 'entities' in path else {'edges': []}
+    path_str = str(path)
+    if not os.path.exists(path_str):
+        return {} if 'entities' in path_str else {'edges': []}
     try:
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path_str, encoding='utf-8') as f:
             return json.load(f)
     except (json.JSONDecodeError, OSError):
         return {} if 'entities' in path else {'edges': []}
@@ -110,7 +110,7 @@ def find_broken_links() -> list[dict]:
                 continue
             filepath = os.path.join(scan_dir, filename)
             try:
-                with open(filepath, 'r', encoding='utf-8') as f:
+                with open(filepath, encoding='utf-8') as f:
                     content = f.read()
             except OSError:
                 continue

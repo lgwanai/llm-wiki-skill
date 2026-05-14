@@ -1,10 +1,7 @@
 """Tests for search.py — hybrid search and RRF fusion."""
 
-import json
 import os
 from pathlib import Path
-
-import pytest
 
 import search
 

@@ -7,12 +7,10 @@ Entity types and relationship types are defined in .wiki/schema.md.
 """
 
 import json
-import os
 import re
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Optional
 
 import requests
 import yaml
@@ -186,7 +184,7 @@ class LLMExtractor:
         self.max_tokens = max_tokens
 
     @classmethod
-    def from_config(cls, path: Optional[Path] = None) -> "LLMExtractor":
+    def from_config(cls, path: Path | None = None) -> "LLMExtractor":
         """Create instance from YAML config (llm section) or environment variables."""
         import os as _os
         config_path = path or CONFIG_PATH
@@ -215,7 +213,7 @@ class LLMExtractor:
         }
         if not enable_thinking:
             payload["thinking"] = {"type": "disabled"}
-        
+
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}",
@@ -273,7 +271,7 @@ class LLMExtractor:
         normalized = re.sub(r'[\s_]+', '-', normalized)
         normalized = re.sub(r'-+', '-', normalized)
         normalized = normalized.strip('-')
-        
+
         # Common normalization patterns
         patterns = {
             r'v(\d+)-(\d+)': r'v\1.\2',  # v3-2 → v3.2
@@ -281,18 +279,18 @@ class LLMExtractor:
         }
         for pattern, replacement in patterns.items():
             normalized = re.sub(pattern, replacement, normalized)
-        
+
         return normalized
-    
+
     def _find_similar_entity(self, eid: str, existing_entities: dict) -> str | None:
         """Find if a similar entity already exists. Returns canonical ID or None."""
         normalized = self._normalize_entity_id(eid)
-        
+
         for existing_id in existing_entities:
             existing_normalized = self._normalize_entity_id(existing_id)
             if normalized == existing_normalized:
                 return existing_id
-            
+
             # Check for minor variations
             if abs(len(normalized) - len(existing_normalized)) <= 3:
                 # Levenshtein-like check for very similar names
@@ -300,13 +298,13 @@ class LLMExtractor:
                     return existing_id
                 if normalized.replace('.', '-') == existing_normalized.replace('.', '-'):
                     return existing_id
-        
+
         return None
 
     def extract(self, text: str, source_name: str = "", max_workers: int = 5) -> dict:
         """Extract entities and relationships from text using LLM with concurrent calls."""
         chunks = self._chunk_text(text)
-        
+
         if len(chunks) == 1:
             prompt = EXTRACTION_PROMPT + text[:30000]
             response = self._call(
@@ -324,7 +322,7 @@ class LLMExtractor:
         all_entities = []
         all_relationships = []
         entity_registry = {}
-        
+
         def extract_chunk(chunk_data: tuple[int, str]) -> dict:
             i, chunk = chunk_data
             prompt = f"{EXTRACTION_PROMPT}Chunk {i+1}/{len(chunks)}\n\n{chunk[:30000]}"
@@ -338,25 +336,25 @@ class LLMExtractor:
                 return {"index": i, "result": result, "success": True}
             except Exception as e:
                 return {"index": i, "error": str(e), "success": False}
-        
+
         print(f"    Processing {len(chunks)} chunks concurrently with {max_workers} workers ...", file=sys.stderr)
-        
+
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = [executor.submit(extract_chunk, (i, chunk)) for i, chunk in enumerate(chunks)]
-            
+
             for future in as_completed(futures):
                 result_data = future.result()
                 i = result_data["index"]
-                
+
                 if result_data["success"]:
                     result = result_data["result"]
                     print(f"    Chunk {i+1}/{len(chunks)} ✓ ({len(chunks[i])} chars)", file=sys.stderr)
                     for entity in result.get("entities", []):
                         eid = entity["id"]
                         similar_id = self._find_similar_entity(eid, entity_registry)
-                        
+
                         if similar_id:
-                            entity_registry[similar_id]['confidence'] = min(1.0, 
+                            entity_registry[similar_id]['confidence'] = min(1.0,
                                 entity_registry[similar_id].get('confidence', 0.5) + 0.1)
                             entity_registry[similar_id].setdefault('aliases', []).append(eid)
                         else:
@@ -364,13 +362,13 @@ class LLMExtractor:
                             entity['id'] = canonical_id
                             entity_registry[canonical_id] = entity
                             all_entities.append(entity)
-                    
+
                     for rel in result.get("relationships", []):
                         source = rel.get("source", "")
                         target = rel.get("target", "")
                         normalized_source = self._normalize_entity_id(source)
                         normalized_target = self._normalize_entity_id(target)
-                        
+
                         if normalized_source in entity_registry or normalized_target in entity_registry:
                             rel["source"] = normalized_source
                             rel["target"] = normalized_target
@@ -380,9 +378,9 @@ class LLMExtractor:
 
         main_entity_candidates = [e for e in all_entities if e.get("type") in ["model", "concept"]]
         main_entity = main_entity_candidates[0]["id"] if main_entity_candidates else (all_entities[0]["id"] if all_entities else source_name)
-        
+
         print(f"    Extracted: {len(all_entities)} unique entities, {len(all_relationships)} relationships", file=sys.stderr)
-        
+
         return {
             "entities": all_entities,
             "relationships": all_relationships,

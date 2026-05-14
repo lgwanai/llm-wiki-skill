@@ -95,12 +95,12 @@
 
 ### Python Scripts (SCR)
 
-- [ ] **SCR-01**: ingest.py — source ingestion with sensitive data filter
-- [ ] **SCR-02**: search.py — hybrid search with RRF fusion
-- [ ] **SCR-03**: lint.py — quality linter with auto-healing
-- [ ] **SCR-04**: consolidate.py — memory tier promotion + decay
-- [ ] **SCR-05**: graph.py — knowledge graph builder and querier
-- [ ] **SCR-06**: crystallize.py — session-to-digest pipeline
+- [x] **SCR-01**: ingest.py — source ingestion with sensitive data filter
+- [x] **SCR-02**: search.py — hybrid search with RRF fusion
+- [x] **SCR-03**: lint.py — quality linter with auto-healing
+- [x] **SCR-04**: consolidate.py — memory tier promotion + decay
+- [x] **SCR-05**: graph.py — knowledge graph builder and querier
+- [x] **SCR-06**: crystallize.py — session-to-digest pipeline
 
 ### Project Infrastructure (INFRA)
 
@@ -112,17 +112,17 @@
 
 ### Claude Code Integration (CC)
 
-- [ ] **CC-01**: CLAUDE.md with GSD workflow guidance
-- [ ] **CC-02**: Hook scripts in .claude/hooks/ for session start/end
-- [ ] **CC-03**: Eval test cases (5 scenarios)
+- [x] **CC-01**: CLAUDE.md with GSD workflow guidance
+- [x] **CC-02**: Hook scripts in .claude/hooks/ for session start/end
+- [x] **CC-03**: Eval test cases (5 scenarios)
 
 ### Testing (TEST)
 
-- [ ] **TEST-01**: Unit tests for sensitive data filtering
-- [ ] **TEST-02**: Unit tests for confidence scoring formulas
-- [ ] **TEST-03**: Unit tests for retention decay calculations
-- [ ] **TEST-04**: Integration test: full ingest pipeline
-- [ ] **TEST-05**: Integration test: full lint pass
+- [x] **TEST-01**: Unit tests for sensitive data filtering
+- [x] **TEST-02**: Unit tests for confidence scoring formulas
+- [x] **TEST-03**: Unit tests for retention decay calculations
+- [x] **TEST-04**: Integration test: full ingest pipeline
+- [x] **TEST-05**: Integration test: full lint pass
 
 ## v2 Requirements
 
@@ -161,10 +161,10 @@ Deferred to future release.
 | CRYST-01 through CRYST-04 | Phase 1 | ✅ Complete |
 | OUT-01 through OUT-06 | Phase 1 | ✅ Complete |
 | TMPL-01 through TMPL-04 | Phase 1 | ✅ Complete |
-| SCR-01 through SCR-06 | Phase 2 | 🔨 Skeletons complete |
+| SCR-01 through SCR-06 | Phase 2 | ✅ Complete |
 | INFRA-01 through INFRA-05 | Phase 3 | ✅ Complete |
-| CC-01 through CC-03 | Phase 4 | Pending |
-| TEST-01 through TEST-05 | Phase 5 | Pending |
+| CC-01 through CC-03 | Phase 4 | ✅ Complete |
+| TEST-01 through TEST-05 | Phase 5 | ✅ Complete |
 
 **Coverage:**
 - v1 requirements: 74 total

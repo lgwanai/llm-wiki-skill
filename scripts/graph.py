@@ -8,7 +8,6 @@ import re
 import sys
 from collections import deque
 from datetime import datetime, timezone
-from typing import Optional
 
 WIKI_DIR = ".wiki"
 GRAPH_DIR = os.path.join(WIKI_DIR, "graph")
@@ -45,7 +44,7 @@ def _load_json(path: str) -> dict | list:
     if not os.path.exists(path):
         return {}
     try:
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, encoding='utf-8') as f:
             return json.load(f)
     except (json.JSONDecodeError, OSError) as e:
         print(f"Warning: could not read {path}: {e}", file=sys.stderr)
@@ -77,7 +76,7 @@ def build_entity_registry(pages_dir: str) -> dict:
             continue
         filepath = os.path.join(entities_dir, filename)
         try:
-            with open(filepath, 'r', encoding='utf-8') as f:
+            with open(filepath, encoding='utf-8') as f:
                 content = f.read()
         except OSError:
             continue
@@ -112,7 +111,7 @@ def build_edges(pages_dir: str) -> list[dict]:
                 continue
             filepath = os.path.join(scan_dir, filename)
             try:
-                with open(filepath, 'r', encoding='utf-8') as f:
+                with open(filepath, encoding='utf-8') as f:
                     content = f.read()
             except OSError:
                 continue
@@ -145,7 +144,7 @@ def build_edges(pages_dir: str) -> list[dict]:
     return edges
 
 
-def traverse(entity_id: str, depth: int = 2, edge_types: Optional[list[str]] = None) -> dict:
+def traverse(entity_id: str, depth: int = 2, edge_types: list[str] | None = None) -> dict:
     """BFS walk from an entity, filtering by edge type and depth."""
     entities_data = _load_json(ENTITIES_FILE)
     edges_data = _load_json(EDGES_FILE)
@@ -179,7 +178,7 @@ def traverse(entity_id: str, depth: int = 2, edge_types: Optional[list[str]] = N
     return subgraph
 
 
-def find_path(source: str, target: str) -> Optional[list[dict]]:
+def find_path(source: str, target: str) -> list[dict] | None:
     """BFS shortest typed path between two entities."""
     edges_data = _load_json(EDGES_FILE)
     all_edges = edges_data.get('edges', []) if isinstance(edges_data, dict) else []

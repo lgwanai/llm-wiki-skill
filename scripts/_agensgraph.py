@@ -28,7 +28,6 @@ Usage:
 import json
 import os
 import sys
-from typing import Optional
 
 AGENSGRAPH_HOST = os.environ.get("AGENSGRAPH_HOST", "localhost")
 AGENSGRAPH_PORT = int(os.environ.get("AGENSGRAPH_PORT", "5433"))

@@ -22,7 +22,6 @@ import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Optional
 
 
 def _load_config() -> dict:

@@ -20,7 +20,6 @@ import os
 import sys
 import urllib.error
 import urllib.request
-from typing import Optional
 
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "")
@@ -89,7 +88,7 @@ class QdrantStore:
         return resp.get("result", {}).get("points_count", 0)
 
 
-def create_qdrant_store() -> Optional[QdrantStore]:
+def create_qdrant_store() -> QdrantStore | None:
     store = QdrantStore()
     if store.is_available():
         return store

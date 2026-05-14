@@ -9,7 +9,6 @@ import re
 import sys
 from collections import Counter
 
-
 WIKI_DIR = ".wiki"
 PAGES_DIR = os.path.join(WIKI_DIR, "pages")
 GRAPH_DIR = os.path.join(WIKI_DIR, "graph")
@@ -21,7 +20,7 @@ def _load_json(path: str) -> dict | list:
     if not os.path.exists(path):
         return {} if 'entities' in path else {'edges': []}
     try:
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, encoding='utf-8') as f:
             return json.load(f)
     except (json.JSONDecodeError, OSError):
         return {} if 'entities' in path else {'edges': []}
@@ -30,7 +29,7 @@ def _load_json(path: str) -> dict | list:
 def _read_page_content(filepath: str) -> str:
     """Read a markdown page, stripping YAML frontmatter."""
     try:
-        with open(filepath, 'r', encoding='utf-8') as f:
+        with open(filepath, encoding='utf-8') as f:
             content = f.read()
     except OSError:
         return ''

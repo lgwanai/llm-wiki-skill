@@ -13,7 +13,6 @@ Usage:
 
 import argparse
 import json
-import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,10 +32,10 @@ def load_config():
 
 def call_llm(system_prompt: str, user_content: str, config: dict) -> str:
     import requests
-    
+
     llm = config.get("llm", {})
     api_url = llm.get("base_url", "https://api.deepseek.com").rstrip("/") + "/v1/chat/completions"
-    
+
     payload = {
         "model": llm.get("model", "deepseek-v4-flash"),
         "temperature": llm.get("temperature", 0.3),
@@ -47,12 +46,12 @@ def call_llm(system_prompt: str, user_content: str, config: dict) -> str:
             {"role": "user", "content": user_content},
         ],
     }
-    
+
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {llm.get('api_key', '')}",
     }
-    
+
     resp = requests.post(api_url, json=payload, headers=headers, timeout=300)
     resp.raise_for_status()
     data = resp.json()
@@ -62,13 +61,13 @@ def call_llm(system_prompt: str, user_content: str, config: dict) -> str:
 
 def search_wiki(query: str, limit: int = 5) -> list[dict]:
     results = []
-    
+
     try:
         from search import bm25_search
         results = bm25_search(query, str(PAGES_DIR), limit=limit)
     except Exception:
         pass
-    
+
     if not results:
         entities_file = WIKI_DIR / "graph" / "entities.json"
         if entities_file.exists():
@@ -85,7 +84,7 @@ def search_wiki(query: str, limit: int = 5) -> list[dict]:
                             "id": eid,
                             "type": data.get("type"),
                         })
-    
+
     return results[:limit]
 
 
@@ -211,14 +210,14 @@ Answer the query based on these wiki pages."""
 def file_answer_back(query: str, answer: str, sources: list[dict]) -> str:
     concepts_dir = PAGES_DIR / "concepts"
     concepts_dir.mkdir(parents=True, exist_ok=True)
-    
+
     slug = query.lower().replace(" ", "-").replace("?", "")[:50]
     slug = "".join(c for c in slug if c.isalnum() or c == "-")
-    
+
     page_path = concepts_dir / f"{slug}.md"
-    
+
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    
+
     frontmatter = f"""---
 id: {slug}
 type: concept
@@ -229,21 +228,21 @@ created: {now}
 ---
 
 """
-    
+
     content = frontmatter + f"# {query[:50]}\n\n"
     content += f"**Generated from query**: {query}\n\n"
     content += answer.replace("**Answer**:", "## Answer\n\n").replace("**Sources**:", "\n## Sources\n\n").replace("**Related**:", "\n## Related\n\n")
-    
+
     page_path.write_text(content, encoding="utf-8")
-    
+
     graph_dir = WIKI_DIR / "graph"
     graph_dir.mkdir(parents=True, exist_ok=True)
     entities_file = graph_dir / "entities.json"
-    
+
     entities = {}
     if entities_file.exists():
         entities = json.loads(entities_file.read_text(encoding="utf-8"))
-    
+
     entities[slug] = {
         "id": slug,
         "type": "concept",
@@ -252,18 +251,18 @@ created: {now}
         "confidence": 0.80,
         "created": now,
     }
-    
+
     entities_file.write_text(json.dumps(entities, indent=2, ensure_ascii=False), encoding="utf-8")
-    
+
     return str(page_path)
 
 
 def query_wiki(query: str, file_back: bool = False, fmt: str = "markdown") -> dict:
     config = load_config()
-    
+
     pages = search_wiki(query)
     answer = synthesize_answer(query, pages, config, fmt=fmt)
-    
+
     result = {
         "query": query,
         "format": fmt,
@@ -271,11 +270,11 @@ def query_wiki(query: str, file_back: bool = False, fmt: str = "markdown") -> di
         "pages_searched": len(pages),
         "sources": [p.get("id", "unknown") for p in pages],
     }
-    
+
     if file_back and pages:
         filed_path = file_answer_back(query, answer, pages)
         result["filed"] = filed_path
-    
+
     return result
 
 
@@ -286,19 +285,20 @@ def main():
     parser.add_argument("--format", choices=["markdown", "table", "timeline", "slides", "json", "graph"],
                         default="markdown", help="Output format (default: markdown)")
     args = parser.parse_args()
-    
+
     if args.format == "graph":
-        import subprocess, sys as _sys
+        import subprocess
+        import sys as _sys
         code, out = subprocess.run(
             [_sys.executable, str(Path(__file__).parent / "graph.py"), "show"],
             capture_output=True, text=True
         )
         print(out if code == 0 else f"Graph error: {out}")
         return
-    
+
     result = query_wiki(args.query, file_back=args.file_back, fmt=args.format)
     print(result["answer"])
-    
+
     if args.file_back and result.get("filed"):
         print(f"\n---\nFiled to: {result['filed']}", file=sys.stderr)
 

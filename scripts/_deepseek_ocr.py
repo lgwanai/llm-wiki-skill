@@ -23,7 +23,6 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import Optional
 
 import fitz
 import requests
@@ -59,7 +58,7 @@ class DeepSeekOCR:
         self.pdf_dpi = pdf_dpi
 
     @classmethod
-    def from_config(cls, path: Optional[Path] = None) -> "DeepSeekOCR":
+    def from_config(cls, path: Path | None = None) -> "DeepSeekOCR":
         """Create instance from YAML config (ocr section) or environment variables."""
         config_path = path or CONFIG_PATH
         if config_path.exists():
@@ -281,7 +280,7 @@ class DeepSeekOCR:
 
     # ── public API ───────────────────────────────────────────────────
 
-    def ocr_pdf(self, pdf_path: str, output_dir: Path, max_pages: Optional[int] = None) -> Path:
+    def ocr_pdf(self, pdf_path: str, output_dir: Path, max_pages: int | None = None) -> Path:
         """OCR a PDF with full pipeline: grounding + text + image extraction → markdown.
 
         Returns path to output.md.
@@ -340,7 +339,7 @@ class DeepSeekOCR:
         img_base64 = self._file_to_base64(filepath)
         return self._call_api(img_base64, OCR_PROMPT)
 
-    def _ocr_pdf_text(self, pdf_path: str, max_pages: Optional[int] = None) -> str:
+    def _ocr_pdf_text(self, pdf_path: str, max_pages: int | None = None) -> str:
         """OCR PDF pages as plain text (no image extraction). Internal use."""
         if not os.path.exists(pdf_path):
             raise FileNotFoundError(f"PDF not found: {pdf_path}")

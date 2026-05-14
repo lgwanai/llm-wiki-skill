@@ -20,7 +20,6 @@ Usage:
 import argparse
 import json
 import shutil
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -193,7 +192,7 @@ def cmd_merge(dry_run: bool = False) -> dict:
 
 
 def cmd_clean(dry_run: bool = False) -> dict:
-    from lint import find_orphans, find_broken_links
+    from lint import find_broken_links, find_orphans
 
     orphans = find_orphans()
     broken = find_broken_links()
