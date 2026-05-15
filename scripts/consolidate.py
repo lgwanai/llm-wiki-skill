@@ -255,13 +255,8 @@ def apply_retention_decay() -> dict:
         active.append(fact)
         decayed_count += 1
 
-    # Archive storage within semantic.json
-    existing_archived = _load_json(SEMANTIC_FILE + '.archived')
-    result = {
-        'active': active,
-        'archived': existing_archived + archived,
-    }
-    _save_json(SEMANTIC_FILE, result)
+    _save_json(SEMANTIC_FILE, active)
+    _save_json(SEMANTIC_FILE + '.archived', existing_archived + archived)
     return {'decayed': decayed_count, 'archived': archived_count, 'deprioritized': deprioritized_count}
 
 

@@ -54,6 +54,6 @@ quality:
 # agensgraph:
 #   host: "localhost"
 #   port: 5433
-#   user: "wuliang"
-#   password: "lingtingt"
-#   database: "wuliang"
+#   user: "agensgraph"
+#   password: "agensgraph"
+#   database: "agensgraph"

@@ -25,10 +25,16 @@ import re
 import time
 from pathlib import Path
 
-import fitz
 import requests
 import yaml
-from PIL import Image
+
+def _import_fitz():
+    import fitz as _fitz
+    return _fitz
+
+def _import_Image():
+    from PIL import Image as _Image
+    return _Image
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -114,16 +120,18 @@ class DeepSeekOCR:
     # ── image helpers ────────────────────────────────────────────────
 
     def _pdf_page_to_pil(self, pdf_path: str, page_num: int):
-        doc = fitz.open(pdf_path)
+        _fitz = _import_fitz()
+        _Image = _import_Image()
+        doc = _fitz.open(pdf_path)
         page = doc[page_num]
         pix = page.get_pixmap(dpi=self.pdf_dpi)
         img_bytes = pix.tobytes("jpeg")
-        pil_image = Image.open(io.BytesIO(img_bytes))
+        pil_image = _Image.open(io.BytesIO(img_bytes))
         w, h = pix.width, pix.height
         doc.close()
         return pil_image, w, h
 
-    def _pil_to_base64(self, pil_image: Image.Image, quality: int = 95) -> str:
+    def _pil_to_base64(self, pil_image, quality: int = 95) -> str:
         buf = io.BytesIO()
         pil_image.save(buf, format="JPEG", quality=quality)
         return base64.b64encode(buf.getvalue()).decode("utf-8")
@@ -170,7 +178,7 @@ class DeepSeekOCR:
     # ── image cropping ───────────────────────────────────────────────
 
     def _crop_and_save(
-        self, pil_image: Image.Image, bbox: list[int], output_path: Path,
+        self, pil_image, bbox: list[int], output_path: Path,
         is_formula: bool = False,
     ) -> bool:
         x1, y1, x2, y2 = bbox
@@ -290,7 +298,8 @@ class DeepSeekOCR:
             raise FileNotFoundError(f"PDF not found: {pdf_path}")
 
         output_dir.mkdir(parents=True, exist_ok=True)
-        doc = fitz.open(pdf_path)
+        _fitz = _import_fitz()
+        doc = _fitz.open(pdf_path)
         total_pages = min(len(doc), max_pages) if max_pages else len(doc)
 
         logger.info("=" * 60)
@@ -344,7 +353,8 @@ class DeepSeekOCR:
         """OCR PDF pages as plain text (no image extraction). Internal use."""
         if not os.path.exists(pdf_path):
             raise FileNotFoundError(f"PDF not found: {pdf_path}")
-        doc = fitz.open(pdf_path)
+        _fitz = _import_fitz()
+        doc = _fitz.open(pdf_path)
         total_pages = min(len(doc), max_pages) if max_pages else len(doc)
         pages_text = []
         for page_num in range(total_pages):

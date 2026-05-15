@@ -88,16 +88,23 @@ def call_llm(system_prompt: str, user_content: str, config: dict) -> str:
         ],
     }
 
+    api_key = llm.get("api_key", "")
+    if not api_key:
+        raise RuntimeError("LLM API key not configured. Set llm.api_key in wiki_config.yaml")
+
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {llm.get('api_key', '')}",
+        "Authorization": f"Bearer {api_key}",
     }
 
-    resp = requests.post(api_url, json=payload, headers=headers, timeout=600)
-    resp.raise_for_status()
-    data = resp.json()
-    msg = data["choices"][0]["message"]
-    return (msg.get("content") or "").strip()
+    try:
+        resp = requests.post(api_url, json=payload, headers=headers, timeout=600)
+        resp.raise_for_status()
+        data = resp.json()
+        msg = data["choices"][0]["message"]
+        return (msg.get("content") or "").strip()
+    except (KeyError, IndexError) as e:
+        raise RuntimeError(f"Unexpected LLM API response structure: {e}")
 
 
 def write_audit(operation: str, details: dict):
@@ -295,13 +302,14 @@ Output pages separated by ===PAGE_END==="""
                 })
                 print(f"  Updated: {entity_id}.md ({len(contradictions)} contradictions)", file=sys.stderr)
             else:
+                page_path.write_text(page_content, encoding="utf-8")
                 updated_pages.append({
                     "id": entity_id,
                     "type": entity_type,
                     "name": frontmatter.get("name", entity_id),
                     "path": str(page_path),
                 })
-                print(f"  Existing: {entity_id}.md (no contradictions)", file=sys.stderr)
+                print(f"  Updated: {entity_id}.md (reinforced)", file=sys.stderr)
         else:
             page_path.write_text(page_content, encoding="utf-8")
             created_pages.append({
@@ -313,6 +321,11 @@ Output pages separated by ===PAGE_END==="""
             print(f"  Created: {entity_id}.md ({entity_type})", file=sys.stderr)
 
     all_pages = created_pages + updated_pages
+    if not all_pages:
+        print(f"  WARNING: No pages parsed from LLM response! Raw output (500 chars):",
+              file=sys.stderr)
+        print(f"    {response[:500]}", file=sys.stderr)
+        return {"source": source_name, "pages_created": 0, "pages_updated": 0, "pages": []}
 
     update_index(all_pages, source_name)
     update_log(source_name, len(created_pages), "compile")

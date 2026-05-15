@@ -5,8 +5,8 @@ Uses Ollama's /api/embeddings endpoint with Qwen3-Embedding-8B-4bit-DWQ.
 Configurable via environment variables or defaults.
 
 Environment variables:
-    OLLAMA_BASE_URL  — Ollama server URL (default: http://127.0.0.1:12345)
-    OLLAMA_API_KEY   — API key for authentication (default: lingting)
+    OLLAMA_BASE_URL  — Ollama server URL (default: http://localhost:11434)
+    OLLAMA_API_KEY   — API key for authentication (default: none)
     EMBED_MODEL      — Embedding model name
 """
 

@@ -27,6 +27,17 @@ def _load_json(path: str) -> dict | list:
         return {} if 'entities' in path else {'edges': []}
 
 
+def _load_json_safe(path: str, default: dict | list) -> dict | list:
+    """Load JSON, returning default for missing/corrupt files (no magic detection)."""
+    if not os.path.exists(path):
+        return default
+    try:
+        with open(path, encoding='utf-8') as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return default
+
+
 def _read_page_content(filepath: str) -> str:
     """Read a markdown page, stripping YAML frontmatter."""
     try:
@@ -75,7 +86,8 @@ def bm25_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
 
     # Collect all pages
     all_docs: dict[str, str] = {}
-    for subdir in ('entities', 'decisions', 'sessions', 'patterns'):
+    for subdir in ('concepts', 'entities', 'models', 'techniques', 'frameworks',
+                   'benchmarks', 'papers', 'decisions', 'sessions', 'patterns'):
         scan_dir = os.path.join(pages_dir, subdir)
         if not os.path.isdir(scan_dir):
             continue
@@ -143,7 +155,7 @@ def vector_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
     embeddings_path = os.path.join(WIKI_DIR, "graph", "embeddings.json")
 
     if os.path.exists(embeddings_path):
-        embeddings_data = _load_json(embeddings_path)
+        embeddings_data = _load_json_safe(embeddings_path, {})
     else:
         embeddings_data = {}
 
@@ -169,7 +181,8 @@ def vector_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
 def _jaccard_fallback(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
     """Jaccard similarity fallback when embeddings are unavailable."""
     all_docs: dict[str, str] = {}
-    for subdir in ('entities', 'decisions', 'sessions', 'patterns'):
+    for subdir in ('concepts', 'entities', 'models', 'techniques', 'frameworks',
+                   'benchmarks', 'papers', 'decisions', 'sessions', 'patterns'):
         scan_dir = os.path.join(pages_dir, subdir)
         if not os.path.isdir(scan_dir):
             continue

@@ -32,9 +32,9 @@ import sys
 
 AGENSGRAPH_HOST = os.environ.get("AGENSGRAPH_HOST", "localhost")
 AGENSGRAPH_PORT = int(os.environ.get("AGENSGRAPH_PORT", "5433"))
-AGENSGRAPH_USER = os.environ.get("AGENSGRAPH_USER", "wuliang")
+AGENSGRAPH_USER = os.environ.get("AGENSGRAPH_USER", "agensgraph")
 AGENSGRAPH_PASSWORD = os.environ.get("AGENSGRAPH_PASSWORD", "")
-AGENSGRAPH_DB = os.environ.get("AGENSGRAPH_DB", "wuliang")
+AGENSGRAPH_DB = os.environ.get("AGENSGRAPH_DB", "agensgraph")
 
 
 class AgensGraphStore:
