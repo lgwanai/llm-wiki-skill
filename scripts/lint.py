@@ -6,12 +6,13 @@ import argparse
 import json
 import math
 import os
+from pathlib import Path
 import re
 from datetime import datetime, timezone
 
-WIKI_DIR = ".wiki"
-PAGES_DIR = os.path.join(WIKI_DIR, "pages")
-GRAPH_DIR = os.path.join(WIKI_DIR, "graph")
+WIKI_DIR = Path(__file__).parent.parent / ".wiki"
+PAGES_DIR = WIKI_DIR / "pages"
+GRAPH_DIR = WIKI_DIR / "graph"
 ENTITIES_FILE = os.path.join(GRAPH_DIR, "entities.json")
 EDGES_FILE = os.path.join(GRAPH_DIR, "edges.json")
 

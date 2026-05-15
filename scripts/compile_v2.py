@@ -73,6 +73,14 @@ def load_config():
     return {}
 
 
+def atomic_write(path: Path, content: str):
+    """Atomic file write (temp + rename, safe against partial writes)."""
+    tmp = path.with_suffix(".tmp")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp.write_text(content, encoding="utf-8")
+    os.replace(str(tmp), str(path))
+
+
 def call_llm(system_prompt: str, user_content: str, config: dict) -> str:
     llm = config.get("llm", {})
     api_url = llm.get("base_url", "https://api.deepseek.com").rstrip("/") + "/v1/chat/completions"
@@ -103,6 +111,8 @@ def call_llm(system_prompt: str, user_content: str, config: dict) -> str:
         data = resp.json()
         msg = data["choices"][0]["message"]
         return (msg.get("content") or "").strip()
+    except requests.RequestException as e:
+        raise RuntimeError(f"LLM API call failed: {e}")
     except (KeyError, IndexError) as e:
         raise RuntimeError(f"Unexpected LLM API response structure: {e}")
 
@@ -265,7 +275,8 @@ Output pages separated by ===PAGE_END==="""
         frontmatter_text = "\n".join(lines[1:frontmatter_end])
         try:
             frontmatter = yaml.safe_load(frontmatter_text)
-        except:
+        except Exception as e:
+            print(f"  WARNING: YAML parse failed — {e}", file=sys.stderr)
             continue
 
         entity_id = frontmatter.get("id", "")
@@ -292,7 +303,7 @@ Output pages separated by ===PAGE_END==="""
                     existing = c.get('existing_claim', 'N/A')
                     new = c.get('new_claim', 'N/A')
                     page_content += f"- **{ctype}** ({sev}): {existing} → {new}\n"
-                page_path.write_text(page_content, encoding="utf-8")
+                atomic_write(page_path, page_content)
                 updated_pages.append({
                     "id": entity_id,
                     "type": entity_type,
@@ -302,7 +313,7 @@ Output pages separated by ===PAGE_END==="""
                 })
                 print(f"  Updated: {entity_id}.md ({len(contradictions)} contradictions)", file=sys.stderr)
             else:
-                page_path.write_text(page_content, encoding="utf-8")
+                atomic_write(page_path, page_content)
                 updated_pages.append({
                     "id": entity_id,
                     "type": entity_type,
@@ -443,25 +454,32 @@ def update_index(pages: list, source_name: str):
     INDEX_FILE.parent.mkdir(parents=True, exist_ok=True)
 
     grouped = {
-        "concept": [],
-        "technique": [],
-        "model": [],
-        "framework": [],
-        "benchmark": [],
-        "paper": [],
+        "concept": {},
+        "technique": {},
+        "model": {},
+        "framework": {},
+        "benchmark": {},
+        "paper": {},
     }
+
+    # Merge existing index entries
+    if INDEX_FILE.exists():
+        for line in INDEX_FILE.read_text(encoding="utf-8").split("\n"):
+            match = re.match(r'- \[\[([^\]|]+)(?:\|[^\]]+)?\]\] — (.+)', line)
+            if match:
+                eid, ptype = match.group(1), match.group(2)
+                if ptype in grouped:
+                    grouped[ptype][eid] = True
 
     for p in pages:
         ptype = p.get("type", "concept")
         if ptype in grouped:
-            grouped[ptype].append(p)
-        else:
-            grouped["concept"].append(p)
+            grouped[ptype][p.get("id", "")] = True
 
     lines = [
         "# Wiki Index",
         "",
-        f"> Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC",
+        f"> Last compiled: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC",
         f"> Source: {source_name}",
         "",
     ]
@@ -479,11 +497,11 @@ def update_index(pages: list, source_name: str):
         items = grouped[ptype]
         if items:
             lines.extend(["", f"## {label}", ""])
-            for item in items:
-                lines.append(f"- [[{item['id']}|{item['name']}]] — {ptype}")
+            for eid in sorted(items):
+                name = eid.replace("-", " ").title()
+                lines.append(f"- [[{eid}|{name}]] — {ptype}")
 
-    INDEX_FILE.write_text("\n".join(lines), encoding="utf-8")
-    print(f"  Updated index.md ({len(pages)} pages)", file=sys.stderr)
+    atomic_write(INDEX_FILE, "\n".join(lines))
 
 
 def main():

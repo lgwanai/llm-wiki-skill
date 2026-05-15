@@ -5,13 +5,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from pathlib import Path
 import re
 import sys
 from collections import deque
 from datetime import datetime, timezone
 
-WIKI_DIR = ".wiki"
-GRAPH_DIR = os.path.join(WIKI_DIR, "graph")
+WIKI_DIR = Path(__file__).parent.parent / ".wiki"
+GRAPH_DIR = WIKI_DIR / "graph"
 ENTITIES_FILE = os.path.join(GRAPH_DIR, "entities.json")
 EDGES_FILE = os.path.join(GRAPH_DIR, "edges.json")
 
@@ -289,11 +290,12 @@ def _main() -> None:
     i.add_argument('entity', help='Entity ID to analyze')
 
     sub.add_parser('stats', help='Graph statistics')
+    sub.add_parser('show', help='Show graph overview (alias for stats)')
 
     args = parser.parse_args()
 
     if args.command == 'build':
-        pages_dir = os.path.join(WIKI_DIR, "pages")
+        pages_dir = WIKI_DIR / "pages"
         entities = build_entity_registry(pages_dir)
         edges = build_edges(pages_dir)
         print(json.dumps({'entities': len(entities), 'edges': len(edges)}, indent=2))

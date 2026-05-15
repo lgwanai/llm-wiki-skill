@@ -301,6 +301,7 @@ class DeepSeekOCR:
         _fitz = _import_fitz()
         doc = _fitz.open(pdf_path)
         total_pages = min(len(doc), max_pages) if max_pages else len(doc)
+        doc.close()
 
         logger.info("=" * 60)
         logger.info(f"DeepSeek-OCR: {pdf_path}")
@@ -356,6 +357,7 @@ class DeepSeekOCR:
         _fitz = _import_fitz()
         doc = _fitz.open(pdf_path)
         total_pages = min(len(doc), max_pages) if max_pages else len(doc)
+        doc.close()
         pages_text = []
         for page_num in range(total_pages):
             pil_image, _, _ = self._pdf_page_to_pil(pdf_path, page_num)

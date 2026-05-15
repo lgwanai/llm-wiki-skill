@@ -240,11 +240,6 @@ def _main() -> None:
         help="LLM API base URL (from config or env if omitted)"
     )
     parser.add_argument(
-        "--api-key",
-        default=None,
-        help="LLM API key (from config or READERLM_API_KEY env if omitted)"
-    )
-    parser.add_argument(
         "--model",
         default=LLM_MODEL,
         help=f"LLM model name (default: {LLM_MODEL})"
@@ -257,7 +252,7 @@ def _main() -> None:
             args.url,
             timeout=args.timeout,
             api_base=args.api_base,
-            api_key=args.api_key,
+            api_key=None,
             model=args.model,
         )
 

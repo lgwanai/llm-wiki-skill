@@ -52,11 +52,16 @@ def call_llm(system_prompt: str, user_content: str, config: dict) -> str:
         "Authorization": f"Bearer {llm.get('api_key', '')}",
     }
 
-    resp = requests.post(api_url, json=payload, headers=headers, timeout=300)
-    resp.raise_for_status()
-    data = resp.json()
-    msg = data["choices"][0]["message"]
-    return (msg.get("content") or "").strip()
+    try:
+        resp = requests.post(api_url, json=payload, headers=headers, timeout=300)
+        resp.raise_for_status()
+        data = resp.json()
+        msg = data["choices"][0]["message"]
+        return (msg.get("content") or "").strip()
+    except requests.RequestException as e:
+        raise RuntimeError(f"LLM API call failed: {e}")
+    except (KeyError, IndexError) as e:
+        raise RuntimeError(f"Unexpected LLM API response: {e}")
 
 
 def search_wiki(query: str, limit: int = 5) -> list[dict]:

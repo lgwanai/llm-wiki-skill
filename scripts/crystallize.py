@@ -5,14 +5,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from pathlib import Path
 import re
 import sys
 from datetime import datetime, timezone
 
-WIKI_DIR = ".wiki"
-PAGES_DIR = os.path.join(WIKI_DIR, "pages")
-MEMORY_DIR = os.path.join(WIKI_DIR, "memory")
-GRAPH_DIR = os.path.join(WIKI_DIR, "graph")
+WIKI_DIR = Path(__file__).parent.parent / ".wiki"
+PAGES_DIR = WIKI_DIR / "pages"
+MEMORY_DIR = WIKI_DIR / "memory"
+GRAPH_DIR = WIKI_DIR / "graph"
 WORKING_FILE = os.path.join(MEMORY_DIR, "working.json")
 ENTITIES_FILE = os.path.join(GRAPH_DIR, "entities.json")
 EDGES_FILE = os.path.join(GRAPH_DIR, "edges.json")

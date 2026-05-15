@@ -6,11 +6,12 @@ import argparse
 import json
 import math
 import os
+from pathlib import Path
 import sys
 from datetime import datetime, timezone
 
-WIKI_DIR = ".wiki"
-MEMORY_DIR = os.path.join(WIKI_DIR, "memory")
+WIKI_DIR = Path(__file__).parent.parent / ".wiki"
+MEMORY_DIR = WIKI_DIR / "memory"
 
 WORKING_FILE = os.path.join(MEMORY_DIR, "working.json")
 EPISODIC_FILE = os.path.join(MEMORY_DIR, "episodic.json")
@@ -255,6 +256,9 @@ def apply_retention_decay() -> dict:
         active.append(fact)
         decayed_count += 1
 
+    existing_archived = _load_json(SEMANTIC_FILE + '.archived')
+    if isinstance(existing_archived, dict):
+        existing_archived = []
     _save_json(SEMANTIC_FILE, active)
     _save_json(SEMANTIC_FILE + '.archived', existing_archived + archived)
     return {'decayed': decayed_count, 'archived': archived_count, 'deprioritized': deprioritized_count}

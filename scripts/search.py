@@ -6,13 +6,14 @@ import argparse
 import json
 import math
 import os
+from pathlib import Path
 import re
 import sys
 from collections import Counter
 
-WIKI_DIR = ".wiki"
-PAGES_DIR = os.path.join(WIKI_DIR, "pages")
-GRAPH_DIR = os.path.join(WIKI_DIR, "graph")
+WIKI_DIR = Path(__file__).parent.parent / ".wiki"
+PAGES_DIR = WIKI_DIR / "pages"
+GRAPH_DIR = WIKI_DIR / "graph"
 ENTITIES_FILE = os.path.join(GRAPH_DIR, "entities.json")
 EDGES_FILE = os.path.join(GRAPH_DIR, "edges.json")
 
@@ -152,7 +153,7 @@ def vector_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
     - Ollama is unreachable
     - No embeddings have been generated yet (graph/embeddings.json missing)
     """
-    embeddings_path = os.path.join(WIKI_DIR, "graph", "embeddings.json")
+    embeddings_path = WIKI_DIR / "graph" / "embeddings.json"
 
     if os.path.exists(embeddings_path):
         embeddings_data = _load_json_safe(embeddings_path, {})
