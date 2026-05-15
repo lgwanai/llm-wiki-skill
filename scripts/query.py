@@ -35,21 +35,25 @@ def call_llm(system_prompt: str, user_content: str, config: dict) -> str:
 
     llm = config.get("llm", {})
     api_url = llm.get("base_url", "https://api.deepseek.com").rstrip("/") + "/v1/chat/completions"
+    api_key = llm.get("api_key", "")
+    if not api_key:
+        raise RuntimeError("LLM API key not configured.")
 
     payload = {
         "model": llm.get("model", "deepseek-v4-flash"),
         "temperature": llm.get("temperature", 0.3),
         "max_tokens": 8000,
-        "thinking": {"type": "disabled"},
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
         ],
     }
+    if llm.get("provider") == "deepseek":
+        payload["thinking"] = {"type": "disabled"}
 
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {llm.get('api_key', '')}",
+        "Authorization": f"Bearer {api_key}",
     }
 
     try:
@@ -76,7 +80,10 @@ def search_wiki(query: str, limit: int = 5) -> list[dict]:
     if not results:
         entities_file = WIKI_DIR / "graph" / "entities.json"
         if entities_file.exists():
-            entities = json.loads(entities_file.read_text(encoding="utf-8"))
+            try:
+                entities = json.loads(entities_file.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                entities = {}
             query_lower = query.lower()
             for eid, data in entities.items():
                 if query_lower in eid.lower() or query_lower in data.get("name", "").lower():

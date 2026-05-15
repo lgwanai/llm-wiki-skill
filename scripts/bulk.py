@@ -250,7 +250,9 @@ def cmd_stats() -> dict:
 
     if edges_file.exists():
         edges = json.loads(edges_file.read_text(encoding="utf-8"))
-        edges_count = len(edges)
+        if isinstance(edges, dict):
+            edges = edges.get("edges", [])
+        edges_count = len(edges) if isinstance(edges, list) else 0
 
     if embeddings_file.exists():
         embeddings = json.loads(embeddings_file.read_text(encoding="utf-8"))

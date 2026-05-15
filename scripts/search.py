@@ -138,7 +138,7 @@ def bm25_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
     for path, score in scores[:limit]:
         filename = os.path.basename(path)
         results.append({
-            'file': filename,
+            'file': os.path.splitext(filename)[0],
             'path': path,
             'score': round(score, 3),
             'stream': 'bm25',

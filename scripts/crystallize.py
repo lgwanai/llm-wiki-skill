@@ -261,7 +261,7 @@ def check_contradictions(facts: list[dict]) -> list[dict]:
 
     contradictions = []
     for fact in facts:
-        claim = fact.get('content', '')
+        claim = fact.get('content') or fact.get('claim') or ''
         for eid, entity in entities_data.items():
             name = entity.get('name', '')
             if name and name.lower() in claim.lower():

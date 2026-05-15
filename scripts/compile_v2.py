@@ -89,12 +89,13 @@ def call_llm(system_prompt: str, user_content: str, config: dict) -> str:
         "model": llm.get("model", "deepseek-v4-flash"),
         "temperature": llm.get("temperature", 0.3),
         "max_tokens": 32000,
-        "thinking": {"type": "disabled"},
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
         ],
     }
+    if llm.get("provider") == "deepseek":
+        payload["thinking"] = {"type": "disabled"}
 
     api_key = llm.get("api_key", "")
     if not api_key:
@@ -172,7 +173,7 @@ Find contradictions between existing and new content."""
     try:
         response = call_llm(system_prompt, user_prompt, config)
         return json.loads(response)
-    except:
+    except Exception:
         return []
 
 
@@ -322,7 +323,7 @@ Output pages separated by ===PAGE_END==="""
                 })
                 print(f"  Updated: {entity_id}.md (reinforced)", file=sys.stderr)
         else:
-            page_path.write_text(page_content, encoding="utf-8")
+            atomic_write(page_path, page_content)
             created_pages.append({
                 "id": entity_id,
                 "type": entity_type,
@@ -427,8 +428,12 @@ def update_graph(pages: list, source_name: str):
                 target = target.strip().lower().replace(" ", "-")
                 if target and target != page["id"]:
                     line_context = ""
+                    normalized_content = content.lower().replace('-', ' ')
                     for line in content.split("\n"):
-                        if f"[[{target}" in line.lower() or f"[[{target.replace('-', ' ')}" in line.lower():
+                        line_lower = line.lower()
+                        line_normalized = line_lower.replace('-', ' ')
+                        if (f"[[{target}" in line_normalized or
+                            f"[[{target.replace('-', ' ')}" in line_normalized):
                             line_context = line
                             break
 
@@ -447,7 +452,7 @@ def update_graph(pages: list, source_name: str):
                         edges.append(edge)
 
     entities_file.write_text(json.dumps(entities, indent=2, ensure_ascii=False), encoding="utf-8")
-    edges_file.write_text(json.dumps(edges, indent=2, ensure_ascii=False), encoding="utf-8")
+    edges_file.write_text(json.dumps({"edges": edges}, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def update_index(pages: list, source_name: str):

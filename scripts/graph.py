@@ -323,6 +323,9 @@ def _main() -> None:
     elif args.command == 'stats':
         print(json.dumps(graph_stats(), indent=2))
 
+    elif args.command == 'show':
+        print(json.dumps(graph_stats(), indent=2))
+
     else:
         parser.print_help()
 

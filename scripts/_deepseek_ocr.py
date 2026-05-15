@@ -301,11 +301,12 @@ class DeepSeekOCR:
         _fitz = _import_fitz()
         doc = _fitz.open(pdf_path)
         total_pages = min(len(doc), max_pages) if max_pages else len(doc)
+        page_count = doc.page_count
         doc.close()
 
         logger.info("=" * 60)
         logger.info(f"DeepSeek-OCR: {pdf_path}")
-        logger.info(f"总页数: {doc.page_count}, 处理: {total_pages}")
+        logger.info(f"总页数: {page_count}, 处理: {total_pages}")
         logger.info(f"输出: {output_dir}/")
         logger.info("=" * 60)
 
