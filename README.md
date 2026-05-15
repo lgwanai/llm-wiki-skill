@@ -173,7 +173,7 @@ llm-wiki-skill/
 ├── README.md                    # 本文件
 ├── pyproject.toml               # Python 项目配置
 │
-├── scripts/                     # 所有自动化脚本（16 个）
+├── scripts/                     # 所有自动化脚本（17 个）
 │   ├── wiki.py                  # 统一 CLI
 │   ├── compile_v2.py            # 主编译：源 → Wiki ★
 │   ├── query.py                 # 查询：搜索 + 合成 + 回填 ★
@@ -186,10 +186,13 @@ llm-wiki-skill/
 │   ├── generate_embeddings.py   # 向量嵌入生成
 │   ├── url2markdown.py          # URL → Markdown 转换
 │   ├── ocr.py                   # OCR 接口
+│   ├── _deepseek_ocr.py         # OCR 引擎（DeepSeek-OCR-4bit）
+│   ├── _llm_extract.py          # LLM 实体提取
 │   ├── _ollama.py               # 嵌入生成（Ollama）
 │   ├── _qdrant.py               # Qdrant 向量库（可选）
 │   ├── _agensgraph.py           # AgensGraph 图库（可选）
-│   └── wiki_config.yaml         # 统一配置文件
+│   ├── wiki_config.yaml.example # 配置文件模板
+│   └── wiki_config.yaml         # 本地配置（不提交）
 │
 ├── .wiki/                       # Wiki 数据（LLM 生成）
 │   ├── pages/
@@ -477,17 +480,20 @@ python3 -c "import json; print(json.dumps(json.load(open('.wiki/audit.json'))[-2
 
 ## 配置
 
-所有配置集中在 `scripts/wiki_config.yaml`：
+所有配置集中在 `scripts/wiki_config.yaml.example`（复制为 `wiki_config.yaml` 后编辑）：
 
 ```yaml
+ocr:                          # OCR 服务（本地 DeepSeek-OCR）
+  api_url: "http://127.0.0.1:12345/v1/chat/completions"
+  api_key: "your-ocr-api-key"
+  model: "DeepSeek-OCR-4bit"
+
 llm:                          # LLM API（编译 + 查询）
-  api_key: "sk-xxx"
+  provider: deepseek
+  api_key: "your-llm-api-key"
   base_url: "https://api.deepseek.com"
   model: "deepseek-v4-flash"
-
-embeddings:                   # 向量嵌入（语义搜索）
-  provider: ollama
-  model: "qwen3-embedding:8b"
+  temperature: 0.3
 
 hooks:                        # 自动化行为
   on_new_source: {enabled: true, auto_ingest: true}
@@ -500,6 +506,8 @@ quality:                      # 质量标准
   auto_heal: true
   min_score: 0.4
 ```
+
+> `wiki_config.yaml` 在 `.gitignore` 中，不会提交到 git。
 
 ---
 
