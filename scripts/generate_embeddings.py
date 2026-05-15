@@ -151,7 +151,6 @@ def main():
     parser.add_argument("--page", help="Generate embedding for a single page")
     parser.add_argument("--force", action="store_true", help="Regenerate all embeddings")
     parser.add_argument("--verify", action="store_true", help="Check embedding status")
-    parser.add_argument("--quiet", action="store_true", help="Suppress progress output")
     args = parser.parse_args()
 
     if args.verify:

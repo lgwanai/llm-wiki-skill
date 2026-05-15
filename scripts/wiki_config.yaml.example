@@ -21,11 +21,6 @@ llm:
   model: "deepseek-v4-flash"
   temperature: 0.3
 
-embeddings:
-  provider: ollama
-  base_url: "http://localhost:11434"
-  model: "qwen3-embedding:8b"
-
 # --- Wiki behavior ---
 
 hooks:
