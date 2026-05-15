@@ -27,6 +27,18 @@ def _load_json(path: str) -> dict | list:
         return {} if 'entities' in path else {'edges': []}
 
 
+def _load_json_safe(path, default):
+    """Load JSON, returning default for missing/corrupt files."""
+    path_str = str(path)
+    if not os.path.exists(path_str):
+        return default
+    try:
+        with open(path_str, encoding='utf-8') as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return default
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
