@@ -1,7 +1,7 @@
 from __future__ import annotations
 """_llm_extract.py — LLM-based entity and relationship extraction.
 
-Loads configuration from wiki_config.yaml. Calls a remote LLM API
+Configuration: see ../wiki_config.yaml
 (OpenAI-compatible) to extract structured knowledge from source text.
 
 Entity types and relationship types are defined in .wiki/schema.md.
@@ -16,7 +16,7 @@ from pathlib import Path
 import requests
 import yaml
 
-CONFIG_PATH = Path(__file__).parent / "wiki_config.yaml"
+CONFIG_PATH = Path(__file__).parent.parent / "wiki_config.yaml"
 WIKI_DIR = Path(__file__).parent.parent / ".wiki"
 SCHEMA_PATH = WIKI_DIR / "schema.md"
 

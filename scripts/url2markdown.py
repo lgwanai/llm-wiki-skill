@@ -6,8 +6,8 @@ Workflow:
 1. Use lightpanda to fetch HTML from URL (with --dump html)
 2. Use local LLM API (jinaai-ReaderLM-v2) to convert HTML to Markdown
 
-Configuration is loaded from scripts/wiki_config.yaml (readerlm section).
-Copy scripts/wiki_config.yaml.example to scripts/wiki_config.yaml and edit.
+Configuration is loaded from wiki_config.yaml (project root, readerlm section).
+Copy wiki_config.yaml.example to wiki_config.yaml and edit.
 Command-line flags override config file values.
 
 Usage:
@@ -26,8 +26,8 @@ from pathlib import Path
 
 
 def _load_config() -> dict:
-    """Load configuration from wiki_config.yaml, returning defaults if missing."""
-    config_path = Path(__file__).parent / "wiki_config.yaml"
+    """Load configuration from wiki_config.yaml (project root)."""
+    config_path = Path(__file__).parent.parent / "wiki_config.yaml"
     if not config_path.exists():
         return {}
     try:
@@ -49,7 +49,7 @@ def _get_api_key() -> str:
     key = READERLM.get("api_key") or os.environ.get("READERLM_API_KEY")
     if not key:
         raise RuntimeError(
-            "API key not configured. Set readerlm.api_key in scripts/wiki_config.yaml "
+            "API key not configured. Set readerlm.api_key in wiki_config.yaml "
             "or set READERLM_API_KEY environment variable."
         )
     return key

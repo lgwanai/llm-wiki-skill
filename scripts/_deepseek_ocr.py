@@ -7,7 +7,7 @@ Two-pass per page:
   3. Merge — insert cropped image references at correct Y-coordinate positions
 
 Coordinate system: 999×999 model space → pixel space.
-Configuration: see ocr_config.yaml
+Configuration: see ../wiki_config.yaml
 
 Usage:
     from _deepseek_ocr import DeepSeekOCR
@@ -40,7 +40,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 MODEL_SIZE = 999
-CONFIG_PATH = Path(__file__).parent / "wiki_config.yaml"
+CONFIG_PATH = Path(__file__).parent.parent / "wiki_config.yaml"
 
 GROUNDING_PROMPT = "<|grounding|>识别图片中所有元素，标注准确位置坐标。"
 OCR_PROMPT = "识别图片中的所有文字内容，数学公式用LaTeX格式输出。"

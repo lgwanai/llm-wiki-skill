@@ -59,7 +59,7 @@ def extract_edge_type(line: str) -> str:
             return rel_type
     return "relates_to"
 
-CONFIG_PATH = Path(__file__).parent / "wiki_config.yaml"
+CONFIG_PATH = Path(__file__).parent.parent / "wiki_config.yaml"
 WIKI_DIR = Path(__file__).parent.parent / ".wiki"
 PAGES_DIR = WIKI_DIR / "pages"
 ENTITIES_DIR = PAGES_DIR / "entities"

@@ -77,7 +77,7 @@ $ python3 scripts/wiki.py query "What is DeepSeek-V4's architecture?"
 python3 scripts/wiki.py init
 
 # 配置（编辑 API key）
-cp scripts/wiki_config.yaml.example scripts/wiki_config.yaml
+cp wiki_config.yaml.example wiki_config.yaml
 
 # 编译第一个源文档
 python3 scripts/wiki.py compile source.md

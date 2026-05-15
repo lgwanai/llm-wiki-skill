@@ -34,7 +34,7 @@ htmlcov/
 .env.local
 
 # Configuration files with secrets (MUST NOT be committed)
-scripts/wiki_config.yaml
+wiki_config.yaml
 *.secret.*
 *.local.yaml
 

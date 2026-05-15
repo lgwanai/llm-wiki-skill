@@ -21,7 +21,7 @@ import yaml
 
 WIKI_DIR = Path(__file__).parent.parent / ".wiki"
 PAGES_DIR = WIKI_DIR / "pages"
-CONFIG_PATH = Path(__file__).parent / "wiki_config.yaml"
+CONFIG_PATH = Path(__file__).parent.parent / "wiki_config.yaml"
 
 
 def load_config():
