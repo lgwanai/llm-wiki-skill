@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Ollama embedding utilities for llm-wiki vector search.
 
 Uses Ollama's /api/embeddings endpoint with Qwen3-Embedding-8B-4bit-DWQ.

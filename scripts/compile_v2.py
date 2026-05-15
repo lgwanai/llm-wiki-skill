@@ -257,7 +257,6 @@ Output pages separated by ===PAGE_END==="""
 
         frontmatter_text = "\n".join(lines[1:frontmatter_end])
         try:
-            import yaml
             frontmatter = yaml.safe_load(frontmatter_text)
         except:
             continue

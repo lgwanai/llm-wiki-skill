@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """_agensgraph.py — Optional AgensGraph database integration for llm-wiki.
 
 AgensGraph is a multi-model database (graph + relational) based on PostgreSQL.
@@ -32,7 +33,7 @@ import sys
 AGENSGRAPH_HOST = os.environ.get("AGENSGRAPH_HOST", "localhost")
 AGENSGRAPH_PORT = int(os.environ.get("AGENSGRAPH_PORT", "5433"))
 AGENSGRAPH_USER = os.environ.get("AGENSGRAPH_USER", "wuliang")
-AGENSGRAPH_PASSWORD = os.environ.get("AGENSGRAPH_PASSWORD", "lingtingt")
+AGENSGRAPH_PASSWORD = os.environ.get("AGENSGRAPH_PASSWORD", "")
 AGENSGRAPH_DB = os.environ.get("AGENSGRAPH_DB", "wuliang")
 
 

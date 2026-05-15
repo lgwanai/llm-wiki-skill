@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """_qdrant.py — Optional Qdrant vector database integration for llm-wiki.
 
 Provides persistent vector storage with:

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """search.py — Hybrid Search over Wiki Pages for llm-wiki."""
 
 import argparse

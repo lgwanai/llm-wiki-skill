@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """lint.py — Wiki Quality Linter for llm-wiki."""
 
 import argparse

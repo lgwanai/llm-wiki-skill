@@ -1,3 +1,4 @@
+from __future__ import annotations
 """_deepseek_ocr.py — DeepSeek-OCR client with image extraction pipeline.
 
 Two-pass per page:

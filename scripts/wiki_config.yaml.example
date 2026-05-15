@@ -1,28 +1,59 @@
-# Wiki pipeline configuration — EXAMPLE FILE
-# Copy to wiki_config.yaml and fill in your own keys:
+# Wiki configuration — the single canonical config file
+#   scripts/wiki_config.yaml (this file)
+#
+# Copy from the template if you don't have one:
 #   cp scripts/wiki_config.yaml.example scripts/wiki_config.yaml
 #
-# wiki_config.yaml is in .gitignore — never commit real keys to git.
+# wiki_config.yaml is in .gitignore — never commit real keys.
 
-# OCR: local DeepSeek-OCR service for document processing (PDF, images)
-# Replace with your own OCR service URL and API key
+# --- Pipeline backends ---
+
 ocr:
   api_url: "http://127.0.0.1:12345/v1/chat/completions"
-  api_key: "your-ocr-api-key-here"
+  api_key: "your-ocr-api-key"
   model: "DeepSeek-OCR-4bit"
   pdf_dpi: 150
 
-# LLM: remote API for entity extraction and knowledge compilation
-# Replace with your own provider, API key, and model
 llm:
-  api_key: "sk-your-api-key-here"
+  provider: deepseek
+  api_key: "your-llm-api-key"
   base_url: "https://api.deepseek.com"
   model: "deepseek-v4-flash"
   temperature: 0.3
 
-# ReaderLM: HTML-to-Markdown conversion service (used by url2markdown.py)
-# Same server as OCR typically, different model
-readerlm:
-  api_base: "http://127.0.0.1:12345"
-  api_key: "your-readerlm-api-key-here"
-  model: "jinaai-ReaderLM-v2"
+embeddings:
+  provider: ollama
+  base_url: "http://localhost:11434"
+  model: "qwen3-embedding:8b"
+
+# --- Wiki behavior ---
+
+hooks:
+  on_new_source: {enabled: true, auto_ingest: true}
+  on_session_end: {enabled: true, auto_crystallize: true}
+
+retention:
+  architecture: {half_life_days: 180}
+  project: {half_life_days: 130}
+  bug: {half_life_days: 20}
+  meeting: {half_life_days: 10}
+  pattern: {half_life_days: 87}
+  preference: {half_life_days: 527}
+
+quality:
+  auto_heal: true
+  min_score: 0.4
+
+# --- Optional production-scale backends ---
+# Uncomment to enable:
+
+# qdrant:
+#   url: "http://localhost:6333"
+#   api_key: ""
+
+# agensgraph:
+#   host: "localhost"
+#   port: 5433
+#   user: "wuliang"
+#   password: "lingtingt"
+#   database: "wuliang"

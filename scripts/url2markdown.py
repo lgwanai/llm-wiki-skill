@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """url2markdown.py — Convert URL content to Markdown via Lightpanda + ReaderLM.
 
 Workflow:
@@ -251,16 +252,14 @@ def _main() -> None:
 
     args = parser.parse_args()
 
-    markdown = url_to_markdown(
-        args.url,
-        timeout=args.timeout,
-        api_base=args.api_base,
-        api_key=args.api_key,
-        model=args.model,
-    )
-
     try:
-        markdown = url_to_markdown(args.url, timeout=args.timeout)
+        markdown = url_to_markdown(
+            args.url,
+            timeout=args.timeout,
+            api_base=args.api_base,
+            api_key=args.api_key,
+            model=args.model,
+        )
 
         if args.output:
             os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)

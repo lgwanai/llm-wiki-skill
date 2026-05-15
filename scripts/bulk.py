@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """bulk.py — Bulk Operations for LLM Wiki v2.
 
 Operations:

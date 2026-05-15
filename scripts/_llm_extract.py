@@ -1,3 +1,4 @@
+from __future__ import annotations
 """_llm_extract.py — LLM-based entity and relationship extraction.
 
 Loads configuration from wiki_config.yaml. Calls a remote LLM API
