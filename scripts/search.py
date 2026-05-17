@@ -22,6 +22,89 @@ GRAPH_DIR = WIKI_DIR / "graph"
 ENTITIES_FILE = os.path.join(GRAPH_DIR, "entities.json")
 EDGES_FILE = os.path.join(GRAPH_DIR, "edges.json")
 
+# ── Module-level caches (cleared when pages change) ──
+_cache_marker: tuple[int, float] | None = None  # (file_count, latest_mtime)
+_entities_cache: dict | None = None
+_edges_cache: dict | list | None = None
+_bm25_index: dict | None = None
+_BM25_CACHE_FILE = WIKI_DIR / "graph" / ".bm25_index.json"
+
+
+def _pages_changed() -> bool:
+    """Check if any wiki page has been modified since last cache build."""
+    global _cache_marker
+    count = 0
+    latest_mtime = 0.0
+    for subdir in ('concepts', 'entities', 'models', 'techniques', 'frameworks',
+                   'benchmarks', 'papers', 'decisions', 'sessions', 'patterns'):
+        scan_dir = PAGES_DIR / subdir
+        if not scan_dir.is_dir():
+            continue
+        for f in scan_dir.iterdir():
+            if f.suffix == '.md':
+                count += 1
+                mtime = f.stat().st_mtime
+                if mtime > latest_mtime:
+                    latest_mtime = mtime
+    marker = (count, latest_mtime)
+    if _cache_marker != marker:
+        _cache_marker = marker
+        return True
+    return False
+
+
+def _save_bm25_cache(idx: dict) -> None:
+    """Persist BM25 index to disk (survives process restarts)."""
+    try:
+        serializable = {}
+        for path, data in idx.items():
+            serializable[path] = {
+                "tokens": data["tokens"],
+                "freqs": dict(data["freqs"]),
+                "length": data["length"],
+            }
+        _BM25_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _BM25_CACHE_FILE.write_text(json.dumps(serializable, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _load_bm25_cache() -> dict | None:
+    """Load BM25 index from disk if it exists and pages haven't changed."""
+    if _pages_changed() or not _BM25_CACHE_FILE.exists():
+        return None
+    try:
+        data = json.loads(_BM25_CACHE_FILE.read_text(encoding="utf-8"))
+        result = {}
+        for path, d in data.items():
+            result[path] = {
+                "tokens": d["tokens"],
+                "freqs": Counter(d["freqs"]),
+                "length": d["length"],
+            }
+        return result
+    except (json.JSONDecodeError, OSError, KeyError):
+        return None
+
+
+def _load_entities() -> dict:
+    global _entities_cache
+    if _entities_cache is not None and not _pages_changed():
+        return _entities_cache
+    _entities_cache = _load_json(ENTITIES_FILE) if os.path.exists(ENTITIES_FILE) else {}
+    if not isinstance(_entities_cache, dict):
+        _entities_cache = {}
+    return _entities_cache
+
+
+def _load_edges() -> list:
+    global _edges_cache
+    if _edges_cache is not None and not _pages_changed():
+        return _edges_cache
+    data = _load_json(EDGES_FILE)
+    _edges_cache = data.get('edges', []) if isinstance(data, dict) else []
+    return _edges_cache
+
 
 def _load_json(path: str) -> dict | list:
     if not os.path.exists(path):
@@ -98,52 +181,57 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
 
 
 def bm25_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
-    """BM25 keyword search with stemming over wiki pages."""
+    """BM25 keyword search with stemming over wiki pages. Uses index cache."""
+    global _bm25_index
     k1, b = 1.5, 0.75
     query_terms = [_stem(t) for t in _tokenize(query)]
-
-    # Collect all pages
-    all_docs: dict[str, str] = {}
-    for subdir in ('concepts', 'entities', 'models', 'techniques', 'frameworks',
-                   'benchmarks', 'papers', 'decisions', 'sessions', 'patterns'):
-        scan_dir = os.path.join(pages_dir, subdir)
-        if not os.path.isdir(scan_dir):
-            continue
-        for filename in os.listdir(scan_dir):
-            if filename.endswith('.md'):
-                filepath = os.path.join(scan_dir, filename)
-                all_docs[filepath] = _read_page_content(filepath)
-
-    if not all_docs or not query_terms:
+    if not query_terms:
         return []
 
-    # Compute document lengths and term frequencies
-    doc_lengths: dict[str, int] = {}
-    doc_term_freqs: dict[str, Counter] = {}
-    total_length = 0
-
-    for path, content in all_docs.items():
-        tokens = [_stem(t) for t in _tokenize(content)]
-        doc_lengths[path] = len(tokens)
-        doc_term_freqs[path] = Counter(tokens)
-        total_length += len(tokens)
-
-    avg_dl = total_length / len(all_docs) if all_docs else 1
-    num_docs = len(all_docs)
-    doc_freq: Counter = Counter()
-
-    for tf in doc_term_freqs.values():
-        doc_freq.update(set(tf.keys()))
-
-    # Score each document
-    scores: list[tuple[str, float]] = []
-    for path, tf in doc_term_freqs.items():
-        score = 0.0
-        dl = doc_lengths[path]
-        for term in query_terms:
-            if term not in tf:
+    # Build or reuse cached index (disk-backed for cross-process persistence)
+    if _bm25_index is None:
+        _bm25_index = _load_bm25_cache()
+    if _bm25_index is None:
+        _bm25_index = {}
+        for subdir in ('concepts', 'entities', 'models', 'techniques', 'frameworks',
+                       'benchmarks', 'papers', 'decisions', 'sessions', 'patterns'):
+            scan_dir = os.path.join(pages_dir, subdir)
+            if not os.path.isdir(scan_dir):
                 continue
-            f = tf[term]
+            for filename in os.listdir(scan_dir):
+                if not filename.endswith('.md'):
+                    continue
+                filepath = os.path.join(scan_dir, filename)
+                content = _read_page_content(filepath)
+                tokens = [_stem(t) for t in _tokenize(content)]
+                if tokens:
+                    _bm25_index[filepath] = {
+                        "tokens": tokens,
+                        "freqs": Counter(tokens),
+                        "length": len(tokens),
+                    }
+        _save_bm25_cache(_bm25_index)
+
+    if not _bm25_index:
+        return []
+
+    num_docs = len(_bm25_index)
+    total_length = sum(d["length"] for d in _bm25_index.values())
+    avg_dl = total_length / num_docs if num_docs else 1
+
+    # Compute IDF from index
+    doc_freq: Counter = Counter()
+    for idx in _bm25_index.values():
+        doc_freq.update(set(idx["freqs"].keys()))
+
+    scores: list[tuple[str, float]] = []
+    for path, idx in _bm25_index.items():
+        score = 0.0
+        dl = idx["length"]
+        for term in query_terms:
+            f = idx["freqs"].get(term, 0)
+            if f == 0:
+                continue
             df = doc_freq.get(term, 0)
             idf = math.log((num_docs - df + 0.5) / (df + 0.5) + 1.0)
             score += idf * (f * (k1 + 1)) / (f + k1 * (1 - b + b * dl / avg_dl))
@@ -229,11 +317,10 @@ def _jaccard_fallback(query: str, pages_dir: str, limit: int = 10) -> list[dict]
 
 def graph_search(query: str, graph_dir: str, limit: int = 10) -> list[dict]:
     """Entity-aware graph traversal search."""
-    entities_data = _load_json(ENTITIES_FILE)
-    edges_data = _load_json(EDGES_FILE)
-    all_edges = edges_data.get('edges', []) if isinstance(edges_data, dict) else []
+    entities_data = _load_entities()
+    all_edges = _load_edges()
 
-    if not isinstance(entities_data, dict) or not entities_data:
+    if not entities_data:
         return []
 
     query_lower = query.lower()

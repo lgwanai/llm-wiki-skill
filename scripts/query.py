@@ -145,17 +145,10 @@ def search_wiki(query: str, limit: int = 5) -> list[dict]:
             return results[:limit]
 
     # 4. Entity name fallback (substring match against entities.json)
-    entities_file = WIKI_DIR / "graph" / "entities.json"
-    entities: dict = {}
-    if entities_file.exists():
-        try:
-            entities = json.loads(entities_file.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            entities = {}
-
+    entities = _get_entities()
     results = []
     seen = set()
-    if isinstance(entities, dict):
+    if entities:
         query_lower = query.lower()
         for eid, data in entities.items():
             if eid in seen:
@@ -179,16 +172,30 @@ def search_wiki(query: str, limit: int = 5) -> list[dict]:
     return results[:limit]
 
 
+_entities_cache: dict | None = None
+
+
+def _get_entities() -> dict:
+    global _entities_cache
+    if _entities_cache is None:
+        entities_file = WIKI_DIR / "graph" / "entities.json"
+        if entities_file.exists():
+            try:
+                _entities_cache = json.loads(entities_file.read_text(encoding="utf-8"))
+                if not isinstance(_entities_cache, dict):
+                    _entities_cache = {}
+            except (json.JSONDecodeError, OSError):
+                _entities_cache = {}
+        else:
+            _entities_cache = {}
+    return _entities_cache
+
+
 def _infer_type(eid: str) -> str:
     """Infer entity type from ID or entities.json."""
-    entities_file = WIKI_DIR / "graph" / "entities.json"
-    if entities_file.exists():
-        try:
-            entities = json.loads(entities_file.read_text(encoding="utf-8"))
-            if isinstance(entities, dict) and eid in entities:
-                return entities[eid].get("type", "concept")
-        except (json.JSONDecodeError, OSError):
-            pass
+    entities = _get_entities()
+    if eid in entities:
+        return entities[eid].get("type", "concept")
     return "concept"
 
 
