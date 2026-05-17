@@ -46,18 +46,18 @@ KEYWORD_RELATION_MAP = [
     (r'(?i)\bpart\s+of\b.*?\[\[', 'part_of'),
     (r'(?i)\bimplemented\s+(?:by|via)\b.*?\[\[', 'implemented_by'),
     # Chinese patterns
-    (r'(?:使用|采用|利用|调用|借助)\s*\[\[', 'uses'),
+    (r'(?:使用|采用|利用|调用|借助|依据|通过)\s*\[\[', 'uses'),
     (r'(?:依赖|取决于|依赖于)\s*\[\[', 'depends_on'),
     (r'(?:扩展|继承|基于\s*)\s*\[\[', 'extends'),
-    (r'(?:改进|优化|提升)\s*\[\[', 'improves_upon'),
-    (r'(?:矛盾|冲突|不一致)\s*\[\[', 'contradicts'),
-    (r'(?:取代|替代|替换\s*掉)\s*\[\[', 'supersedes'),
-    (r'(?:导致|引起|造成|触发)\s*\[\[', 'caused_by'),
-    (r'(?:修复|解决|修正)\s*\[\[', 'fixed_by'),
-    (r'(?:替换|更换|换成)\s*\[\[', 'replaces'),
-    (r'(?:关联|相关|有关|涉及)\s*\[\[', 'relates_to'),
-    (r'(?:属于|组成部分|包含于)\s*\[\[', 'part_of'),
-    (r'(?:实现|实施|执行|落实)\s*\[\[', 'implemented_by'),
+    (r'(?:改进|优化|提升|增强)\s*\[\[', 'improves_upon'),
+    (r'(?:矛盾|冲突|不一致|违背)\s*\[\[', 'contradicts'),
+    (r'(?:取代|替代|替换\s*掉|淘汰)\s*\[\[', 'supersedes'),
+    (r'(?:导致|引起|造成|触发|引发)\s*\[\[', 'caused_by'),
+    (r'(?:修复|解决|修正|纠正)\s*\[\[', 'fixed_by'),
+    (r'(?:替换|更换|换成|切换)\s*\[\[', 'replaces'),
+    (r'(?:关联|相关|有关|涉及|对接|协作|配合|协调)\s*\[\[', 'relates_to'),
+    (r'(?:属于|组成部分|包含于|隶属于)\s*\[\[', 'part_of'),
+    (r'(?:实现|实施|执行|落实|负责|承担|主持)\s*\[\[', 'implemented_by'),
 ]
 
 
@@ -332,8 +332,13 @@ source: source-name
 ## 关键细节
 [具体细节，中文描述]
 
-## 关联关系
-- 使用/扩展/改进 [[其他实体]] — [中文简要说明]
+## 关联关系（必须用下列关键词开头！）
+- 使用 [[other]] — 说明
+- 依赖 [[other]] — 说明
+- 属于 [[other]] — 说明
+- 负责 [[other]] — 说明
+- 关联 [[other]] — 说明
+可选关键词：扩展、改进、取代、导致、修复、替换、实现、base、矛盾
 
 ## 来源上下文
 > [文档中文原文摘录]
@@ -379,8 +384,17 @@ Then the page content with sections:
 ## Key Details
 [Important details]
 
-## Relationships
-- uses/extends/improves [[other-entity]] — [brief explanation]
+## Relationships (MUST start with one of these keywords!)
+- uses [[other]] — explanation
+- depends on [[other]] — explanation
+- extends [[other]] — explanation
+- improves [[other]] — explanation
+- contradicts [[other]] — explanation
+- supersedes [[other]] — explanation
+- caused by [[other]] — explanation
+- fixed by [[other]] — explanation
+- part of [[other]] — explanation
+- relates to [[other]] — explanation
 
 ## Source Context
 > [Relevant excerpt from document]
