@@ -8,6 +8,26 @@
 
 # --- Pipeline backends ---
 
+# MinerU (default) — high-precision document parsing
+# Backends: pipeline (CPU, 85+ accuracy) | hybrid-auto-engine (GPU, 95+)
+mineru:
+  backend: pipeline            # pipeline | hybrid-auto-engine | vlm-auto-engine
+  lang: ch                     # ch | en | korean | japan | ...
+  method: auto                 # auto | txt | ocr
+  formula: true                # Formula → LaTeX
+  table: true                  # Table → HTML
+  start_page:                  # Optional: start page (0-indexed)
+  timeout: 600                 # CLI timeout in seconds
+
+# PaddleOCR — PP-OCRv5 text recognition, 109 languages, doc unwarping
+paddleocr:
+  lang: ch                     # ch | en | korean | japan | ...
+  use_doc_orientation_classify: true   # Auto-rotate skewed documents
+  use_doc_unwarping: true              # Fix warped/curved pages
+  text_det_thresh: 0.3
+  text_rec_score_thresh: 0.5
+
+# DeepSeek-OCR — grounding + text extraction via API
 ocr:
   api_url: "http://127.0.0.1:12345/v1/chat/completions"
   api_key: "your-ocr-api-key"

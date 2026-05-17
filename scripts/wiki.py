@@ -106,7 +106,8 @@ def cmd_status() -> dict:
 
     edges_file = GRAPH_DIR / "edges.json"
     if edges_file.exists():
-        edges = json.loads(edges_file.read_text())
+        edges_data = json.loads(edges_file.read_text())
+        edges = edges_data.get("edges", edges_data) if isinstance(edges_data, dict) else edges_data
         edges_count = len(edges)
 
     return {

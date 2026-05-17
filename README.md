@@ -73,6 +73,9 @@ $ python3 scripts/wiki.py query "What is DeepSeek-V4's architecture?"
 ## 快速开始
 
 ```bash
+# 安装 MinerU（默认 OCR 引擎，PDF→Markdown，公式→LaTeX，表格→HTML）
+uv pip install -U "mineru[all]"
+
 # 初始化
 python3 scripts/wiki.py init
 
@@ -90,6 +93,31 @@ python3 scripts/wiki.py lint --auto-heal
 
 # 查看状态
 python3 scripts/wiki.py status
+```
+
+### OCR 后端
+
+三款 OCR 引擎随需切换，**MinerU 为默认**（效果最好，纯 CPU 可用）：
+
+| 后端 | 引擎 | 核心优势 | GPU 需求 |
+|------|------|---------|---------|
+| `mineru` ★ | MinerU 3.1 | 公式→LaTeX，表格→HTML，多栏排版，页眉页脚移除 | 无需（pipeline，4GB RAM） |
+| `paddle` | PaddleOCR 3.5 / PP-OCRv5 | 109 语言，文档纠偏/展平，方向校正 | 无需（CPU OK） |
+| `deepseek` | DeepSeek-OCR | Grounding 图像定位，图表裁剪 | GPU（vLLM）或 API |
+
+```bash
+# MinerU（默认）
+python3 scripts/ocr.py paper.pdf
+
+# PaddleOCR
+python3 scripts/ocr.py paper.pdf --backend paddle
+
+# DeepSeek-OCR
+python3 scripts/ocr.py paper.pdf --backend deepseek
+
+# PDF → Wiki 完整流程
+python3 scripts/ocr.py paper.pdf -o .wiki/source/paper/
+python3 scripts/wiki.py compile .wiki/source/paper/paper/auto/paper.md
 ```
 
 ---
@@ -185,8 +213,10 @@ llm-wiki-skill/
 │   ├── bulk.py                  # 批量操作：删除/导出/合并
 │   ├── generate_embeddings.py   # 向量嵌入生成
 │   ├── url2markdown.py          # URL → Markdown 转换
-│   ├── ocr.py                   # OCR 接口
-│   ├── _deepseek_ocr.py         # OCR 引擎（DeepSeek-OCR-4bit）
+│   ├── ocr.py                   # OCR 接口（3 后端：mineru / paddle / deepseek）
+│   ├── _mineru_ocr.py           # MinerU 引擎（公式→LaTeX，表格→HTML，纯 CPU）★
+│   ├── _paddle_ocr.py           # PaddleOCR 引擎（PP-OCRv5，109 语言，纠偏）★
+│   ├── _deepseek_ocr.py         # DeepSeek-OCR 引擎（grounding + 提取）
 │   ├── _llm_extract.py          # LLM 实体提取
 │   ├── _ollama.py               # 嵌入生成（Ollama）
 │   ├── _qdrant.py               # Qdrant 向量库（可选）
@@ -483,7 +513,19 @@ python3 -c "import json; print(json.dumps(json.load(open('.wiki/audit.json'))[-2
 所有配置集中在 `scripts/wiki_config.yaml.example`（复制为 `wiki_config.yaml` 后编辑）：
 
 ```yaml
-ocr:                          # OCR 服务（本地 DeepSeek-OCR）
+# OCR 后端（三选一，MinerU 为默认）
+mineru:                        # MinerU（默认）— 公式→LaTeX，表格→HTML，纯 CPU
+  backend: pipeline
+  lang: ch
+  formula: true
+  table: true
+
+paddleocr:                     # PaddleOCR — PP-OCRv5，109 语言，文档纠偏
+  lang: ch
+  use_doc_orientation_classify: true
+  use_doc_unwarping: true
+
+ocr:                            # DeepSeek-OCR — grounding + 提取
   api_url: "http://127.0.0.1:12345/v1/chat/completions"
   api_key: "your-ocr-api-key"
   model: "DeepSeek-OCR-4bit"

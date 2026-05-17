@@ -8,8 +8,16 @@ markitdown>=0.1      # Multi-format file → Markdown (PDF, DOCX, PPTX, XLSX, HT
 sentence-transformers>=2.2   # Embedding generation for vector search
 faiss-cpu>=1.7              # Vector index for similarity search
 
-# OCR (remote PaddleOCR-VL-1.5 API)
-PyMuPDF>=1.24               # PDF page rendering for OCR
+# OCR
+PyMuPDF>=1.24               # PDF page rendering (deepseek/paddle backends)
+
+# MinerU — high-precision PDF/DOCX/PPTX/XLSX/image parsing (default backend)
+# Install: uv pip install -U "mineru[all]"
+# mineru>=3.1  # Uncomment to enforce version
+
+# PaddleOCR — PP-OCRv5 text recognition, 109 languages
+# Install: pip install paddleocr paddlepaddle
+# paddleocr>=3.5  # Uncomment to enforce version
 
 # Development
 pytest>=7.0        # Testing framework

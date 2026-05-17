@@ -268,20 +268,19 @@ class DeepSeekOCR:
             if self._crop_and_save(pil_image, item["pixel_bbox"], page_dir / filename, item["is_formula"]):
                 item["crop_filename"] = filename
 
-        markdown_text = self._call_api(img_base64, OCR_PROMPT)
-        markdown_text = self._clean_grounding_markers(markdown_text)
-        markdown_text = self._convert_latex_format(markdown_text)
+        html_text = self._call_api(img_base64, OCR_PROMPT)
+        html_text = self._clean_grounding_markers(html_text)
+        html_text = self._convert_latex_format(html_text)
 
-        # Insert image references; formulas are already in the text via OCR
         elements_to_insert = [i for i in items if "crop_filename" in i and not i["is_formula"]]
         if elements_to_insert:
-            markdown_text = self._insert_images(
-                markdown_text, elements_to_insert, img_h, page_num + 1
+            html_text = self._insert_images(
+                html_text, elements_to_insert, img_h, page_num + 1
             )
 
         return {
             "page": page_num + 1,
-            "markdown": markdown_text,
+            "markdown": html_text,
             "image_items": image_items,
             "formula_items": formula_items,
             "total_items": len(items),

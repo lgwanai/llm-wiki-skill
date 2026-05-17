@@ -41,5 +41,8 @@ wiki_config.yaml
 # Wiki artifacts (generated, not committed)
 .wiki/
 
+# OCR test outputs
+tests/ai_innovation_ocr/
+
 # Claude Code
 .claude/cache/

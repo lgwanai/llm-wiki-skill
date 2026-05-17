@@ -88,7 +88,7 @@ def call_llm(system_prompt: str, user_content: str, config: dict) -> str:
     payload = {
         "model": llm.get("model", "deepseek-v4-flash"),
         "temperature": llm.get("temperature", 0.3),
-        "max_tokens": 32000,
+        "max_tokens": llm.get("max_tokens", 32000),
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
@@ -177,6 +177,20 @@ Find contradictions between existing and new content."""
         return []
 
 
+def detect_language(text: str) -> str:
+    """Detect if text is predominantly Chinese or English.
+
+    Returns 'zh' if Chinese characters exceed threshold, 'en' otherwise.
+    """
+    if not text:
+        return "en"
+    cjk_count = sum(1 for c in text if '\u4e00' <= c <= '\u9fff' or '\u3400' <= c <= '\u4dbf')
+    total = len(text)
+    if total > 0 and cjk_count / total > 0.08:
+        return "zh"
+    return "en"
+
+
 def compile_source(source_path: str, force: bool = False) -> dict:
 
     if not os.path.exists(source_path):
@@ -190,9 +204,76 @@ def compile_source(source_path: str, force: bool = False) -> dict:
     source_name = os.path.basename(source_path)
     config = load_config()
 
-    print(f"Compiling {source_name} ({len(content)} chars)...", file=sys.stderr)
+    lang = detect_language(content)
 
-    system_prompt = """You are a wiki builder. Your job is to read a document and write wiki pages.
+    print(f"Compiling {source_name} ({len(content)} chars, {lang})...", file=sys.stderr)
+
+    if lang == "zh":
+        system_prompt = """你是 Wiki 构建助手。你必须用中文撰写所有内容。
+
+## 实体 vs 概念（最重要！）
+Karpathy 的 Wiki 设计区分两类页面：
+- **entity（实体）**：具体的、可指认的事物。如组织架构、评审组、某个人、某个奖项。
+- **concept（概念）**：抽象的、通用的思想。如"AI for Value 理念"、"数字化转 型战略"。
+
+一个文档中通常 60% 是 entity，40% 是 concept。不要把一切归类为 concept。
+
+## 关键要求
+- id 和 name 都用中文（如 id: 评审标准, name: 评审标准）
+- 所有标题用中文：概述、关键细节、关联关系、来源上下文
+- 所有描述用中文撰写
+- 文件名即为 id，所以 id 必须用中文
+
+## Output Format
+用 ===PAGE_END=== 分隔每个页面。
+
+每个页面必须包含 YAML frontmatter：
+---
+id: 中文ID
+type: entity|concept|process|rule|role|event
+name: 中文名称
+confidence: 0.85
+source: source-name
+---
+
+然后按以下中文结构撰写内容：
+# [中文标题]
+
+## 概述
+[2-4 句中文描述：这是什么，为什么重要]
+
+## 关键细节
+[具体细节，中文描述]
+
+## 关联关系
+- 使用/扩展/改进 [[其他实体]] — [中文简要说明]
+
+## 来源上下文
+> [文档中文原文摘录]
+
+## 质量规则
+- 每个文档提取 10-20 个重要页面
+- 正确分类：具体事物→entity/role/event，抽象思想→concept，步骤→process，标准→rule
+- entity 和 concept 的比例应大致为 6:4
+- 描述要详实（不能只有一句话）
+- 包含原文摘录
+
+## 实体类型
+- entity: 具体实体 — 组织、团队、部门、项目、产品（如"信息技术委员会"、"大赛筹备组"）
+- concept: 核心概念/理念 — 抽象思想、价值观、战略方向（如"AI for Value 理念"）
+- process: 流程/机制 — 步骤、阶段、工作流、审批链（如"报名流程"、"评审流程"）
+- rule: 规则/标准 — 评审标准、参赛要求、合规条款（如"评审标准"、"作品要求"）
+- role: 角色/职责 — 岗位分工、责任范围（如"专家评审组"的职责描述）
+- event: 事件/活动 — 比赛、会议、里程碑、时间节点（如"路演答辩"、"颁奖典礼"）"""
+    else:
+        system_prompt = """You are a wiki builder. Your job is to read a document and write wiki pages.
+
+## Entity vs Concept (MOST IMPORTANT!)
+Karpathy's wiki design distinguishes two page types:
+- **entity**: Concrete, nameable things. Organizations, people, projects, products.
+- **concept**: Abstract ideas. Philosophies, mechanisms, strategies.
+
+A document typically has ~60% entities and ~40% concepts. Don't default everything to concept.
 
 ## Output Format
 Write pages separated by exactly this marker: ===PAGE_END===
@@ -200,7 +281,7 @@ Write pages separated by exactly this marker: ===PAGE_END===
 Each page must start with YAML frontmatter:
 ---
 id: entity-slug
-type: concept|model|technique|benchmark|paper|framework
+type: entity|concept|process|rule|role|event|model|technique|framework|benchmark|paper
 name: Display Name
 confidence: 0.85
 source: source-name
@@ -213,7 +294,7 @@ Then the page content with sections:
 [2-4 sentences: what it is, why it matters]
 
 ## Key Details
-[Important technical details]
+[Important details]
 
 ## Relationships
 - uses/extends/improves [[other-entity]] — [brief explanation]
@@ -223,6 +304,8 @@ Then the page content with sections:
 
 ## Quality Rules
 - Extract ONLY important entities (target 10-20 pages per document)
+- Classify correctly: concrete things→entity, abstract ideas→concept
+- ~60% entity, ~40% concept
 - Merge variants: DeepSeek-V3.2, DeepSeek-V3-2 → single page deepseek-v3.2
 - Use lowercase-hyphenated IDs: muon-optimizer, kv-cache
 - Title Case names: "Muon Optimizer", "KV Cache"
@@ -230,14 +313,31 @@ Then the page content with sections:
 - Include source excerpts
 
 ## Entity Types
-- concept: Core architecture/mechanism
-- model: AI model variants
-- technique: Training methods
-- benchmark: Evaluation datasets
-- framework: Infrastructure
-- paper: Publications"""
+- entity: Concrete things — people, orgs, teams, projects, products
+- concept: Abstract ideas — philosophies, mechanisms, strategies
+- process: Workflows — stages, procedures, pipelines
+- rule: Standards — criteria, requirements, compliance
+- role: Responsibilities — job functions, duty scopes
+- event: Activities — meetings, milestones, ceremonies
+- model: AI model variants (tech docs)
+- technique: Technical methods (tech docs)
+- framework: Infrastructure/platforms (tech docs)
+- benchmark: Evaluation datasets (tech docs)
+- paper: Publications (tech docs)"""
 
-    user_prompt = f"""Document: {source_name}
+    if lang == "zh":
+        user_prompt = f"""文档: {source_name}
+
+内容:
+{content}
+
+请用中文提取该文档中的关键实体和概念，撰写 Wiki 页面。所有内容（标题、描述、关系说明）必须用中文。
+
+关注点：核心概念、组织结构、流程机制、评估标准、参赛要求。
+目标：10-20 个高质量中文页面，内容详实且相互关联。
+用 ===PAGE_END=== 分隔每个页面。"""
+    else:
+        user_prompt = f"""Document: {source_name}
 
 Content:
 {content}
@@ -286,7 +386,9 @@ Output pages separated by ===PAGE_END==="""
         if not entity_id:
             continue
 
-        target_dir = CONCEPTS_DIR if entity_type in ["concept", "technique"] else ENTITIES_DIR
+        # Route to directories: concepts/ for abstract ideas, entities/ for concrete things
+        concept_types = {"concept", "technique", "model", "framework", "benchmark", "paper"}
+        target_dir = CONCEPTS_DIR if entity_type in concept_types else ENTITIES_DIR
         target_dir.mkdir(parents=True, exist_ok=True)
 
         page_path = target_dir / f"{entity_id}.md"
@@ -391,7 +493,8 @@ def update_graph(pages: list, source_name: str):
         entities = {}
 
     if edges_file.exists():
-        edges = json.loads(edges_file.read_text(encoding="utf-8"))
+        edges_data = json.loads(edges_file.read_text(encoding="utf-8"))
+        edges = edges_data.get("edges", edges_data) if isinstance(edges_data, dict) else edges_data
     else:
         edges = []
 

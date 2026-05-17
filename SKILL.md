@@ -172,12 +172,61 @@ Creates `.wiki/` directory structure with defaults.
 | `bulk.py` | Bulk delete/export/merge/clean/stats |
 | `generate_embeddings.py` | Vector embedding generation |
 | `url2markdown.py` | URL → Markdown conversion |
-| `ocr.py` | PDF/Image OCR |
+| `ocr.py` | PDF/Image OCR (3 backends: mineru, paddle, deepseek) |
+| `_mineru_ocr.py` | MinerU wrapper (formula→LaTeX, table→HTML, CPU OK) |
+| `_paddle_ocr.py` | PaddleOCR wrapper (PP-OCRv5, 109 languages, doc unwarping) |
 | `_ollama.py` | Ollama embeddings (qwen3-embedding:8b) |
 | `_qdrant.py` | Optional Qdrant vector database |
 | `_agensgraph.py` | Optional AgensGraph graph database |
 
 Dependencies: `query.py` → `search.py` → `graph.py` | `consolidate.py` → `crystallize.py`
+
+## OCR Backends
+
+The OCR pipeline supports three pluggable backends, with **MinerU as the default**.
+
+| Backend | Engine | Strengths | GPU Required |
+|---------|--------|-----------|-------------|
+| `mineru` (default) | MinerU 3.1 | Formula→LaTeX, table→HTML, multi-column, header removal, all doc formats | No (pipeline, 4GB RAM) |
+| `paddle` | PaddleOCR 3.5 / PP-OCRv5 | 109 languages, doc unwarping, orientation correction, fast | No (CPU OK) |
+| `deepseek` | DeepSeek-OCR | Grounding + text extraction, image/figure cropping | GPU (vLLM) or API |
+
+### MinerU (Default)
+
+```bash
+# OCR a PDF (default)
+python3 scripts/ocr.py document.pdf
+
+# With output directory
+python3 scripts/ocr.py document.pdf -o results/
+
+# Feed into wiki compilation
+python3 scripts/ocr.py paper.pdf -o .wiki/source/paper/
+python3 scripts/wiki.py compile .wiki/source/paper/paper/auto/paper.md
+```
+
+Configure via `wiki_config.yaml`:
+```yaml
+mineru:
+  backend: pipeline          # pipeline (CPU) | hybrid-auto-engine (GPU)
+  lang: ch
+  formula: true
+  table: true
+```
+
+### PaddleOCR
+
+```bash
+python3 scripts/ocr.py document.pdf --backend paddle
+```
+
+Configure via `wiki_config.yaml`:
+```yaml
+paddleocr:
+  lang: ch
+  use_doc_orientation_classify: true
+  use_doc_unwarping: true
+```
 
 ## Knowledge Lifecycle
 

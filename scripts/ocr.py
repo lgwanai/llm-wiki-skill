@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
-"""ocr.py — Image & PDF OCR using DeepSeek-OCR.
+"""ocr.py — Image & PDF OCR with pluggable backends.
+
+Backends:
+    mineru  (default): MinerU — high-precision parsing, formula→LaTeX, table→HTML, CPU OK.
+    paddle:            PaddleOCR — PP-OCRv5, 109 languages, doc unwarping.
+    deepseek:          DeepSeek-OCR — grounding + text extraction, local/remote API.
 
 Usage:
-    python ocr.py image.png                     # OCR single image → stdout
-    python ocr.py document.pdf                  # Full pipeline: grounding + text + image extraction → output.md
-    python ocr.py document.pdf -o results/      # Specify output directory
-    python ocr.py document.pdf -n 10            # Process first 10 pages only
-    python ocr.py --batch screenshots/          # Batch process directory
+    python ocr.py document.pdf                        # Default: MinerU
+    python ocr.py document.pdf --backend paddle       # PaddleOCR
+    python ocr.py document.pdf --backend deepseek     # DeepSeek-OCR
+    python ocr.py document.pdf -o results/            # Output directory
+    python ocr.py --batch screenshots/                # Batch process
 """
 
 import argparse
@@ -16,17 +21,26 @@ import sys
 from pathlib import Path
 
 from _deepseek_ocr import DeepSeekOCR
+from _mineru_ocr import MinerUOCR
+from _paddle_ocr import PaddleOCRWrapper
 
 
 def main():
-    parser = argparse.ArgumentParser(description="DeepSeek-OCR — Image & PDF OCR")
+    parser = argparse.ArgumentParser(description="Multi-backend OCR — Image & PDF OCR")
     parser.add_argument("file", nargs="?", help="Image or PDF file path")
+    parser.add_argument("--backend", choices=["mineru", "paddle", "deepseek"], default="mineru",
+                        help="OCR backend (default: mineru)")
     parser.add_argument("--batch", help="Process all images/PDFs in a directory")
     parser.add_argument("-o", "--output", help="Output directory for PDF results")
     parser.add_argument("-n", "--max-pages", type=int, help="Maximum pages to process")
     args = parser.parse_args()
 
-    ocr = DeepSeekOCR.from_config()
+    if args.backend == "mineru":
+        ocr = MinerUOCR.from_config()
+    elif args.backend == "paddle":
+        ocr = PaddleOCRWrapper.from_config()
+    else:
+        ocr = DeepSeekOCR.from_config()
 
     if args.batch:
         if not os.path.isdir(args.batch):
