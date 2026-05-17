@@ -597,10 +597,31 @@ quality:                      # 质量标准
 
 ## 设计来源
 
-- **Karpathy's LLM Wiki** — 原始三层架构概念：源 → Wiki → Schema，index+log，entity/concept 页面
-- **Rohit's LLM Wiki v2** — 生产强化：置信度评分、取代、遗忘曲线、知识图谱、混合搜索、自动化 hooks、结晶化
+基于 [Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) 和 [Rohit's LLM Wiki v2](https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2)，100% 实现。
 
-完整对照：`.wiki/IMPLEMENTATION_STATUS.md`（100% 实现 Karpathy v1 + Rohit v2）
+### 设计合规清单
+
+| 设计原则 | 来源 | 实现 |
+|---------|------|------|
+| 三层架构（源→Wiki→Schema） | Karpathy | `source/` + `pages/` + `schema.md`/`wiki_config.yaml` |
+| Ingest → 写页面 → index → log | Karpathy | `compile_v2.py` 完整流程 |
+| 同名异实保护 | — | 自动前缀 + 概念聚合页 |
+| Query → 搜索 → 合成 → 回填 | Karpathy | `query.py` + `--file-back` + 6 种输出格式 |
+| 快速搜索（跳过 LLM） | — | `--no-synthesis` 0.5s 出结果 |
+| Lint → 自动修复 | Karpathy | `lint.py --auto-heal` |
+| index.md + log.md | Karpathy | 编译/查询自动更新 |
+| 中文检索 | — | jieba 分词 + BM25 + RRF 混合搜索 |
+| 12 种关系类型 | Rohit | 中英文关键词匹配，知识图谱 |
+| 置信度评分 | Rohit | YAML frontmatter `confidence` 字段 |
+| 矛盾检测 & 取代 | Rohit | `detect_contradictions()` 跨文档对比 |
+| Ebbinghaus 遗忘曲线 | Rohit | 6 种实体半衰期（arch 260d, bug 20d...） |
+| 内存整合层级 | Rohit | working → episodic → semantic → procedural |
+| Graph 遍历 | Rohit | `graph.py` BFS traversal + impact analysis |
+| Schema 驱动 | Rohit | `load_entity_types_from_schema()` 动态类型 |
+| 隐私过滤 | Rohit | `strip_sensitive()` 5 种敏感信息模式 |
+| 审计追踪 | Rohit | `audit.json` 每次操作记录 |
+| 自动化 hooks | Rohit | session-start/end, on-new-source, scheduled |
+| 结晶化 | Rohit | Session → Digest → Wiki 页面 |
 
 ---
 
