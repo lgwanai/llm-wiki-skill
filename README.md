@@ -143,6 +143,34 @@ python3 scripts/wiki.py compile .wiki/source/paper/paper/auto/paper.md
 └──────────────────────────────────────────────┘
 ```
 
+### 同名异实保护
+
+不同来源可能有同名实体（如两份方案都有「专家评审组」），直接覆盖会丢失信息。编译时自动检测跨文档冲突：
+
+```
+源 A（大赛方案）→ 专家评审组.md（成员: 张总、李总）
+源 B（课程方案）→ coursepl-专家评审组.md  ← 自动加前缀，不覆盖！
+                 → concepts/专家评审组.md   ← 自动创建概念聚合页
+```
+
+概念聚合页综合所有实例，列出通用模式和已知来源：
+
+```markdown
+# 专家评审组
+## 概述
+各类方案中常见的核心评审机构，负责作品筛选和打分...
+## 已知实例
+- [[专家评审组]] — AI 创新大赛，信息技术委员会主导，4维度评分
+- [[coursepl-专家评审组]] — 课程方案 B，教学处主导，5分制
+## 关键特征
+- 成员构成：通常混合内外部专家，人数 3-5 人...
+```
+
+**查询行为**：
+- 「专家评审组怎么构成？」→ 读概念页，跨文档综合回答
+- 「AI 大赛的专家有谁？」→ 精确命中 `专家评审组.md`
+- 「张总在哪个组？」→ 遍历所有 `*专家评审组*` 实例，找到包含「张总」的那个
+
 ### 三大操作
 
 ```bash
@@ -215,7 +243,7 @@ llm-wiki-skill/
 │   ├── url2markdown.py          # URL → Markdown 转换
 │   ├── ocr.py                   # OCR 接口（3 后端：mineru / paddle / deepseek）
 │   ├── _mineru_ocr.py           # MinerU 引擎（公式→LaTeX，表格→HTML，纯 CPU）★
-│   ├── _paddle_ocr.py           # PaddleOCR 引擎（PP-OCRv5，109 语言，纠偏）★
+│   ├── _paddle_ocr.py           # PaddleOCR 引擎（PP-OCRv5，109 语言，纠偏）
 │   ├── _deepseek_ocr.py         # DeepSeek-OCR 引擎（grounding + 提取）
 │   ├── _llm_extract.py          # LLM 实体提取
 │   ├── _ollama.py               # 嵌入生成（Ollama）
@@ -303,7 +331,8 @@ python3 scripts/compile_v2.py source.md --force
 **做了什么：**
 - LLM 读取源文档（敏感信息已在发送前自动脱敏：API keys、tokens、密码、邮箱）
 - 生成 10-15 个结构化 Wiki 页面（YAML frontmatter + Overview/Key Details/Relationships/Source Context）
-- 按类型分类存储：`concepts/`、`entities/`
+- 按类型分类存储：抽象概念→ `concepts/`，具体实体→ `entities/`
+- **同名异实保护**：不同来源的同名实体自动加前缀（如 `coursepl-专家评审组`），不覆盖；自动生成概念聚合页列出所有实例
 - 更新 `index.md`（按 Concepts / Techniques / Models / Frameworks / Benchmarks 分组）
 - 追加 `log.md`（`## [YYYY-MM-DD HH:MM UTC] compile | source-name`）
 - 构建知识图谱：实体 → `entities.json`，关系边 → `edges.json`（12 种类型）
