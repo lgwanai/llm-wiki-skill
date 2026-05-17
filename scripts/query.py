@@ -69,35 +69,127 @@ def call_llm(system_prompt: str, user_content: str, config: dict) -> str:
 
 
 def search_wiki(query: str, limit: int = 5) -> list[dict]:
-    results = []
+    """Hybrid search: BM25 + Graph + entities.json fallback, fused by RRF."""
+    all_streams: list[list[dict]] = []
 
+    # 1. BM25 keyword search (now supports Chinese via jieba)
     try:
         from search import bm25_search
-        results = bm25_search(query, str(PAGES_DIR), limit=limit)
+        bm25_results = bm25_search(query, str(PAGES_DIR), limit=limit * 2)
+        if bm25_results:
+            all_streams.append(bm25_results)
     except Exception:
         pass
 
-    if not results:
-        entities_file = WIKI_DIR / "graph" / "entities.json"
-        if entities_file.exists():
-            try:
-                entities = json.loads(entities_file.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                entities = {}
-            query_lower = query.lower()
-            for eid, data in entities.items():
-                if query_lower in eid.lower() or query_lower in data.get("name", "").lower():
-                    page_dir = "concepts" if data.get("type") in ["concept", "technique"] else "entities"
-                    page_path = PAGES_DIR / page_dir / f"{eid}.md"
-                    if page_path.exists():
-                        results.append({
-                            "path": str(page_path),
-                            "score": 0.9,
-                            "id": eid,
-                            "type": data.get("type"),
-                        })
+    # 2. Graph entity search
+    try:
+        from search import graph_search
+        graph_results = graph_search(query, str(WIKI_DIR / "graph"), limit=limit)
+        if graph_results:
+            # Convert graph results to BM25-compatible format
+            converted = []
+            for g in graph_results:
+                eid = g.get("entity_id", "")
+                page_dir = "concepts" if g.get("type") in ("concept", "technique", "model") else "entities"
+                page_path = PAGES_DIR / page_dir / f"{eid}.md"
+                if page_path.exists():
+                    converted.append({
+                        "file": eid,
+                        "path": str(page_path),
+                        "score": g.get("confidence", 0.5),
+                        "stream": "graph",
+                    })
+            if converted:
+                all_streams.append(converted)
+    except Exception:
+        pass
+
+    # 3. Fuse results with RRF if multiple streams
+    if len(all_streams) >= 2:
+        try:
+            from search import reciprocal_rank_fusion
+            fused = reciprocal_rank_fusion(all_streams)
+            results = []
+            seen = set()
+            for f in fused[:limit]:
+                path = f.get("path", "")
+                if path and path not in seen:
+                    seen.add(path)
+                    eid = f.get("file") or f.get("entity_id", "")
+                    results.append({
+                        "path": path,
+                        "score": f.get("rrf_score", 0),
+                        "id": eid,
+                        "type": _infer_type(eid),
+                    })
+            if results:
+                return results
+        except Exception:
+            pass
+    elif all_streams:
+        # Single stream — convert directly
+        results = []
+        seen = set()
+        for r in all_streams[0]:
+            path = r.get("path", "")
+            if path and path not in seen:
+                seen.add(path)
+                eid = r.get("file", "")
+                results.append({
+                    "path": path,
+                    "score": r.get("score", 0),
+                    "id": eid,
+                    "type": _infer_type(eid),
+                })
+        if results:
+            return results[:limit]
+
+    # 4. Entity name fallback (substring match against entities.json)
+    entities_file = WIKI_DIR / "graph" / "entities.json"
+    entities: dict = {}
+    if entities_file.exists():
+        try:
+            entities = json.loads(entities_file.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            entities = {}
+
+    results = []
+    seen = set()
+    if isinstance(entities, dict):
+        query_lower = query.lower()
+        for eid, data in entities.items():
+            if eid in seen:
+                continue
+            name = data.get("name", "")
+            if query_lower in eid.lower() or query_lower in name.lower() or any(
+                qt in name for qt in query_lower.split() if len(qt) >= 2
+            ):
+                etype = data.get("type", "")
+                page_dir = "concepts" if etype in ("concept", "technique", "model", "framework", "benchmark", "paper") else "entities"
+                page_path = PAGES_DIR / page_dir / f"{eid}.md"
+                if page_path.exists():
+                    seen.add(eid)
+                    results.append({
+                        "path": str(page_path),
+                        "score": 0.80,
+                        "id": eid,
+                        "type": etype,
+                    })
 
     return results[:limit]
+
+
+def _infer_type(eid: str) -> str:
+    """Infer entity type from ID or entities.json."""
+    entities_file = WIKI_DIR / "graph" / "entities.json"
+    if entities_file.exists():
+        try:
+            entities = json.loads(entities_file.read_text(encoding="utf-8"))
+            if isinstance(entities, dict) and eid in entities:
+                return entities[eid].get("type", "concept")
+        except (json.JSONDecodeError, OSError):
+            pass
+    return "concept"
 
 
 def read_page_content(page_path: str) -> str:

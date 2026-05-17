@@ -11,6 +11,11 @@ import re
 import sys
 from collections import Counter
 
+try:
+    import jieba
+except ImportError:
+    jieba = None
+
 WIKI_DIR = Path(__file__).parent.parent / ".wiki"
 PAGES_DIR = WIKI_DIR / "pages"
 GRAPH_DIR = WIKI_DIR / "graph"
@@ -51,12 +56,24 @@ def _read_page_content(filepath: str) -> str:
 
 
 def _tokenize(text: str) -> list[str]:
-    """Split text into lowercase word tokens."""
-    return re.findall(r'[a-z0-9]+', text.lower())
+    """Split text into tokens: jieba for Chinese, regex for English."""
+    tokens: list[str] = []
+    # Chinese tokenization via jieba
+    cjk_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+    if cjk_chars > 0 and jieba is not None:
+        tokens.extend(w for w in jieba.cut(text) if len(w.strip()) > 1)
+    else:
+        tokens.extend(re.findall(r'[a-z0-9]+', text.lower()))
+    # Also extract English tokens if CJK content is mixed with English
+    if cjk_chars > 0 and len(text) > cjk_chars * 1.5:
+        tokens.extend(re.findall(r'[a-z0-9]+', text.lower()))
+    return tokens
 
 
 def _stem(word: str) -> str:
-    """Simple Porter-style stemming (suffix stripping)."""
+    """Simple Porter-style stemming (suffix stripping). English only — CJK passed through."""
+    if any('\u4e00' <= c <= '\u9fff' for c in word):
+        return word
     if word.endswith('ing') and len(word) > 5:
         word = word[:-3]
     elif word.endswith('ed') and len(word) > 4:

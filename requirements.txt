@@ -5,6 +5,7 @@ numpy>=1.24          # Numerical operations, embedding math
 markitdown>=0.1      # Multi-format file → Markdown (PDF, DOCX, PPTX, XLSX, HTML, EPUB...)
 
 # Search (Level 5)
+jieba>=0.42                 # Chinese text segmentation for BM25/vector search
 sentence-transformers>=2.2   # Embedding generation for vector search
 faiss-cpu>=1.7              # Vector index for similarity search
 
