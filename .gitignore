@@ -46,3 +46,5 @@ tests/ai_innovation_ocr/
 
 # Claude Code
 .claude/cache/
+
+docs/
