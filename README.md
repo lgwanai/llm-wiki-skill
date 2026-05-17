@@ -180,9 +180,22 @@ python3 scripts/wiki.py compile source.md
 # 查询：搜索 Wiki → 合成答案 → （可选）回填
 python3 scripts/wiki.py query "What is X?" --file-back
 
+# 快速搜索：跳过 LLM 合成，0.5s 出结果
+python3 scripts/wiki.py query "专家评审组" --no-synthesis
+
 # 检查：健康扫描 → 自动修复
 python3 scripts/wiki.py lint --auto-heal
 ```
+
+### 查询模式
+
+| 模式 | 命令 | 耗时 | 输出 |
+|------|------|------|------|
+| 快速搜索 | `--no-synthesis` | 0.5s | 排名列表 + 相关片段（BM25 + Graph + RRF 融合） |
+| LLM 合成 | 默认 | 2.7s | 结构化答案 + 引用 + 关联推荐 |
+| 全局关闭 | `query.llm_synthesis: false` | 永久快速 | 配置文件中设置 |
+
+中文检索通过 jieba 分词支持，英文检索使用 BM25 + Porter 词干提取，双引擎自动切换。搜索索引缓存至磁盘（`.wiki/graph/.bm25_index.json`），页面变化时自动重建。
 
 ### 两个核心文件
 
