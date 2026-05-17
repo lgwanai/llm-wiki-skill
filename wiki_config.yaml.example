@@ -8,7 +8,9 @@
 
 # --- Pipeline backends ---
 
-# MinerU (default) — high-precision document parsing
+ocr_mode: mineru               # Default OCR backend: mineru | paddle | deepseek
+
+# MinerU — high-precision document parsing
 # Backends: pipeline (CPU, 85+ accuracy) | hybrid-auto-engine (GPU, 95+)
 mineru:
   backend: pipeline            # pipeline | hybrid-auto-engine | vlm-auto-engine

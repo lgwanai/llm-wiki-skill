@@ -20,16 +20,32 @@ import os
 import sys
 from pathlib import Path
 
+import yaml
+
 from _deepseek_ocr import DeepSeekOCR
 from _mineru_ocr import MinerUOCR
 from _paddle_ocr import PaddleOCRWrapper
+
+CONFIG_PATH = Path(__file__).parent.parent / "wiki_config.yaml"
+
+
+def _get_default_backend() -> str:
+    """Read ocr_mode from wiki_config.yaml, default to mineru."""
+    if CONFIG_PATH.exists():
+        try:
+            config = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
+            return config.get("ocr_mode", "mineru")
+        except Exception:
+            pass
+    return "mineru"
 
 
 def main():
     parser = argparse.ArgumentParser(description="Multi-backend OCR — Image & PDF OCR")
     parser.add_argument("file", nargs="?", help="Image or PDF file path")
-    parser.add_argument("--backend", choices=["mineru", "paddle", "deepseek"], default="mineru",
-                        help="OCR backend (default: mineru)")
+    parser.add_argument("--backend", choices=["mineru", "paddle", "deepseek"],
+                        default=_get_default_backend(),
+                        help=f"OCR backend (default: {_get_default_backend()})")
     parser.add_argument("--batch", help="Process all images/PDFs in a directory")
     parser.add_argument("-o", "--output", help="Output directory for PDF results")
     parser.add_argument("-n", "--max-pages", type=int, help="Maximum pages to process")
