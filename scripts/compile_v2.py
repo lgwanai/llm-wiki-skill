@@ -358,6 +358,14 @@ Output pages separated by ===PAGE_END==="""
     updated_pages = []
     contradictions_found = []
 
+    # Derive source abbreviation for entity ID prefix
+    import re as _re
+    src_stem = Path(source_name).stem
+    source_abbr = _re.sub(r'[^\u4e00-\u9fff\w]', '', src_stem)[:8].lower() or "doc"
+    concept_types = {"concept", "technique", "model", "framework", "benchmark", "paper"}
+    # Track which entity IDs need concept pages (base name → list of instance IDs)
+    concept_groups: dict[str, list[dict]] = {}
+
     for page_content in pages:
         page_content = page_content.strip()
         if not page_content or not page_content.startswith("---"):
@@ -386,12 +394,38 @@ Output pages separated by ===PAGE_END==="""
         if not entity_id:
             continue
 
-        # Route to directories: concepts/ for abstract ideas, entities/ for concrete things
-        concept_types = {"concept", "technique", "model", "framework", "benchmark", "paper"}
+        # Determine target directory
         target_dir = CONCEPTS_DIR if entity_type in concept_types else ENTITIES_DIR
         target_dir.mkdir(parents=True, exist_ok=True)
 
         page_path = target_dir / f"{entity_id}.md"
+
+        # ── 同名异实保护：如果已存在同名实体页（非 concept 类型），自动加前缀 ──
+        # 即使 force 模式也检测——force 只允许覆盖同源页面，不能覆盖跨源实体
+        if entity_type not in concept_types and page_path.exists():
+            existing_content = page_path.read_text(encoding="utf-8")
+            existing_source = ""
+            for line in existing_content.split("\n"):
+                if line.startswith("source:"):
+                    existing_source = line.replace("source:", "").strip()
+                    break
+            # If existing page is from a DIFFERENT source, prefix the new one
+            if existing_source and existing_source != source_name:
+                prefixed_id = f"{source_abbr}-{entity_id}"
+                page_path = ENTITIES_DIR / f"{prefixed_id}.md"
+                frontmatter["id"] = prefixed_id
+                page_lines = page_content.split("\n")
+                fm_start = page_lines.index("---")
+                fm_end = page_lines.index("---", fm_start + 1)
+                new_fm = yaml.dump(frontmatter, allow_unicode=True, default_flow_style=False).strip()
+                page_content = "---\n" + new_fm + "\n---\n" + "\n".join(page_lines[fm_end + 1:])
+
+                # Register for concept aggregation
+                base_name = entity_id
+                if base_name not in concept_groups:
+                    concept_groups[base_name] = []
+                concept_groups[base_name].append({"id": prefixed_id, "type": entity_type, "name": frontmatter.get("name", entity_id)})
+                print(f"  Conflict → prefixed: {prefixed_id}.md", file=sys.stderr)
 
         if page_path.exists() and not force:
             existing_content = page_path.read_text(encoding="utf-8")
@@ -408,31 +442,31 @@ Output pages separated by ===PAGE_END==="""
                     page_content += f"- **{ctype}** ({sev}): {existing} → {new}\n"
                 atomic_write(page_path, page_content)
                 updated_pages.append({
-                    "id": entity_id,
+                    "id": frontmatter.get("id", entity_id),
                     "type": entity_type,
                     "name": frontmatter.get("name", entity_id),
                     "path": str(page_path),
                     "contradictions": len(contradictions),
                 })
-                print(f"  Updated: {entity_id}.md ({len(contradictions)} contradictions)", file=sys.stderr)
+                print(f"  Updated: {Path(page_path).name} ({len(contradictions)} contradictions)", file=sys.stderr)
             else:
                 atomic_write(page_path, page_content)
                 updated_pages.append({
-                    "id": entity_id,
+                    "id": frontmatter.get("id", entity_id),
                     "type": entity_type,
                     "name": frontmatter.get("name", entity_id),
                     "path": str(page_path),
                 })
-                print(f"  Updated: {entity_id}.md (reinforced)", file=sys.stderr)
+                print(f"  Updated: {Path(page_path).name} (reinforced)", file=sys.stderr)
         else:
             atomic_write(page_path, page_content)
             created_pages.append({
-                "id": entity_id,
+                "id": frontmatter.get("id", entity_id),
                 "type": entity_type,
                 "name": frontmatter.get("name", entity_id),
                 "path": str(page_path),
             })
-            print(f"  Created: {entity_id}.md ({entity_type})", file=sys.stderr)
+            print(f"  Created: {Path(page_path).name} ({entity_type})", file=sys.stderr)
 
     all_pages = created_pages + updated_pages
     if not all_pages:
@@ -440,6 +474,110 @@ Output pages separated by ===PAGE_END==="""
               file=sys.stderr)
         print(f"    {response[:500]}", file=sys.stderr)
         return {"source": source_name, "pages_created": 0, "pages_updated": 0, "pages": []}
+
+    # ── 概念聚合：为每个实体组创建/更新概念页（同名异实保护） ──
+    for base_name, instances in concept_groups.items():
+        concept_path = CONCEPTS_DIR / f"{base_name}.md"
+        instance_links = "\n".join(
+            f"- [[{inst['id']}]] — {inst.get('name', inst['id'])}（来源: {source_name}）"
+            for inst in instances
+        )
+        # Also find existing non-prefixed entities with the same base name
+        existing_entity = ENTITIES_DIR / f"{base_name}.md"
+        if existing_entity.exists():
+            existing_source = ""
+            for line in existing_entity.read_text(encoding="utf-8").split("\n"):
+                if line.startswith("source:"):
+                    existing_source = line.replace("source:", "").strip()
+                    break
+            existing_link = f"- [[{base_name}]] — {base_name}（来源: {existing_source}）"
+            if existing_link not in instance_links:
+                instance_links = existing_link + "\n" + instance_links
+
+        if concept_path.exists():
+            existing = concept_path.read_text(encoding="utf-8")
+            new_links = [l for l in instance_links.split("\n") if l not in existing]
+            if new_links:
+                # Append new instances
+                updated_content = existing.rstrip() + "\n\n## 新增实例\n\n" + "\n".join(new_links) + "\n"
+                atomic_write(concept_path, updated_content)
+                print(f"  Concept updated: {base_name}.md (+{len(new_links)} instances)", file=sys.stderr)
+        else:
+            # Use LLM to synthesize a concept page from entity instances
+            entity_summaries = []
+            for inst in instances:
+                ep_path = ENTITIES_DIR / f"{inst['id']}.md"
+                if ep_path.exists():
+                    ep_content = ep_path.read_text(encoding="utf-8")
+                    overview_lines = []
+                    capture = False
+                    for line in ep_content.split("\n"):
+                        if line.startswith("## 概述") or line.startswith("## Overview"):
+                            capture = True
+                            continue
+                        if capture and line.startswith("## "):
+                            break
+                        if capture and line.strip():
+                            overview_lines.append(line.strip())
+                    entity_summaries.append(f"### {inst['name']}\n{' '.join(overview_lines[:3])}")
+
+            synthesis_prompt = f"""综合以下实体实例，生成一个跨文档概念页。
+
+概念: {base_name}
+实例列表:
+{instance_links}
+
+实例详情:
+{chr(10).join(entity_summaries[:3])}
+
+输出（YAML frontmatter + 中文内容）：
+---
+id: {base_name}
+type: concept
+name: {base_name}
+confidence: 0.85
+source: 跨文档聚合
+---
+
+# {base_name}
+
+## 概述
+[综合所有实例，提炼通用模式和核心特征，2-4句中文]
+
+## 已知实例
+{instance_links}
+
+## 关键特征
+[从各实例提炼的共同点和差异性，3-5条中文]
+
+直接输出，不要额外说明。"""
+            try:
+                concept_content = call_llm(
+                    "你是 Wiki 知识聚合助手，综合多个来源的同类实体，生成概念页。",
+                    synthesis_prompt,
+                    config,
+                )
+                atomic_write(concept_path, concept_content.strip())
+                print(f"  Concept created: {base_name}.md ({len(instances)} instances)", file=sys.stderr)
+            except Exception:
+                fallback = f"""---
+id: {base_name}
+type: concept
+name: {base_name}
+confidence: 0.80
+source: 跨文档聚合
+---
+
+# {base_name}
+
+## 概述
+跨文档概念，聚合自 {source_name}。
+
+## 已知实例
+{instance_links}
+"""
+                atomic_write(concept_path, fallback)
+                print(f"  Concept created (fallback): {base_name}.md", file=sys.stderr)
 
     update_index(all_pages, source_name)
     update_log(source_name, len(created_pages), "compile")
