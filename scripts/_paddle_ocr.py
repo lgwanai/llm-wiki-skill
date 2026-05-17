@@ -118,23 +118,24 @@ class PaddleOCRWrapper:
         import fitz
 
         doc = fitz.open(pdf_path)
-        total = min(len(doc), max_pages) if max_pages else len(doc)
-        logger.info("PaddleOCR PDF: %d pages → %s", total, output_dir)
+        try:
+            total = min(len(doc), max_pages) if max_pages else len(doc)
+            logger.info("PaddleOCR PDF: %d pages → %s", total, output_dir)
 
-        pages_md: list[str] = []
-        for i in range(total):
-            page = doc[i]
-            pix = page.get_pixmap(dpi=200)
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-                pix.save(f.name)
-                tmp_path = f.name
-            try:
-                text = self._image_to_markdown(tmp_path)
-                pages_md.append(f"## Page {i + 1}\n\n{text}")
-            finally:
-                os.unlink(tmp_path)
-
-        doc.close()
+            pages_md: list[str] = []
+            for i in range(total):
+                page = doc[i]
+                pix = page.get_pixmap(dpi=200)
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+                    pix.save(f.name)
+                    tmp_path = f.name
+                try:
+                    text = self._image_to_markdown(tmp_path)
+                    pages_md.append(f"## Page {i + 1}\n\n{text}")
+                finally:
+                    os.unlink(tmp_path)
+        finally:
+            doc.close()
         output_path = output_dir / "output.md"
         output_path.write_text("\n\n".join(pages_md), encoding="utf-8")
         logger.info("Output: %s (%d bytes)", output_path, output_path.stat().st_size)

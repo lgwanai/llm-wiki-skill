@@ -206,7 +206,7 @@ def write_audit(operation: str, details: dict):
     if audit_file.exists():
         try:
             entries = json.loads(audit_file.read_text(encoding="utf-8"))
-        except:
+        except (json.JSONDecodeError, OSError):
             entries = []
 
     entries.append(entry)

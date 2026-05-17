@@ -212,7 +212,7 @@ def read_page_content(page_path: str) -> str:
             if end > 0:
                 content = "\n".join(lines[end + 1:])
         return content.strip()
-    except:
+    except (OSError, UnicodeDecodeError, PermissionError):
         return ""
 
 
