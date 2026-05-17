@@ -20,6 +20,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Ensure scripts/ is importable for direct module calls
+sys.path.insert(0, str(Path(__file__).parent))
+
 WIKI_DIR = Path(__file__).parent.parent / ".wiki"
 PAGES_DIR = WIKI_DIR / "pages"
 GRAPH_DIR = WIKI_DIR / "graph"
@@ -51,20 +54,26 @@ def cmd_compile(source: str, force: bool = False) -> dict:
 
 def cmd_query(question: str, file_back: bool = False, fmt: str = "markdown",
               synthesis: bool = True) -> dict:
-    args = [question]
-    if file_back:
-        args.append("--file-back")
-    if fmt != "markdown":
-        args.extend(["--format", fmt])
-    if not synthesis:
-        args.append("--no-synthesis")
-
-    code, output = run_script("query.py", args)
-
-    if code == 0:
-        return {"success": True, "answer": output}
-    else:
-        return {"success": False, "error": output}
+    # Direct import for speed — avoids subprocess overhead (~0.3s)
+    try:
+        import query as qm
+        result = qm.query_wiki(question, file_back=file_back, fmt=fmt,
+                               synthesis=synthesis)
+        return {"success": True, "answer": result.get("answer", "")}
+    except Exception as e:
+        # Fallback to subprocess on import failure
+        args = [question]
+        if file_back:
+            args.append("--file-back")
+        if fmt != "markdown":
+            args.extend(["--format", fmt])
+        if not synthesis:
+            args.append("--no-synthesis")
+        code, output = run_script("query.py", args)
+        if code == 0:
+            return {"success": True, "answer": output}
+        else:
+            return {"success": False, "error": output}
 
 
 def cmd_lint(auto_heal: bool = False) -> dict:
