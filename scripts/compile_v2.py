@@ -32,6 +32,7 @@ SENSITIVE_PATTERNS: list[tuple[str, str]] = [
 ]
 
 KEYWORD_RELATION_MAP = [
+    # English patterns
     (r'(?i)\buses?\b\s*\[\[', 'uses'),
     (r'(?i)\bdepends?\s+on\b.*?\[\[', 'depends_on'),
     (r'(?i)\bextends?\b\s*\[\[', 'extends'),
@@ -44,6 +45,19 @@ KEYWORD_RELATION_MAP = [
     (r'(?i)\brelated\s+to\b.*?\[\[', 'relates_to'),
     (r'(?i)\bpart\s+of\b.*?\[\[', 'part_of'),
     (r'(?i)\bimplemented\s+(?:by|via)\b.*?\[\[', 'implemented_by'),
+    # Chinese patterns
+    (r'(?:使用|采用|利用|调用|借助)\s*\[\[', 'uses'),
+    (r'(?:依赖|取决于|依赖于)\s*\[\[', 'depends_on'),
+    (r'(?:扩展|继承|基于\s*)\s*\[\[', 'extends'),
+    (r'(?:改进|优化|提升)\s*\[\[', 'improves_upon'),
+    (r'(?:矛盾|冲突|不一致)\s*\[\[', 'contradicts'),
+    (r'(?:取代|替代|替换\s*掉)\s*\[\[', 'supersedes'),
+    (r'(?:导致|引起|造成|触发)\s*\[\[', 'caused_by'),
+    (r'(?:修复|解决|修正)\s*\[\[', 'fixed_by'),
+    (r'(?:替换|更换|换成)\s*\[\[', 'replaces'),
+    (r'(?:关联|相关|有关|涉及)\s*\[\[', 'relates_to'),
+    (r'(?:属于|组成部分|包含于)\s*\[\[', 'part_of'),
+    (r'(?:实现|实施|执行|落实)\s*\[\[', 'implemented_by'),
 ]
 
 
@@ -65,6 +79,66 @@ PAGES_DIR = WIKI_DIR / "pages"
 ENTITIES_DIR = PAGES_DIR / "entities"
 CONCEPTS_DIR = PAGES_DIR / "concepts"
 INDEX_FILE = PAGES_DIR / "index.md"
+SCHEMA_PATH = WIKI_DIR / "schema.md"
+
+
+def load_entity_types_from_schema() -> tuple[list[str], str, str]:
+    """Parse entity types and relationship types from schema.md (single source of truth).
+
+    Returns:
+        entity_types: list of type names (e.g., ['concept', 'entity', ...])
+        entity_type_lines: prompt-ready description lines
+        rel_type_lines: prompt-ready relationship types
+    """
+    if not SCHEMA_PATH.exists():
+        # Defaults for tech docs
+        return (
+            ["concept", "model", "technique", "benchmark", "framework", "paper"],
+            "- concept: Core architecture/mechanism\n- model: AI model variants\n- technique: Training methods\n- benchmark: Evaluation datasets\n- framework: Infrastructure\n- paper: Publications",
+            "uses | extends | improves | depends_on | contradicts | supersedes | relates_to | part_of | implemented_by | caused_by | fixed_by | replaces",
+        )
+
+    text = SCHEMA_PATH.read_text(encoding="utf-8")
+
+    # Parse entity types table
+    entity_types = []
+    entity_lines = []
+    in_entity_table = False
+    for line in text.split("\n"):
+        if "## Entity Types" in line:
+            in_entity_table = True
+            continue
+        if in_entity_table and line.startswith("## ") and "Entity" not in line:
+            break
+        if in_entity_table and line.startswith("| `"):
+            parts = [p.strip("` ") for p in line.split("|")[1:-1]]
+            if len(parts) >= 3 and parts[0]:
+                etype = parts[0]
+                desc = parts[2] if len(parts) > 2 else f"entities of type {etype}"
+                entity_types.append(etype)
+                entity_lines.append(f"- {etype}: {desc}")
+
+    # Parse relationship types table
+    rel_lines = []
+    in_rel_table = False
+    for line in text.split("\n"):
+        if "## Relationship Types" in line:
+            in_rel_table = True
+            continue
+        if in_rel_table and line.startswith("## ") and "Relationship" not in line:
+            break
+        if in_rel_table and line.startswith("| `"):
+            parts = [p.strip("` ") for p in line.split("|")[1:-1]]
+            if len(parts) >= 1 and parts[0]:
+                rel_lines.append(parts[0])
+
+    if not entity_types:
+        entity_types = ["concept", "model", "technique"]
+        entity_lines = ["- concept: Core concept", "- model: AI model", "- technique: Technical method"]
+
+    rel_str = " | ".join(rel_lines) if rel_lines else "uses | extends | improves | relates_to | depends_on"
+
+    return entity_types, "\n".join(entity_lines), rel_str
 
 
 def load_config():
@@ -205,32 +279,45 @@ def compile_source(source_path: str, force: bool = False) -> dict:
     config = load_config()
 
     lang = detect_language(content)
+    entity_types, entity_type_lines, rel_type_lines = load_entity_types_from_schema()
+    entity_type_str = "|".join(entity_types)
 
     print(f"Compiling {source_name} ({len(content)} chars, {lang})...", file=sys.stderr)
 
     if lang == "zh":
-        system_prompt = """你是 Wiki 构建助手。你必须用中文撰写所有内容。
+        # Derive a short source abbreviation for ID prefix
+        import re as _re
+        source_abbr = _re.sub(r'[^\u4e00-\u9fff\w]', '', source_name)[:8].lower() or "doc"
+        system_prompt = f"""你是 Wiki 构建助手。你必须用中文撰写所有内容。
 
-## 实体 vs 概念（最重要！）
-Karpathy 的 Wiki 设计区分两类页面：
-- **entity（实体）**：具体的、可指认的事物。如组织架构、评审组、某个人、某个奖项。
-- **concept（概念）**：抽象的、通用的思想。如"AI for Value 理念"、"数字化转 型战略"。
+## ID 命名规则（最重要！防止同名覆盖）
+文档源简称: {source_abbr}
 
-一个文档中通常 60% 是 entity，40% 是 concept。不要把一切归类为 concept。
+- **实体页 ID**: `{{source_abbr}}-{{实体名}}` — 确保不同来源的同名实体不覆盖
+  例: `{source_abbr}-专家评审组`, `{source_abbr}-评审标准`
+- **概念页 ID**: 直接使用概念名 — 跨文档共享，由系统自动聚合
+  例: `专家评审组`, `评审标准`
+
+## 实体 vs 概念（严格区分！）
+- **entity/role/rule/process/event**: 具体事物 — 某个组织的评审组、某份方案的评分标准、某个活动的流程。**必须带 source 前缀**，因为每份文档的实例不同。
+- **concept**: 跨文档的抽象模式 — "AI for Value 理念"、"数字化转型"这种通用思想。**不带前缀**，系统会自动聚合所有来源的信息。
+
+一个文档中 60-70% 是实体（entity/role/rule/process/event），30-40% 是概念（concept）。
 
 ## 关键要求
-- id 和 name 都用中文（如 id: 评审标准, name: 评审标准）
+- 实体页 ID 必须带 {source_abbr} 前缀
+- 概念页 ID 不带前缀
+- name 字段用中文（如"专家评审组"）
 - 所有标题用中文：概述、关键细节、关联关系、来源上下文
 - 所有描述用中文撰写
-- 文件名即为 id，所以 id 必须用中文
 
 ## Output Format
 用 ===PAGE_END=== 分隔每个页面。
 
 每个页面必须包含 YAML frontmatter：
 ---
-id: 中文ID
-type: entity|concept|process|rule|role|event
+id: 实体ID或概念ID
+type: {entity_type_str}
 name: 中文名称
 confidence: 0.85
 source: source-name
@@ -253,18 +340,14 @@ source: source-name
 
 ## 质量规则
 - 每个文档提取 10-20 个重要页面
-- 正确分类：具体事物→entity/role/event，抽象思想→concept，步骤→process，标准→rule
-- entity 和 concept 的比例应大致为 6:4
+- 实体（entity/role/rule/process/event）→ ID 带 {source_abbr} 前缀
+- 概念（concept）→ ID 不带前缀
+- 实体:概念比例约 6:4
 - 描述要详实（不能只有一句话）
 - 包含原文摘录
 
 ## 实体类型
-- entity: 具体实体 — 组织、团队、部门、项目、产品（如"信息技术委员会"、"大赛筹备组"）
-- concept: 核心概念/理念 — 抽象思想、价值观、战略方向（如"AI for Value 理念"）
-- process: 流程/机制 — 步骤、阶段、工作流、审批链（如"报名流程"、"评审流程"）
-- rule: 规则/标准 — 评审标准、参赛要求、合规条款（如"评审标准"、"作品要求"）
-- role: 角色/职责 — 岗位分工、责任范围（如"专家评审组"的职责描述）
-- event: 事件/活动 — 比赛、会议、里程碑、时间节点（如"路演答辩"、"颁奖典礼"）"""
+{entity_type_lines}"""
     else:
         system_prompt = """You are a wiki builder. Your job is to read a document and write wiki pages.
 
@@ -313,17 +396,7 @@ Then the page content with sections:
 - Include source excerpts
 
 ## Entity Types
-- entity: Concrete things — people, orgs, teams, projects, products
-- concept: Abstract ideas — philosophies, mechanisms, strategies
-- process: Workflows — stages, procedures, pipelines
-- rule: Standards — criteria, requirements, compliance
-- role: Responsibilities — job functions, duty scopes
-- event: Activities — meetings, milestones, ceremonies
-- model: AI model variants (tech docs)
-- technique: Technical methods (tech docs)
-- framework: Infrastructure/platforms (tech docs)
-- benchmark: Evaluation datasets (tech docs)
-- paper: Publications (tech docs)"""
+{entity_type_lines}"""
 
     if lang == "zh":
         user_prompt = f"""文档: {source_name}
@@ -333,6 +406,7 @@ Then the page content with sections:
 
 请用中文提取该文档中的关键实体和概念，撰写 Wiki 页面。所有内容（标题、描述、关系说明）必须用中文。
 
+重要：实体（entity/role/rule/process/event）的 ID 必须带 {source_abbr} 前缀，概念（concept）不带前缀。
 关注点：核心概念、组织结构、流程机制、评估标准、参赛要求。
 目标：10-20 个高质量中文页面，内容详实且相互关联。
 用 ===PAGE_END=== 分隔每个页面。"""
@@ -362,7 +436,7 @@ Output pages separated by ===PAGE_END==="""
     import re as _re
     src_stem = Path(source_name).stem
     source_abbr = _re.sub(r'[^\u4e00-\u9fff\w]', '', src_stem)[:8].lower() or "doc"
-    concept_types = {"concept", "technique", "model", "framework", "benchmark", "paper"}
+    concept_types = set(entity_types) if entity_types else {"concept", "technique", "model", "framework", "benchmark", "paper"}
     # Track which entity IDs need concept pages (base name → list of instance IDs)
     concept_groups: dict[str, list[dict]] = {}
 
