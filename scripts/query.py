@@ -361,11 +361,37 @@ created: {now}
     return str(page_path)
 
 
-def query_wiki(query: str, file_back: bool = False, fmt: str = "markdown") -> dict:
+def query_wiki(query: str, file_back: bool = False, fmt: str = "markdown",
+               synthesis: bool = True) -> dict:
     config = load_config()
 
+    # Respect global config default
+    query_cfg = config.get("query", {})
+    if not synthesis:
+        pass  # CLI override takes priority
+    elif "llm_synthesis" in query_cfg:
+        synthesis = query_cfg.get("llm_synthesis", True)
+
     pages = search_wiki(query)
-    answer = synthesize_answer(query, pages, config, fmt=fmt)
+
+    if pages and not synthesis:
+        # Fast path: return raw search results without LLM call
+        lines = [f"## 搜索结果: {query}\n"]
+        for i, p in enumerate(pages[:10], 1):
+            snippet = _read_snippet(p["path"], query)
+            lines.append(f"{i}. **[[{p['id']}]]** ({p['type']}) — score: {p['score']:.2f}")
+            if snippet:
+                lines.append(f"   > {snippet}")
+            lines.append("")
+        return {
+            "query": query,
+            "format": "fast",
+            "answer": "\n".join(lines),
+            "pages_searched": len(pages),
+            "sources": [p.get("id", "unknown") for p in pages],
+        }
+
+    answer = synthesize_answer(query, pages, config, fmt=fmt) if pages else "No relevant wiki pages found."
 
     result = {
         "query": query,
@@ -382,12 +408,38 @@ def query_wiki(query: str, file_back: bool = False, fmt: str = "markdown") -> di
     return result
 
 
+def _read_snippet(path: str, query: str, max_len: int = 120) -> str:
+    """Extract a relevant snippet from a page, surrounding the query terms."""
+    try:
+        content = Path(path).read_text(encoding="utf-8")
+        # Strip frontmatter
+        content = re.sub(r'^---\s*\n.*?\n---\s*\n', '', content, flags=re.DOTALL)
+        query_terms = [t for t in query.split() if len(t) >= 2]
+        for term in query_terms:
+            idx = content.lower().find(term.lower())
+            if idx >= 0:
+                start = max(0, idx - 40)
+                end = min(len(content), idx + len(term) + max_len)
+                snippet = content[start:end].replace("\n", " ").strip()
+                return ("..." if start > 0 else "") + snippet + ("..." if end < len(content) else "")
+        # Fallback: first non-empty line
+        for line in content.split("\n"):
+            line = line.strip()
+            if line and not line.startswith("#") and len(line) > 10:
+                return line[:max_len] + "..."
+    except Exception:
+        pass
+    return ""
+
+
 def main():
     parser = argparse.ArgumentParser(description="Query wiki and answer questions")
     parser.add_argument("query", help="Question to answer")
     parser.add_argument("--file-back", action="store_true", help="File answer back to wiki")
     parser.add_argument("--format", choices=["markdown", "table", "timeline", "slides", "json", "graph"],
                         default="markdown", help="Output format (default: markdown)")
+    parser.add_argument("--no-synthesis", action="store_true",
+                        help="Skip LLM synthesis — return raw search results (fast)")
     args = parser.parse_args()
 
     if args.format == "graph":
@@ -400,7 +452,8 @@ def main():
         print(out if code == 0 else f"Graph error: {out}")
         return
 
-    result = query_wiki(args.query, file_back=args.file_back, fmt=args.format)
+    result = query_wiki(args.query, file_back=args.file_back, fmt=args.format,
+                        synthesis=not args.no_synthesis)
     print(result["answer"])
 
     if args.file_back and result.get("filed"):

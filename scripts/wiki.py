@@ -49,12 +49,15 @@ def cmd_compile(source: str, force: bool = False) -> dict:
         return {"success": False, "error": output}
 
 
-def cmd_query(question: str, file_back: bool = False, fmt: str = "markdown") -> dict:
+def cmd_query(question: str, file_back: bool = False, fmt: str = "markdown",
+              synthesis: bool = True) -> dict:
     args = [question]
     if file_back:
         args.append("--file-back")
     if fmt != "markdown":
         args.extend(["--format", fmt])
+    if not synthesis:
+        args.append("--no-synthesis")
 
     code, output = run_script("query.py", args)
 
@@ -176,7 +179,9 @@ def main():
     query_parser.add_argument("question", help="Question to answer")
     query_parser.add_argument("--file-back", action="store_true", help="File answer to wiki")
     query_parser.add_argument("--format", choices=["markdown","table","timeline","slides","json","graph"],
-                              default="markdown", help="Output format")
+                               default="markdown", help="Output format")
+    query_parser.add_argument("--no-synthesis", action="store_true",
+                               help="Skip LLM — return raw search results (fast)")
 
     lint_parser = subparsers.add_parser("lint", help="Health check wiki")
     lint_parser.add_argument("--auto-heal", action="store_true", help="Auto-fix issues")
@@ -215,7 +220,8 @@ def main():
             print(f"Error: {result.get('error', 'Unknown error')}")
 
     elif args.command == "query":
-        result = cmd_query(args.question, file_back=args.file_back, fmt=args.format)
+        result = cmd_query(args.question, file_back=args.file_back, fmt=args.format,
+                           synthesis=not args.no_synthesis)
         if result.get("success"):
             print(result["answer"])
         else:

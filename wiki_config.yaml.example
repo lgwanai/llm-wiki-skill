@@ -59,6 +59,9 @@ quality:
   auto_heal: true
   min_score: 0.4
 
+query:
+  llm_synthesis: true         # LLM synthesis (true=full answer, false=raw search results)
+
 # --- Optional production-scale backends ---
 # Uncomment to enable:
 
