@@ -145,7 +145,7 @@ def main():
     print(f"\n[2/2] Packaging...")
     DIST.mkdir(parents=True, exist_ok=True)
 
-    date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+    date_str = datetime.now().strftime("%Y%m%d")
     if args.format == "zip":
         output = DIST / f"llm-wiki-skill-{date_str}.zip"
         package_zip(output)
