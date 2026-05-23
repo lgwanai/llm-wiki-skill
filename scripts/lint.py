@@ -10,7 +10,7 @@ from pathlib import Path
 import re
 from datetime import datetime, timezone
 
-WIKI_DIR = Path(__file__).parent.parent / ".wiki"
+WIKI_DIR = Path(os.environ.get("LLM_WIKI_DIR", str(Path(__file__).parent.parent / ".wiki")))
 PAGES_DIR = WIKI_DIR / "pages"
 GRAPH_DIR = WIKI_DIR / "graph"
 ENTITIES_FILE = os.path.join(GRAPH_DIR, "entities.json")

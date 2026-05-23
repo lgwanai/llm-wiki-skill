@@ -10,7 +10,7 @@ from pathlib import Path
 import sys
 from datetime import datetime, timezone
 
-WIKI_DIR = Path(__file__).parent.parent / ".wiki"
+WIKI_DIR = Path(os.environ.get("LLM_WIKI_DIR", str(Path(__file__).parent.parent / ".wiki")))
 MEMORY_DIR = WIKI_DIR / "memory"
 
 WORKING_FILE = os.path.join(MEMORY_DIR, "working.json")

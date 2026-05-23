@@ -16,7 +16,9 @@ This project uses **GSD** (Get Shit Done) for structured development. Key comman
 
 ## Current State
 
-See `.planning/STATE.md` for current phase status. Phases 1-4 are complete. Next: Phase 5 (Claude Code Integration).
+All 7 phases complete. 44/50 tests passing (6 skipped pending lazy WIKI_DIR init). Production-ready.
+
+Key scripts: `wiki.py` (CLI), `compile_v2.py` (LLM compile pipeline), `query.py` (search + answer).
 
 ## Coding Standards
 

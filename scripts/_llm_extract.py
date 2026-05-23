@@ -17,7 +17,7 @@ import requests
 import yaml
 
 CONFIG_PATH = Path(__file__).parent.parent / "wiki_config.yaml"
-WIKI_DIR = Path(__file__).parent.parent / ".wiki"
+WIKI_DIR = Path(os.environ.get("LLM_WIKI_DIR", str(Path(__file__).parent.parent / ".wiki")))
 SCHEMA_PATH = WIKI_DIR / "schema.md"
 
 ENTITY_TYPES = []

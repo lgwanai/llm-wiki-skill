@@ -10,7 +10,7 @@ import re
 import sys
 from datetime import datetime, timezone
 
-WIKI_DIR = Path(__file__).parent.parent / ".wiki"
+WIKI_DIR = Path(os.environ.get("LLM_WIKI_DIR", str(Path(__file__).parent.parent / ".wiki")))
 PAGES_DIR = WIKI_DIR / "pages"
 MEMORY_DIR = WIKI_DIR / "memory"
 GRAPH_DIR = WIKI_DIR / "graph"

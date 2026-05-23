@@ -11,7 +11,7 @@ import sys
 from collections import deque
 from datetime import datetime, timezone
 
-WIKI_DIR = Path(__file__).parent.parent / ".wiki"
+WIKI_DIR = Path(os.environ.get("LLM_WIKI_DIR", str(Path(__file__).parent.parent / ".wiki")))
 GRAPH_DIR = WIKI_DIR / "graph"
 ENTITIES_FILE = os.path.join(GRAPH_DIR, "entities.json")
 EDGES_FILE = os.path.join(GRAPH_DIR, "edges.json")

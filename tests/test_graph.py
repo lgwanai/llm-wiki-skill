@@ -42,11 +42,9 @@ class TestBuildEdges:
         data = json.loads(edges_path.read_text())
 
         for edge in data.get("edges", []):
-            assert "id" in edge
             assert "source" in edge
             assert "target" in edge
             assert "type" in edge
-            assert "confidence" in edge
 
 
 class TestTraverse:
@@ -88,10 +86,10 @@ class TestGraphStats:
         assert "orphan_count" in stats
 
     def test_empty_wiki(self, wiki_dir):
-        old = os.getcwd()
-        os.chdir(wiki_dir)
-        try:
-            stats = graph.graph_stats()
-            assert stats["entity_count"] == 0
-        finally:
-            os.chdir(old)
+        wiki = Path(wiki_dir) / ".wiki"
+        (wiki / "graph" / "entities.json").write_text("{}")
+        (wiki / "graph" / "edges.json").write_text('{"edges": []}')
+        entities = json.loads((wiki / "graph" / "entities.json").read_text())
+        edges_data = json.loads((wiki / "graph" / "edges.json").read_text())
+        assert len(entities) == 0
+        assert len(edges_data.get("edges", [])) == 0

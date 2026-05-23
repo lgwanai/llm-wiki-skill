@@ -23,7 +23,7 @@ from pathlib import Path
 # Ensure scripts/ is importable for direct module calls
 sys.path.insert(0, str(Path(__file__).parent))
 
-WIKI_DIR = Path(__file__).parent.parent / ".wiki"
+WIKI_DIR = Path(os.environ.get("LLM_WIKI_DIR", str(Path(__file__).parent.parent / ".wiki")))
 PAGES_DIR = WIKI_DIR / "pages"
 GRAPH_DIR = WIKI_DIR / "graph"
 
