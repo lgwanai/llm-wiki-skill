@@ -48,3 +48,5 @@ tests/ai_innovation_ocr/
 .claude/cache/
 
 docs/
+# Build output
+dist/
