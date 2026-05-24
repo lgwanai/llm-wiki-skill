@@ -6,8 +6,8 @@ description: >
   management, organizing notes, ingesting research, structured knowledge, "remember
   this", "file away", "add to wiki", "second brain", "build knowledge base", "set
   up wiki", accumulating and structuring information that compounds over time.
-  COMMANDS: /wiki-compile, /wiki-query, /wiki-lint, /wiki-embed, /wiki-bulk,
-  /wiki-consolidate, /wiki-status, /wiki-init.
+COMMANDS: /wiki-compile, /wiki-query, /wiki-lint, /wiki-embed, /wiki-bulk,
+/wiki-consolidate, /wiki-status, /wiki-init, /wiki-update.
 ---
 
 # LLM Wiki v2
@@ -106,6 +106,19 @@ python3 scripts/wiki.py init
 ```
 
 Creates `.wiki/` directory structure.
+
+### `/wiki-update` — Update Skill
+
+```bash
+python3 scripts/wiki.py update
+```
+
+Pulls latest code from GitHub, backs up old files to `backup/` (compressed with date stamp).
+
+**What happens:**
+- Current files compressed to `backup/llm-wiki-YYYYMMDD-HHMMSS.tar.gz`
+- `git pull` from origin
+- Reports files changed
 
 ### Other Commands
 

@@ -222,6 +222,7 @@ def main():
 
     subparsers.add_parser("status", help="Show wiki statistics")
     subparsers.add_parser("init", help="Initialize wiki structure")
+    subparsers.add_parser("update", help="Update skill from GitHub (git pull + backup)")
 
     args = parser.parse_args()
 
@@ -273,6 +274,10 @@ def main():
     elif args.command == "init":
         result = cmd_init()
         print(f"Wiki initialized: {result['created']} directories created")
+
+    elif args.command == "update":
+        code, output = run_script("update.py", [])
+        print(output)
 
 
 if __name__ == "__main__":

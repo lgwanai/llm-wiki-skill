@@ -50,3 +50,4 @@ tests/ai_innovation_ocr/
 docs/
 # Build output
 dist/
+backup/
