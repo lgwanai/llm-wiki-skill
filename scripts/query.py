@@ -69,7 +69,7 @@ def call_llm(system_prompt: str, user_content: str, config: dict) -> str:
 
 
 def search_wiki(query: str, limit: int = 5) -> list[dict]:
-    """Hybrid search: BM25 + Graph + entities.json fallback, fused by RRF."""
+    """Hybrid search: BM25 + Vector + Graph + entities.json fallback, fused by RRF."""
     all_streams: list[list[dict]] = []
 
     # 1. BM25 keyword search (now supports Chinese via jieba)
@@ -81,7 +81,16 @@ def search_wiki(query: str, limit: int = 5) -> list[dict]:
     except Exception:
         pass
 
-    # 2. Graph entity search
+    # 2. Vector semantic search (via Ollama)
+    try:
+        from search import vector_search
+        vector_results = vector_search(query, str(PAGES_DIR), limit=limit)
+        if vector_results:
+            all_streams.append(vector_results)
+    except Exception:
+        pass
+
+    # 3. Graph entity search
     try:
         from search import graph_search
         graph_results = graph_search(query, str(WIKI_DIR / "graph"), limit=limit)
