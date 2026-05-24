@@ -16,6 +16,7 @@ Usage:
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -39,8 +40,8 @@ def run_script(script_name: str, args: list[str]) -> tuple[int, str]:
     return result.returncode, result.stdout
 
 
-def cmd_compile(source: str, force: bool = False) -> dict:
-    args = [source]
+def cmd_compile(source: str, source_type: str = "doc", force: bool = False) -> dict:
+    args = [source, "--type", source_type]
     if force:
         args.append("--force")
 
@@ -182,6 +183,9 @@ def main():
 
     compile_parser = subparsers.add_parser("compile", help="Compile source to wiki")
     compile_parser.add_argument("source", help="Source file to compile")
+    compile_parser.add_argument("--type", dest="source_type", default="doc",
+                                choices=["doc", "article", "code", "conversation"],
+                                help="Source type (controls entity focus)")
     compile_parser.add_argument("--force", action="store_true", help="Force re-compile")
 
     query_parser = subparsers.add_parser("query", help="Query wiki")
@@ -222,7 +226,7 @@ def main():
     args = parser.parse_args()
 
     if args.command == "compile":
-        result = cmd_compile(args.source, force=args.force)
+        result = cmd_compile(args.source, source_type=args.source_type, force=args.force)
         if result.get("success"):
             print(result.get("message", "Done"))
         else:

@@ -141,6 +141,76 @@ def load_entity_types_from_schema() -> tuple[list[str], str, str]:
     return entity_types, "\n".join(entity_lines), rel_str
 
 
+def load_ingest_rules_from_schema(source_type: str = "doc") -> tuple[list[str], str]:
+    """Parse ingest rules from schema.md for a given source type.
+    
+    Returns:
+        focus_types: entity types to focus on
+        description: description of the source type rules
+    """
+    if not SCHEMA_PATH.exists():
+        return (
+            ["model", "concept", "technique", "benchmark", "framework", "paper"],
+            "Academic papers and technical reports",
+        )
+    
+    text = SCHEMA_PATH.read_text(encoding="utf-8")
+    in_ingest = False
+    for line in text.split("\n"):
+        if "## Ingest Rules" in line:
+            in_ingest = True
+            continue
+        if in_ingest and line.startswith("## ") and "Ingest" not in line:
+            break
+        if in_ingest and line.startswith("| `"):
+            parts = [p.strip("` ") for p in line.split("|")[1:-1]]
+            if len(parts) >= 4 and parts[0] == source_type:
+                focus = [t.strip() for t in parts[1].split(",")]
+                desc = parts[3]
+                return focus, desc
+    
+    return (
+        ["model", "concept", "technique", "benchmark", "framework", "paper"],
+        "General document",
+    )
+
+
+def auto_resolve_contradictions(page_id: str, contradictions: list[dict]) -> list[dict]:
+    """Use LLM to automatically resolve contradictions and return resolutions."""
+    if not contradictions:
+        return []
+    
+    config = load_config()
+    
+    system_prompt = """You are a contradiction resolver for a wiki knowledge base.
+For each contradiction, determine which claim is more likely correct based on:
+- Source recency (newer claims are more reliable)
+- Specificity (more detailed claims are more reliable)
+- Consistency with known facts
+
+Output JSON array:
+[
+  {
+    "winner": "existing" or "new",
+    "confidence": 0.0-1.0,
+    "reasoning": "1-sentence explanation",
+    "action": "supersede" or "merge" or "flag"
+  }
+]"""
+    
+    contradiction_text = "\n".join(
+        f"{i+1}. EXISTING: {c.get('existing_claim','')} | NEW: {c.get('new_claim','')} | SEVERITY: {c.get('severity','medium')}"
+        for i, c in enumerate(contradictions[:5])
+    )
+    
+    try:
+        response = call_llm(system_prompt, contradiction_text, config)
+        resolutions = json.loads(response)
+        return resolutions[:len(contradictions)]
+    except Exception:
+        return []
+
+
 def load_config():
     if CONFIG_PATH.exists():
         return yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
@@ -265,7 +335,7 @@ def detect_language(text: str) -> str:
     return "en"
 
 
-def compile_source(source_path: str, force: bool = False) -> dict:
+def compile_source(source_path: str, source_type: str = "doc", force: bool = False) -> dict:
 
     if not os.path.exists(source_path):
         raise FileNotFoundError(f"Source not found: {source_path}")
@@ -280,9 +350,11 @@ def compile_source(source_path: str, force: bool = False) -> dict:
 
     lang = detect_language(content)
     entity_types, entity_type_lines, rel_type_lines = load_entity_types_from_schema()
+    focus_types, focus_desc = load_ingest_rules_from_schema(source_type)
     entity_type_str = "|".join(entity_types)
 
-    print(f"Compiling {source_name} ({len(content)} chars, {lang})...", file=sys.stderr)
+    print(f"Compiling {source_name} ({len(content)} chars, {lang}, {source_type})...", file=sys.stderr)
+    print(f"  Focus: {', '.join(focus_types)} — {focus_desc}", file=sys.stderr)
 
     if lang == "zh":
         # Derive a short source abbreviation for ID prefix
@@ -521,6 +593,8 @@ Output pages separated by ===PAGE_END==="""
 
             if contradictions:
                 contradictions_found.extend(contradictions)
+                resolutions = auto_resolve_contradictions(entity_id, contradictions)
+                
                 page_content = existing_content + "\n\n## Contradictions Detected\n\n"
                 for c in contradictions:
                     ctype = c.get('contradiction_type', 'unknown')
@@ -528,6 +602,19 @@ Output pages separated by ===PAGE_END==="""
                     existing = c.get('existing_claim', 'N/A')
                     new = c.get('new_claim', 'N/A')
                     page_content += f"- **{ctype}** ({sev}): {existing} → {new}\n"
+                
+                if resolutions:
+                    page_content += "\n## Resolution\n\n"
+                    for i, r in enumerate(resolutions):
+                        winner = r.get("winner", "unknown")
+                        conf = r.get("confidence", 0.5)
+                        reasoning = r.get("reasoning", "")
+                        action = r.get("action", "flag")
+                        page_content += f"- **Resolved #{i+1}**: {winner} claim accepted ({action}) — confidence {conf:.0%}\n"
+                        page_content += f"  - Reasoning: {reasoning}\n"
+                        if action == "supersede":
+                            page_content += "  - [SUPERSEDED] Old claim marked as superseded.\n"
+                
                 atomic_write(page_path, page_content)
                 updated_pages.append({
                     "id": frontmatter.get("id", entity_id),
@@ -535,8 +622,9 @@ Output pages separated by ===PAGE_END==="""
                     "name": frontmatter.get("name", entity_id),
                     "path": str(page_path),
                     "contradictions": len(contradictions),
+                    "resolutions": len(resolutions),
                 })
-                print(f"  Updated: {Path(page_path).name} ({len(contradictions)} contradictions)", file=sys.stderr)
+                print(f"  Updated: {Path(page_path).name} ({len(contradictions)} contradictions, {len(resolutions)} resolved)", file=sys.stderr)
             else:
                 atomic_write(page_path, page_content)
                 updated_pages.append({
@@ -840,12 +928,15 @@ def update_index(pages: list, source_name: str):
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description='Simplified wiki compilation')
+    parser = argparse.ArgumentParser(description='Wiki compilation')
     parser.add_argument('source', help='Source file to compile')
+    parser.add_argument('--type', dest='source_type', default='doc',
+                        choices=['doc', 'article', 'code', 'conversation'],
+                        help='Source type (controls entity focus)')
     parser.add_argument('--force', action='store_true', help='Force re-compile (overwrite existing pages)')
     args = parser.parse_args()
 
-    result = compile_source(args.source, force=args.force)
+    result = compile_source(args.source, source_type=args.source_type, force=args.force)
 
     pages_created = result.get('pages_created', 0)
     pages_updated = result.get('pages_updated', 0)
