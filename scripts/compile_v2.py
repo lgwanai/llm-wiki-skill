@@ -22,6 +22,9 @@ from pathlib import Path
 import requests
 import yaml
 
+sys.path.insert(0, str(Path(__file__).parent))
+from config import get_config, get_wiki_dir, get_llm_config, get_api_url
+
 SENSITIVE_PATTERNS: list[tuple[str, str]] = [
     (r'(?:sk|pk|rk)-(?:[a-zA-Z0-9]{20,})', '[REDACTED: API key]'),
     (r'(?:ghp|gho|ghu|ghs|ghr)_[a-zA-Z0-9]{36,}', '[REDACTED: GitHub token]'),
@@ -73,148 +76,29 @@ def extract_edge_type(line: str) -> str:
             return rel_type
     return "relates_to"
 
-CONFIG_PATH = Path(__file__).parent.parent / "wiki_config.yaml"
-WIKI_DIR = Path(os.environ.get("LLM_WIKI_DIR", str(Path(__file__).parent.parent / ".wiki")))
+def load_config():
+    return get_config()
+
+
+def get_paths():
+    wiki_dir = get_wiki_dir()
+    return {
+        "wiki_dir": wiki_dir,
+        "pages_dir": wiki_dir / "pages",
+        "entities_dir": wiki_dir / "pages" / "entities",
+        "concepts_dir": wiki_dir / "pages" / "concepts",
+        "index_file": wiki_dir / "pages" / "index.md",
+        "schema_path": wiki_dir / "schema.md",
+        "graph_dir": wiki_dir / "graph",
+    }
+
+WIKI_DIR = get_wiki_dir()
 PAGES_DIR = WIKI_DIR / "pages"
 ENTITIES_DIR = PAGES_DIR / "entities"
 CONCEPTS_DIR = PAGES_DIR / "concepts"
 INDEX_FILE = PAGES_DIR / "index.md"
 SCHEMA_PATH = WIKI_DIR / "schema.md"
-
-
-def load_entity_types_from_schema() -> tuple[list[str], str, str]:
-    """Parse entity types and relationship types from schema.md (single source of truth).
-
-    Returns:
-        entity_types: list of type names (e.g., ['concept', 'entity', ...])
-        entity_type_lines: prompt-ready description lines
-        rel_type_lines: prompt-ready relationship types
-    """
-    if not SCHEMA_PATH.exists():
-        # Defaults for tech docs
-        return (
-            ["concept", "model", "technique", "benchmark", "framework", "paper"],
-            "- concept: Core architecture/mechanism\n- model: AI model variants\n- technique: Training methods\n- benchmark: Evaluation datasets\n- framework: Infrastructure\n- paper: Publications",
-            "uses | extends | improves | depends_on | contradicts | supersedes | relates_to | part_of | implemented_by | caused_by | fixed_by | replaces",
-        )
-
-    text = SCHEMA_PATH.read_text(encoding="utf-8")
-
-    # Parse entity types table
-    entity_types = []
-    entity_lines = []
-    in_entity_table = False
-    for line in text.split("\n"):
-        if "## Entity Types" in line:
-            in_entity_table = True
-            continue
-        if in_entity_table and line.startswith("## ") and "Entity" not in line:
-            break
-        if in_entity_table and line.startswith("| `"):
-            parts = [p.strip("` ") for p in line.split("|")[1:-1]]
-            if len(parts) >= 3 and parts[0]:
-                etype = parts[0]
-                desc = parts[2] if len(parts) > 2 else f"entities of type {etype}"
-                entity_types.append(etype)
-                entity_lines.append(f"- {etype}: {desc}")
-
-    # Parse relationship types table
-    rel_lines = []
-    in_rel_table = False
-    for line in text.split("\n"):
-        if "## Relationship Types" in line:
-            in_rel_table = True
-            continue
-        if in_rel_table and line.startswith("## ") and "Relationship" not in line:
-            break
-        if in_rel_table and line.startswith("| `"):
-            parts = [p.strip("` ") for p in line.split("|")[1:-1]]
-            if len(parts) >= 1 and parts[0]:
-                rel_lines.append(parts[0])
-
-    if not entity_types:
-        entity_types = ["concept", "model", "technique"]
-        entity_lines = ["- concept: Core concept", "- model: AI model", "- technique: Technical method"]
-
-    rel_str = " | ".join(rel_lines) if rel_lines else "uses | extends | improves | relates_to | depends_on"
-
-    return entity_types, "\n".join(entity_lines), rel_str
-
-
-def load_ingest_rules_from_schema(source_type: str = "doc") -> tuple[list[str], str]:
-    """Parse ingest rules from schema.md for a given source type.
-    
-    Returns:
-        focus_types: entity types to focus on
-        description: description of the source type rules
-    """
-    if not SCHEMA_PATH.exists():
-        return (
-            ["model", "concept", "technique", "benchmark", "framework", "paper"],
-            "Academic papers and technical reports",
-        )
-    
-    text = SCHEMA_PATH.read_text(encoding="utf-8")
-    in_ingest = False
-    for line in text.split("\n"):
-        if "## Ingest Rules" in line:
-            in_ingest = True
-            continue
-        if in_ingest and line.startswith("## ") and "Ingest" not in line:
-            break
-        if in_ingest and line.startswith("| `"):
-            parts = [p.strip("` ") for p in line.split("|")[1:-1]]
-            if len(parts) >= 4 and parts[0] == source_type:
-                focus = [t.strip() for t in parts[1].split(",")]
-                desc = parts[3]
-                return focus, desc
-    
-    return (
-        ["model", "concept", "technique", "benchmark", "framework", "paper"],
-        "General document",
-    )
-
-
-def auto_resolve_contradictions(page_id: str, contradictions: list[dict]) -> list[dict]:
-    """Use LLM to automatically resolve contradictions and return resolutions."""
-    if not contradictions:
-        return []
-    
-    config = load_config()
-    
-    system_prompt = """You are a contradiction resolver for a wiki knowledge base.
-For each contradiction, determine which claim is more likely correct based on:
-- Source recency (newer claims are more reliable)
-- Specificity (more detailed claims are more reliable)
-- Consistency with known facts
-
-Output JSON array:
-[
-  {
-    "winner": "existing" or "new",
-    "confidence": 0.0-1.0,
-    "reasoning": "1-sentence explanation",
-    "action": "supersede" or "merge" or "flag"
-  }
-]"""
-    
-    contradiction_text = "\n".join(
-        f"{i+1}. EXISTING: {c.get('existing_claim','')} | NEW: {c.get('new_claim','')} | SEVERITY: {c.get('severity','medium')}"
-        for i, c in enumerate(contradictions[:5])
-    )
-    
-    try:
-        response = call_llm(system_prompt, contradiction_text, config)
-        resolutions = json.loads(response)
-        return resolutions[:len(contradictions)]
-    except Exception:
-        return []
-
-
-def load_config():
-    if CONFIG_PATH.exists():
-        return yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
-    return {}
+GRAPH_DIR = WIKI_DIR / "graph"
 
 
 def atomic_write(path: Path, content: str):
@@ -226,36 +110,71 @@ def atomic_write(path: Path, content: str):
 
 
 def call_llm(system_prompt: str, user_content: str, config: dict) -> str:
-    llm = config.get("llm", {})
-    api_url = llm.get("base_url", "https://api.deepseek.com").rstrip("/") + "/v1/chat/completions"
-
-    payload = {
-        "model": llm.get("model", "deepseek-v4-flash"),
-        "temperature": llm.get("temperature", 0.3),
-        "max_tokens": llm.get("max_tokens", 32000),
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content},
-        ],
-    }
-    if llm.get("provider") == "deepseek":
-        payload["thinking"] = {"type": "disabled"}
-
-    api_key = llm.get("api_key", "")
-    if not api_key:
-        raise RuntimeError("LLM API key not configured. Set llm.api_key in wiki_config.yaml")
-
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}",
-    }
+    llm_config = get_llm_config()
+    provider = llm_config.get("provider", "deepseek")
+    
+    if provider == "ollama":
+        api_url = f"{llm_config['base_url'].rstrip('/')}/api/chat"
+        payload = {
+            "model": llm_config.get("model", "llama3.2"),
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            "stream": False,
+            "options": {
+                "temperature": llm_config.get("temperature", 0.3),
+                "num_ctx": llm_config.get("num_ctx", 32768),
+            }
+        }
+        headers = {"Content-Type": "application/json"}
+    elif provider == "custom":
+        api_url = get_api_url()
+        payload = {
+            "model": llm_config.get("model", ""),
+            "temperature": llm_config.get("temperature", 0.3),
+            "max_tokens": llm_config.get("max_tokens", 32000),
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {llm_config.get('api_key', '')}",
+        }
+    else:
+        api_url = get_api_url()
+        payload = {
+            "model": llm_config.get("model", "deepseek-v4-flash"),
+            "temperature": llm_config.get("temperature", 0.3),
+            "max_tokens": llm_config.get("max_tokens", 32000),
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+        }
+        if provider == "deepseek":
+            payload["thinking"] = {"type": "disabled"}
+        
+        api_key = llm_config.get("api_key", "")
+        if not api_key:
+            raise RuntimeError("LLM API key not configured. Set llm.api_key in wiki_config.yaml or DEEPSEEK_API_KEY env var")
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        }
 
     try:
         resp = requests.post(api_url, json=payload, headers=headers, timeout=600)
         resp.raise_for_status()
         data = resp.json()
-        msg = data["choices"][0]["message"]
-        return (msg.get("content") or "").strip()
+        
+        if provider == "ollama":
+            return (data.get("message", {}).get("content", "") or "").strip()
+        else:
+            msg = data["choices"][0]["message"]
+            return (msg.get("content") or "").strip()
     except requests.RequestException as e:
         raise RuntimeError(f"LLM API call failed: {e}")
     except (KeyError, IndexError) as e:

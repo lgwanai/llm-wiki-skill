@@ -2,16 +2,28 @@
 """wiki.py — Unified CLI for LLM Wiki v2.
 
 Commands:
+    wiki init              Initialize wiki structure
     wiki compile <source>  Compile source → build wiki pages
     wiki query <question>  Search wiki → answer questions
     wiki lint              Health check → auto-heal
     wiki status            Show wiki statistics
-    wiki init              Initialize wiki structure
+    wiki config            Show current configuration
+    wiki config --init     Create default config file
+    wiki embed             Generate vector embeddings
+    wiki bulk <cmd>        Bulk operations (stats/clean/merge/export/delete)
+    wiki consolidate       Memory tier consolidation
+    wiki update            Update skill from GitHub (git pull + backup)
 
 Usage:
-    python scripts/wiki.py compile source.md
-    python scripts/wiki.py query "What is X?"
-    python scripts/wiki.py lint --auto-heal
+    wiki compile source.md
+    wiki query "What is X?"
+    wiki lint --auto-heal
+    wiki config
+    wiki init
+    
+Environment Variables:
+    LLM_WIKI_DIR     Override wiki directory path
+    LLM_WIKI_CONFIG  Override config file path
 """
 
 import argparse
@@ -21,10 +33,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Ensure scripts/ is importable for direct module calls
 sys.path.insert(0, str(Path(__file__).parent))
 
-WIKI_DIR = Path(os.environ.get("LLM_WIKI_DIR", str(Path(__file__).parent.parent / ".wiki")))
+from config import (
+    get_config, get_wiki_dir, get_llm_config, get_api_url,
+    create_default_config, validate_config, print_config,
+    CONFIG_FILENAME
+)
+
+WIKI_DIR = get_wiki_dir()
 PAGES_DIR = WIKI_DIR / "pages"
 GRAPH_DIR = WIKI_DIR / "graph"
 
@@ -177,9 +194,55 @@ def cmd_init() -> dict:
     return {"success": True, "created": len(dirs)}
 
 
+def cmd_config(init: bool = False, show: bool = True) -> dict:
+    if init:
+        dest = Path.cwd() / CONFIG_FILENAME
+        if dest.exists():
+            return {"success": False, "error": f"Config file already exists: {dest}"}
+        try:
+            create_default_config(dest)
+            return {"success": True, "created": str(dest)}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    if show:
+        config = get_config()
+        issues = validate_config(config)
+        return {
+            "success": True,
+            "config": config,
+            "wiki_dir": str(get_wiki_dir()),
+            "api_url": get_api_url(),
+            "issues": issues,
+        }
+    
+    return {"success": True}
+
+
 def main():
-    parser = argparse.ArgumentParser(description="LLM Wiki v2 CLI")
+    parser = argparse.ArgumentParser(
+        description="LLM Wiki v2 CLI — Personal knowledge base powered by LLMs",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  wiki init                    Initialize wiki structure
+  wiki config --init           Create default config file
+  wiki config                  Show current configuration
+  wiki compile paper.md        Compile document to wiki pages
+  wiki query "What is X?"      Query wiki and get answer
+  wiki lint --auto-heal        Health check with auto-repair
+
+Environment:
+  LLM_WIKI_DIR     Wiki directory path (default: .wiki)
+  LLM_WIKI_CONFIG  Config file path (default: wiki_config.yaml)
+        """
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    init_parser = subparsers.add_parser("init", help="Initialize wiki structure")
+    
+    config_parser = subparsers.add_parser("config", help="Show or create configuration")
+    config_parser.add_argument("--init", action="store_true", help="Create default config file")
 
     compile_parser = subparsers.add_parser("compile", help="Compile source to wiki")
     compile_parser.add_argument("source", help="Source file to compile")
@@ -221,12 +284,27 @@ def main():
     cons_parser.add_argument("--decay-only", action="store_true", help="Only apply retention decay")
 
     subparsers.add_parser("status", help="Show wiki statistics")
-    subparsers.add_parser("init", help="Initialize wiki structure")
     subparsers.add_parser("update", help="Update skill from GitHub (git pull + backup)")
 
     args = parser.parse_args()
 
-    if args.command == "compile":
+    if args.command == "init":
+        result = cmd_init()
+        print(f"Wiki initialized: {result['created']} directories created")
+        print(f"Wiki directory: {WIKI_DIR}")
+
+    elif args.command == "config":
+        result = cmd_config(init=args.init)
+        if args.init:
+            if result.get("success"):
+                print(f"Config file created: {result['created']}")
+                print("Edit the file to set your API key and preferences.")
+            else:
+                print(f"Error: {result.get('error', 'Unknown error')}")
+        else:
+            print_config()
+
+    elif args.command == "compile":
         result = cmd_compile(args.source, source_type=args.source_type, force=args.force)
         if result.get("success"):
             print(result.get("message", "Done"))
@@ -270,10 +348,6 @@ def main():
     elif args.command == "status":
         result = cmd_status()
         print(json.dumps(result, indent=2))
-
-    elif args.command == "init":
-        result = cmd_init()
-        print(f"Wiki initialized: {result['created']} directories created")
 
     elif args.command == "update":
         code, output = run_script("update.py", [])

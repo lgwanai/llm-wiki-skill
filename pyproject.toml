@@ -20,6 +20,13 @@ dependencies = [
 search = ["sentence-transformers>=2.2", "faiss-cpu>=1.7"]
 dev = ["pytest>=7.0", "pytest-cov>=4.0", "black>=23.0", "isort>=5.12", "ruff>=0.1"]
 
+[project.scripts]
+wiki = "scripts.wiki:main"
+
+[project.urls]
+Homepage = "https://github.com/anomalyco/llm-wiki-skill"
+Documentation = "https://github.com/anomalyco/llm-wiki-skill#readme"
+
 [tool.black]
 line-length = 100
 target-version = ["py310"]

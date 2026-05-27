@@ -73,27 +73,74 @@ $ python3 scripts/wiki.py query "What is DeepSeek-V4's architecture?"
 ## 快速开始
 
 ```bash
-# 安装 MinerU（默认 OCR 引擎，PDF→Markdown，公式→LaTeX，表格→HTML）
-uv pip install -U "mineru[all]"
+# 安装
+pip install -e .
 
-# 初始化
-python3 scripts/wiki.py init
+# 创建配置文件
+wiki config --init
 
-# 配置（编辑 API key）
-cp wiki_config.yaml.example wiki_config.yaml
+# 编辑配置，设置 API key
+vim wiki_config.yaml
 
-# 编译第一个源文档
-python3 scripts/wiki.py compile source.md
+# 初始化 Wiki
+wiki init
+
+# 编译文档
+wiki compile source.md
 
 # 查询
-python3 scripts/wiki.py query "What is X?"
+wiki query "What is X?"
 
 # 健康检查
-python3 scripts/wiki.py lint --auto-heal
+wiki lint --auto-heal
 
 # 查看状态
-python3 scripts/wiki.py status
+wiki status
+
+# 查看配置
+wiki config
 ```
+
+### CLI 命令
+
+| 命令 | 说明 |
+|------|------|
+| `wiki init` | 初始化 Wiki 结构 |
+| `wiki config` | 显示当前配置 |
+| `wiki config --init` | 创建默认配置文件 |
+| `wiki compile <file>` | 编译源文档 → Wiki 页面 |
+| `wiki query <question>` | 查询 Wiki → 生成答案 |
+| `wiki lint --auto-heal` | 健康检查 + 自动修复 |
+| `wiki status` | Wiki 统计信息 |
+| `wiki embed` | 生成向量嵌入 |
+| `wiki bulk stats` | 详细统计 |
+| `wiki bulk clean` | 清理孤立页面 |
+
+### 模型配置
+
+支持三种模式：
+
+```yaml
+# 1. DeepSeek API（默认）
+llm:
+  provider: deepseek
+  api_key: ${DEEPSEEK_API_KEY}
+  model: deepseek-v4-flash
+
+# 2. OpenAI API
+llm:
+  provider: openai
+  api_key: ${OPENAI_API_KEY}
+  model: gpt-4o
+
+# 3. Ollama 本地模型（无需 API key）
+llm:
+  provider: ollama
+ollama:
+  model: llama3.2
+```
+
+详细配置见 [docs/CONFIGURATION.md](docs/CONFIGURATION.md)。
 
 ### OCR 后端
 
@@ -552,44 +599,45 @@ python3 -c "import json; print(json.dumps(json.load(open('.wiki/audit.json'))[-2
 
 ## 配置
 
-所有配置集中在 `scripts/wiki_config.yaml.example`（复制为 `wiki_config.yaml` 后编辑）：
+所有配置集中在 `wiki_config.yaml`。使用 `wiki config --init` 创建默认配置文件。
+
+### 快速配置
 
 ```yaml
-# OCR 后端（三选一，MinerU 为默认）
-mineru:                        # MinerU（默认）— 公式→LaTeX，表格→HTML，纯 CPU
-  backend: pipeline
-  lang: ch
-  formula: true
-  table: true
+# Wiki 目录（编译后的文件存放位置）
+wiki_dir: .wiki
 
-paddleocr:                     # PaddleOCR — PP-OCRv5，109 语言，文档纠偏
-  lang: ch
-  use_doc_orientation_classify: true
-  use_doc_unwarping: true
+# LLM 模型配置
+llm:
+  provider: deepseek              # deepseek | openai | ollama
+  api_key: ${DEEPSEEK_API_KEY}    # 使用环境变量
+  model: deepseek-v4-flash
 
-ocr:                            # DeepSeek-OCR — grounding + 提取
-  api_url: "http://127.0.0.1:12345/v1/chat/completions"
-  api_key: "your-ocr-api-key"
-  model: "DeepSeek-OCR-4bit"
-
-llm:                          # LLM API（编译 + 查询）
-  provider: deepseek
-  api_key: "your-llm-api-key"
-  base_url: "https://api.deepseek.com"
-  model: "deepseek-v4-flash"
-  temperature: 0.3
-
-hooks:                        # 自动化行为
-  on_new_source: {enabled: true, auto_ingest: true}
-
-retention:                    # 衰减曲线
-  architecture: {half_life_days: 180}
-  bug: {half_life_days: 20}
-
-quality:                      # 质量标准
-  auto_heal: true
-  min_score: 0.4
+# 本地模型（无需 API key）
+# llm:
+#   provider: ollama
+# ollama:
+#   model: llama3.2
 ```
+
+### 配置项说明
+
+| 配置项 | 说明 | 默认值 |
+|--------|------|--------|
+| `wiki_dir` | Wiki 数据存储目录 | `.wiki` |
+| `llm.provider` | 模型提供商 | `deepseek` |
+| `llm.api_key` | API 密钥（支持环境变量） | - |
+| `llm.model` | 模型名称 | `deepseek-v4-flash` |
+| `query.llm_synthesis` | 是否使用 LLM 合成答案 | `true` |
+
+### 更多配置
+
+详见 [CONFIGURATION.md](CONFIGURATION.md)，包含：
+- Wiki 目录配置
+- URL/本地模型切换
+- OCR 后端配置
+- 知识保留策略
+- 向量搜索配置
 
 > `wiki_config.yaml` 在 `.gitignore` 中，不会提交到 git。
 

@@ -13,55 +13,94 @@ Usage:
 
 import argparse
 import json
+import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
 
-WIKI_DIR = Path(os.environ.get("LLM_WIKI_DIR", str(Path(__file__).parent.parent / ".wiki")))
+sys.path.insert(0, str(Path(__file__).parent))
+from config import get_config, get_wiki_dir, get_llm_config, get_api_url, get_query_config
+
+WIKI_DIR = get_wiki_dir()
 PAGES_DIR = WIKI_DIR / "pages"
-CONFIG_PATH = Path(__file__).parent.parent / "wiki_config.yaml"
 
 
 def load_config():
-    if CONFIG_PATH.exists():
-        return yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
-    return {}
+    return get_config()
 
 
 def call_llm(system_prompt: str, user_content: str, config: dict) -> str:
     import requests
 
-    llm = config.get("llm", {})
-    api_url = llm.get("base_url", "https://api.deepseek.com").rstrip("/") + "/v1/chat/completions"
-    api_key = llm.get("api_key", "")
-    if not api_key:
-        raise RuntimeError("LLM API key not configured.")
+    llm_config = get_llm_config()
+    provider = llm_config.get("provider", "deepseek")
+    
+    if provider == "ollama":
+        api_url = f"{llm_config['base_url'].rstrip('/')}/api/chat"
+        payload = {
+            "model": llm_config.get("model", "llama3.2"),
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            "stream": False,
+            "options": {
+                "temperature": llm_config.get("temperature", 0.3),
+                "num_ctx": llm_config.get("num_ctx", 32768),
+            }
+        }
+        headers = {"Content-Type": "application/json"}
+    elif provider == "custom":
+        api_url = get_api_url()
+        payload = {
+            "model": llm_config.get("model", ""),
+            "temperature": llm_config.get("temperature", 0.3),
+            "max_tokens": 8000,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {llm_config.get('api_key', '')}",
+        }
+    else:
+        api_url = get_api_url()
+        api_key = llm_config.get("api_key", "")
+        if not api_key:
+            raise RuntimeError("LLM API key not configured.")
+        
+        payload = {
+            "model": llm_config.get("model", "deepseek-v4-flash"),
+            "temperature": llm_config.get("temperature", 0.3),
+            "max_tokens": 8000,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+        }
+        if provider == "deepseek":
+            payload["thinking"] = {"type": "disabled"}
 
-    payload = {
-        "model": llm.get("model", "deepseek-v4-flash"),
-        "temperature": llm.get("temperature", 0.3),
-        "max_tokens": 8000,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content},
-        ],
-    }
-    if llm.get("provider") == "deepseek":
-        payload["thinking"] = {"type": "disabled"}
-
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}",
-    }
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        }
 
     try:
         resp = requests.post(api_url, json=payload, headers=headers, timeout=300)
         resp.raise_for_status()
         data = resp.json()
-        msg = data["choices"][0]["message"]
-        return (msg.get("content") or "").strip()
+        
+        if provider == "ollama":
+            return (data.get("message", {}).get("content", "") or "").strip()
+        else:
+            msg = data["choices"][0]["message"]
+            return (msg.get("content") or "").strip()
     except requests.RequestException as e:
         raise RuntimeError(f"LLM API call failed: {e}")
     except (KeyError, IndexError) as e:
@@ -380,11 +419,10 @@ created: {now}
 def query_wiki(query: str, file_back: bool = False, fmt: str = "markdown",
                synthesis: bool = True) -> dict:
     config = load_config()
-
-    # Respect global config default
-    query_cfg = config.get("query", {})
+    query_cfg = get_query_config()
+    
     if not synthesis:
-        pass  # CLI override takes priority
+        pass
     elif "llm_synthesis" in query_cfg:
         synthesis = query_cfg.get("llm_synthesis", True)
 

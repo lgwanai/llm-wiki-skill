@@ -6,17 +6,20 @@ import argparse
 import json
 import math
 import os
+import sys
 from pathlib import Path
 import re
-import sys
 from collections import Counter
+
+sys.path.insert(0, str(Path(__file__).parent))
+from config import get_wiki_dir
 
 try:
     import jieba
 except ImportError:
     jieba = None
 
-WIKI_DIR = Path(os.environ.get("LLM_WIKI_DIR", str(Path(__file__).parent.parent / ".wiki")))
+WIKI_DIR = get_wiki_dir()
 PAGES_DIR = WIKI_DIR / "pages"
 GRAPH_DIR = WIKI_DIR / "graph"
 ENTITIES_FILE = os.path.join(GRAPH_DIR, "entities.json")
