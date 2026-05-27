@@ -13,88 +13,112 @@ models/
 │       ├── OCR/      # Text OCR
 │       ├── TabCls/   # Table classification
 │       └── TabRec/   # Table recognition
-├── paddleocr/        # PaddleOCR models (auto-downloaded)
-└── deepseek-ocr-v2/  # DeepSeek-OCR (optional, can use API)
-```
-
-## Download Models
-
-### Quick Setup (Use Existing Models)
-
-If you already have MinerU models installed elsewhere:
-
-```bash
-python scripts/download_models.py --setup-links
-```
-
-### Download All Models
-
-```bash
-python scripts/download_models.py --all
-```
-
-### Download Specific Models
-
-```bash
-# MinerU (required for default backend)
-python scripts/download_models.py --mineru
-
-# DeepSeek-OCR (optional - can use API)
-python scripts/download_models.py --deepseek
+├── deepseek-ocr-v2/  # DeepSeek-OCR-2 Vision-Language model
+│   └── model/        # ~6.3GB
+├── logics-parsing-v2/ # Logics-Parsing Qwen3VL model
+│   └── model/        # ~8.4GB
+└── paddleocr/        # PaddleOCR models (auto-downloaded)
 ```
 
 ## Model Backends
 
-### MinerU (Default)
+### 1. MinerU (Default)
 
 - High-precision PDF parsing
 - Formula → LaTeX conversion
 - Table → HTML conversion
 - Pure CPU, no GPU required
+- Model size: ~2GB
 
-Download size: ~2GB
+### 2. DeepSeek-OCR-2
 
-### PaddleOCR
+- Vision-Language OCR model
+- Document grounding and markdown conversion
+- GPU/MPS/CPU support
+- Model size: ~6.3GB
+
+### 3. Logics-Parsing-v2
+
+- Based on Qwen3VL
+- Multi-modal document understanding
+- HTML/Markdown output
+- GPU/MPS/CPU support
+- Model size: ~8.4GB
+
+### 4. PaddleOCR
 
 - 109 languages support
 - Document unwarping
-- Auto-downloaded on first use (~100MB per language)
+- Auto-downloaded on first use
+- Model size: ~100MB per language
 
-### DeepSeek-OCR
+## Setup
 
-- Vision-language model
-- Can use API (no local model needed)
-- Local inference requires GPU
+Models are linked from external directories via symlinks:
+
+```bash
+# Check current links
+ls -la models/*/
+
+# Current structure:
+# mineru/models -> ~/.cache/modelscope/.../PDF-Extract-Kit-1.0/models
+# deepseek-ocr-v2/model -> ~/project/DeepSeek-OCR-2/models/DeepSeek-OCR-2
+# logics-parsing-v2/model -> ~/project/Logics-Parsing/weights/Logics-Parsing-v2
+```
 
 ## Configuration
 
-Configure model paths in `wiki_config.yaml`:
+Configure in `wiki_config.yaml`:
 
 ```yaml
+# MinerU (default)
 mineru:
   models_path: models/mineru/models
   lang: ch
   formula: true
   table: true
 
+# DeepSeek-OCR-2
+deepseek_ocr:
+  model_path: models/deepseek-ocr-v2/model
+  device: mps  # mps | cuda | cpu
+
+# Logics-Parsing-v2
+logics_parsing:
+  model_path: models/logics-parsing-v2/model
+  device: mps
+
+# PaddleOCR
 paddleocr:
   lang: ch
   use_doc_orientation_classify: true
-  use_doc_unwarping: true
+```
 
-ocr:  # DeepSeek-OCR via API
-  api_url: https://api.deepseek.com/v1/chat/completions
-  api_key: your-api-key
-  model: deepseek-v4-flash
+## Usage
+
+```bash
+# Use default (MinerU)
+python scripts/ocr.py document.pdf
+
+# Use DeepSeek-OCR-2 (GPU/MPS required for local inference)
+python scripts/ocr.py document.pdf --backend deepseek
+
+# Use Logics-Parsing (GPU/MPS required)
+python scripts/ocr.py document.pdf --backend logics
+
+# Use PaddleOCR
+python scripts/ocr.py document.pdf --backend paddle
 ```
 
 ## Environment Variables
 
 ```bash
-# MinerU models path
-export MINERU_MODELS_PATH=/path/to/models
+# MinerU
+export MINERU_MODELS_PATH=models/mineru/models
 
-# DeepSeek OCR API
-export OCR_API_URL=https://api.deepseek.com/v1/chat/completions
-export OCR_API_KEY=your-api-key
+# DeepSeek-OCR-2
+export DEEPSEEK_OCR_MODEL_PATH=models/deepseek-ocr-v2/model
+
+# Logics-Parsing
+export LOGICS_PARSING_MODEL_PATH=models/logics-parsing-v2/model
 ```

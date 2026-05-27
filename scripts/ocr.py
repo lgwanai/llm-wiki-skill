@@ -3,13 +3,15 @@
 
 Backends:
     mineru  (default): MinerU — high-precision parsing, formula→LaTeX, table→HTML, CPU OK.
+    deepseek:          DeepSeek-OCR-2 — Vision-Language OCR, GPU/MPS/CPU.
+    logics:            Logics-Parsing-v2 — Qwen3VL-based OCR, GPU/MPS/CPU.
     paddle:            PaddleOCR — PP-OCRv5, 109 languages, doc unwarping.
-    deepseek:          DeepSeek-OCR — grounding + text extraction, local/remote API.
 
 Usage:
     python ocr.py document.pdf                        # Default: MinerU
+    python ocr.py document.pdf --backend deepseek     # DeepSeek-OCR-2
+    python ocr.py document.pdf --backend logics       # Logics-Parsing
     python ocr.py document.pdf --backend paddle       # PaddleOCR
-    python ocr.py document.pdf --backend deepseek     # DeepSeek-OCR
     python ocr.py document.pdf -o results/            # Output directory
     python ocr.py --batch screenshots/                # Batch process
 """
@@ -37,7 +39,7 @@ def _get_default_backend() -> str:
 def main():
     parser = argparse.ArgumentParser(description="Multi-backend OCR — Image & PDF OCR")
     parser.add_argument("file", nargs="?", help="Image or PDF file path")
-    parser.add_argument("--backend", choices=["mineru", "paddle", "deepseek"],
+    parser.add_argument("--backend", choices=["mineru", "deepseek", "logics", "paddle"],
                         default=_get_default_backend(),
                         help=f"OCR backend (default: {_get_default_backend()})")
     parser.add_argument("--batch", help="Process all images/PDFs in a directory")
@@ -45,15 +47,19 @@ def main():
     parser.add_argument("-n", "--max-pages", type=int, help="Maximum pages to process")
     args = parser.parse_args()
 
+    # Lazy import based on backend
     if args.backend == "mineru":
         from _mineru_ocr import MinerUOCR
         ocr = MinerUOCR.from_config()
-    elif args.backend == "paddle":
+    elif args.backend == "deepseek":
+        from _deepseek_ocr2 import DeepSeekOCR2
+        ocr = DeepSeekOCR2.from_config()
+    elif args.backend == "logics":
+        from _logics_parsing import LogicsParsingOCR
+        ocr = LogicsParsingOCR.from_config()
+    else:  # paddle
         from _paddle_ocr import PaddleOCRWrapper
         ocr = PaddleOCRWrapper.from_config()
-    else:
-        from _deepseek_ocr import DeepSeekOCR
-        ocr = DeepSeekOCR.from_config()
 
     if args.batch:
         if not os.path.isdir(args.batch):

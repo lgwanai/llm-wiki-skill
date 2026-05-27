@@ -91,7 +91,7 @@ query:
   max_results: 5
 
 # ============================================================
-# OCR 后端配置（三选一）
+# OCR 后端配置（四选一）
 # ============================================================
 
 # MinerU（默认）— 公式→LaTeX，表格→HTML，纯 CPU
@@ -101,7 +101,24 @@ mineru:
   formula: true      # 识别公式
   table: true        # 识别表格
   # 模型路径（默认: 项目根目录/models/mineru/models）
-  # models_path: /path/to/mineru/models
+  models_path: models/mineru/models
+
+# DeepSeek-OCR-2 — Vision-Language OCR，GPU 可选
+deepseek_ocr:
+  # 模型路径（默认: models/deepseek-ocr-v2/model）
+  model_path: models/deepseek-ocr-v2/model
+  # 或使用 API
+  api_url: ""
+  api_key: ""
+  # 设备（mps | cuda | cpu）
+  device: mps
+
+# Logics-Parsing-v2 — Omni OCR，支持多模态
+logics_parsing:
+  # 模型路径（默认: models/logics-parsing-v2/model）
+  model_path: models/logics-parsing-v2/model
+  # 设备（mps | cuda | cpu）
+  device: mps
 
 # PaddleOCR — PP-OCRv5，109 语言，文档纠偏
 paddleocr:
@@ -109,13 +126,7 @@ paddleocr:
   use_doc_orientation_classify: true   # 文档方向校正
   use_doc_unwarping: true              # 文档展平
   # 模型路径（可选，默认使用系统缓存）
-  # models_path: /path/to/paddleocr/models
-
-# DeepSeek-OCR — grounding + 提取（需要 GPU 或 API）
-ocr:
-  api_url: "http://127.0.0.1:12345/v1/chat/completions"
-  api_key: "your-ocr-api-key"
-  model: "DeepSeek-OCR-4bit"
+  models_path: /path/to/paddleocr/models
 
 # ============================================================
 # 自动化 Hooks
