@@ -100,12 +100,16 @@ mineru:
   lang: ch           # ch | en
   formula: true      # 识别公式
   table: true        # 识别表格
+  # 模型路径（默认: 项目根目录/models/mineru/models）
+  # models_path: /path/to/mineru/models
 
 # PaddleOCR — PP-OCRv5，109 语言，文档纠偏
 paddleocr:
   lang: ch
   use_doc_orientation_classify: true   # 文档方向校正
   use_doc_unwarping: true              # 文档展平
+  # 模型路径（可选，默认使用系统缓存）
+  # models_path: /path/to/paddleocr/models
 
 # DeepSeek-OCR — grounding + 提取（需要 GPU 或 API）
 ocr:

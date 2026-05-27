@@ -22,22 +22,16 @@ from pathlib import Path
 
 import yaml
 
-from _deepseek_ocr import DeepSeekOCR
-from _mineru_ocr import MinerUOCR
-from _paddle_ocr import PaddleOCRWrapper
+sys.path.insert(0, str(Path(__file__).parent))
+from config import get_config
 
 CONFIG_PATH = Path(__file__).parent.parent / "wiki_config.yaml"
 
 
 def _get_default_backend() -> str:
     """Read ocr_mode from wiki_config.yaml, default to mineru."""
-    if CONFIG_PATH.exists():
-        try:
-            config = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
-            return config.get("ocr_mode", "mineru")
-        except Exception:
-            pass
-    return "mineru"
+    config = get_config()
+    return config.get("ocr_mode", "mineru")
 
 
 def main():
@@ -52,10 +46,13 @@ def main():
     args = parser.parse_args()
 
     if args.backend == "mineru":
+        from _mineru_ocr import MinerUOCR
         ocr = MinerUOCR.from_config()
     elif args.backend == "paddle":
+        from _paddle_ocr import PaddleOCRWrapper
         ocr = PaddleOCRWrapper.from_config()
     else:
+        from _deepseek_ocr import DeepSeekOCR
         ocr = DeepSeekOCR.from_config()
 
     if args.batch:
