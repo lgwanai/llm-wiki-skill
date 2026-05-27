@@ -165,9 +165,22 @@ query:
 
 ## OCR 后端配置
 
-LLM Wiki 支持三种 OCR 引擎：
+LLM Wiki 支持四种 OCR 引擎：
 
-### MinerU（推荐）
+### 选择默认后端
+
+```yaml
+# 可选: mineru | deepseek | logics | paddle
+ocr_mode: mineru
+```
+
+或通过命令行覆盖：
+
+```bash
+python scripts/ocr.py document.pdf --backend deepseek
+```
+
+### MinerU（推荐，默认）
 
 纯 CPU 运行，支持公式转 LaTeX、表格转 HTML：
 
@@ -200,15 +213,31 @@ paddleocr:
 pip install paddleocr paddlepaddle
 ```
 
-### DeepSeek-OCR
+### DeepSeek-OCR-2
 
-需要 GPU 或 API：
+Vision-Language 模型，支持 GPU/MPS/CPU：
 
 ```yaml
-ocr:
-  api_url: "http://127.0.0.1:12345/v1/chat/completions"
-  api_key: "your-ocr-api-key"
-  model: "DeepSeek-OCR-4bit"
+deepseek_ocr:
+  model_path: models/deepseek-ocr-v2/model
+  device: mps  # mps | cuda | cpu
+```
+
+或使用 API：
+```yaml
+deepseek_ocr:
+  api_url: https://api.deepseek.com/v1/chat/completions
+  api_key: your-api-key
+```
+
+### Logics-Parsing-v2
+
+基于 Qwen3VL，支持 GPU/MPS/CPU：
+
+```yaml
+logics_parsing:
+  model_path: models/logics-parsing-v2/model
+  device: mps  # mps | cuda | cpu
 ```
 
 ---
