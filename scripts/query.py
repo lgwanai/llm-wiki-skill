@@ -18,6 +18,7 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 import yaml
 
@@ -220,7 +221,7 @@ def search_wiki(query: str, limit: int = 5) -> list[dict]:
     return results[:limit]
 
 
-_entities_cache: dict | None = None
+_entities_cache: Optional[dict] = None
 
 
 def _get_entities() -> dict:

@@ -6,11 +6,14 @@ import argparse
 import json
 import math
 import os
-from pathlib import Path
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
-WIKI_DIR = Path(os.environ.get("LLM_WIKI_DIR", str(Path(__file__).parent.parent / ".wiki")))
+sys.path.insert(0, str(Path(__file__).parent))
+from config import get_wiki_dir
+
+WIKI_DIR = get_wiki_dir()
 MEMORY_DIR = WIKI_DIR / "memory"
 
 WORKING_FILE = os.path.join(MEMORY_DIR, "working.json")

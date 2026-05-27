@@ -20,11 +20,16 @@ Usage:
 
 import argparse
 import json
+import os
 import shutil
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-WIKI_DIR = Path(os.environ.get("LLM_WIKI_DIR", str(Path(__file__).parent.parent / ".wiki")))
+sys.path.insert(0, str(Path(__file__).parent))
+from config import get_wiki_dir
+
+WIKI_DIR = get_wiki_dir()
 PAGES_DIR = WIKI_DIR / "pages"
 GRAPH_DIR = WIKI_DIR / "graph"
 AUDIT_FILE = WIKI_DIR / "audit.json"
