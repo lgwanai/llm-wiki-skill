@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """generate_embeddings.py — Generate vector embeddings for all wiki pages.
 
-Uses Ollama (qwen3-embedding:8b) for local embedding generation.
-writes to .wiki/graph/embeddings.json for hybrid search.
+Supports two modes:
+  - local: Use sentence-transformers or Ollama for local embedding
+  - api: Use remote embedding API (OpenAI, DeepSeek, etc.)
+
+Writes to .wiki/graph/embeddings.json for hybrid search.
 
 Usage:
     python3 scripts/generate_embeddings.py              # all pages
@@ -15,14 +18,29 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Optional
+
+import yaml
 
 sys.path.insert(0, str(Path(__file__).parent))
-from config import get_wiki_dir
+from config import get_config, get_wiki_dir
 
 WIKI_DIR = get_wiki_dir()
 PAGES_DIR = WIKI_DIR / "pages"
 GRAPH_DIR = WIKI_DIR / "graph"
 EMBEDDINGS_FILE = GRAPH_DIR / "embeddings.json"
+CONFIG_PATH = Path(__file__).parent.parent / "wiki_config.yaml"
+
+
+def get_embeddings_config() -> dict:
+    """Get embeddings configuration from wiki_config.yaml."""
+    config = get_config()
+    return config.get("embeddings", {
+        "mode": "local",
+        "model": "sentence-transformers/all-MiniLM-L6-v2",
+        "dimension": 384,
+        "backend": "faiss",
+    })
 
 
 def read_page_content(page_path: Path) -> str:
@@ -41,9 +59,89 @@ def read_page_content(page_path: Path) -> str:
     return content.strip()[:3000]
 
 
-def generate_all(force: bool = False) -> dict:
-    from _ollama import get_embedding
+def get_embedding_local(text: str, model: str) -> Optional[list[float]]:
+    """Generate embedding using local model."""
+    if model.startswith("ollama:"):
+        model_name = model.replace("ollama:", "")
+        return get_embedding_ollama(text, model_name)
+    
+    try:
+        from sentence_transformers import SentenceTransformer
+        _model = SentenceTransformer(model)
+        emb = _model.encode(text, convert_to_numpy=True)
+        return emb.tolist()
+    except ImportError:
+        print("Install sentence-transformers: pip install sentence-transformers", file=sys.stderr)
+        return None
+    except Exception as e:
+        print(f"Local embedding error: {e}", file=sys.stderr)
+        return None
 
+
+def get_embedding_ollama(text: str, model: str) -> Optional[list[float]]:
+    """Generate embedding using Ollama."""
+    import requests
+    
+    try:
+        base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+        resp = requests.post(
+            f"{base_url}/api/embeddings",
+            json={"model": model, "prompt": text},
+            timeout=60
+        )
+        resp.raise_for_status()
+        return resp.json().get("embedding")
+    except Exception as e:
+        print(f"Ollama embedding error: {e}", file=sys.stderr)
+        return None
+
+
+def get_embedding_api(text: str, config: dict) -> Optional[list[float]]:
+    """Generate embedding using remote API."""
+    import requests
+    
+    api_url = config.get("api_url", "")
+    api_key = config.get("api_key", "")
+    api_model = config.get("api_model", "text-embedding-3-small")
+    
+    if not api_url:
+        print("Error: embeddings.api_url not configured", file=sys.stderr)
+        return None
+    
+    headers = {
+        "Content-Type": "application/json",
+    }
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    
+    try:
+        resp = requests.post(
+            api_url,
+            headers=headers,
+            json={"model": api_model, "input": text},
+            timeout=60
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("data", [{}])[0].get("embedding")
+    except Exception as e:
+        print(f"API embedding error: {e}", file=sys.stderr)
+        return None
+
+
+def get_embedding(text: str) -> Optional[list[float]]:
+    """Generate embedding based on configuration."""
+    config = get_embeddings_config()
+    mode = config.get("mode", "local")
+    model = config.get("model", "sentence-transformers/all-MiniLM-L6-v2")
+    
+    if mode == "api":
+        return get_embedding_api(text, config)
+    else:
+        return get_embedding_local(text, model)
+
+
+def generate_all(force: bool = False) -> dict:
     if not PAGES_DIR.exists():
         return {"status": "error", "message": "No wiki pages found. Run compile first."}
 
@@ -98,8 +196,6 @@ def generate_all(force: bool = False) -> dict:
 
 
 def generate_one(page_id: str) -> dict:
-    from _ollama import get_embedding
-
     for subdir in ["concepts", "entities", "sessions", "decisions", "patterns"]:
         page_path = PAGES_DIR / subdir / f"{page_id}.md"
         if page_path.exists():
@@ -155,7 +251,11 @@ def main():
     parser.add_argument("--page", help="Generate embedding for a single page")
     parser.add_argument("--force", action="store_true", help="Regenerate all embeddings")
     parser.add_argument("--verify", action="store_true", help="Check embedding status")
+    parser.add_argument("--mode", choices=["local", "api"], help="Override embedding mode")
     args = parser.parse_args()
+
+    if args.mode:
+        os.environ["EMBEDDING_MODE"] = args.mode
 
     if args.verify:
         result = verify_status()

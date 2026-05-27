@@ -263,12 +263,42 @@ retention:
 
 ## 向量搜索配置
 
+支持本地和 API 两种模式：
+
+### 本地模式（默认）
+
 ```yaml
 embeddings:
+  mode: local
   model: "sentence-transformers/all-MiniLM-L6-v2"
   dimension: 384
   backend: faiss          # faiss | qdrant
   cache_path: "graph/embeddings.json"
+```
+
+或使用 Ollama：
+
+```yaml
+embeddings:
+  mode: local
+  model: "ollama:nomic-embed-text"
+```
+
+### API 模式
+
+```yaml
+embeddings:
+  mode: api
+  api_url: "https://api.openai.com/v1/embeddings"
+  api_key: "${OPENAI_API_KEY}"
+  api_model: "text-embedding-3-small"
+  dimension: 1536
+```
+
+**命令行覆盖：**
+
+```bash
+python scripts/generate_embeddings.py --mode api
 ```
 
 ---

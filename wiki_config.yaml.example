@@ -187,8 +187,23 @@ quality:
 # 向量搜索配置
 # ============================================================
 embeddings:
-  # 嵌入模型
+  # 嵌入模式: local | api
+  # - local: 使用本地模型（sentence-transformers 或 ollama）
+  # - api: 使用远程 API（OpenAI、DeepSeek 等）
+  mode: local
+  
+  # 本地模型（mode: local 时使用）
   model: "sentence-transformers/all-MiniLM-L6-v2"
+  
+  # 或使用 Ollama 本地嵌入
+  # model: "ollama:nomic-embed-text"
+  
+  # 远程 API 配置（mode: api 时使用）
+  api_url: ""
+  api_key: ""
+  # api_url: "https://api.openai.com/v1/embeddings"
+  # api_key: "${OPENAI_API_KEY}"
+  # api_model: "text-embedding-3-small"
   
   # 向量维度
   dimension: 384

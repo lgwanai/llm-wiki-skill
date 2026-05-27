@@ -1,7 +1,7 @@
 from __future__ import annotations
 """Ollama embedding utilities for llm-wiki vector search.
 
-Uses Ollama's /api/embeddings endpoint with Qwen3-Embedding-8B-4bit-DWQ.
+Uses Ollama's /api/embeddings endpoint with Qwen3-Embed-8B-4bit-DWQ.
 Configurable via environment variables or defaults.
 
 Environment variables:
@@ -14,13 +14,14 @@ import json
 import os
 import urllib.error
 import urllib.request
+from typing import Optional
 
 OLLAMA_BASE = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_API_KEY = os.environ.get("OLLAMA_API_KEY", "")
 EMBED_MODEL = os.environ.get("EMBED_MODEL", "qwen3-embedding:8b")
 
 
-def get_embedding(text: str, model: str = EMBED_MODEL) -> list[float] | None:
+def get_embedding(text: str, model: str = EMBED_MODEL) -> Optional[list[float]]:
     if not text or not text.strip():
         return None
 
