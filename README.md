@@ -76,8 +76,10 @@ $ python3 scripts/wiki.py query "What is DeepSeek-V4's architecture?"
 # 安装
 pip install -e .
 
-# 创建配置文件
+# 创建配置文件（或复制 example）
 wiki config --init
+# 或
+cp wiki_config.yaml.example wiki_config.yaml
 
 # 编辑配置，设置 API key
 vim wiki_config.yaml

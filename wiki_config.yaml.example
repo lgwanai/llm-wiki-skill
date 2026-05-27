@@ -1,79 +1,189 @@
-# Wiki configuration — the single canonical config file
-#   scripts/wiki_config.yaml (this file)
-#
-# Copy from the template if you don't have one:
-#   cp scripts/wiki_config.yaml.example scripts/wiki_config.yaml
-#
-# wiki_config.yaml is in .gitignore — never commit real keys.
+# LLM Wiki v2 配置文件
+# 复制此文件为 wiki_config.yaml 并根据需要修改
 
-# --- Pipeline backends ---
+# ============================================================
+# Wiki 存储目录配置
+# ============================================================
+# wiki_dir: Wiki 数据存储根目录
+#   - 编译后的页面存放在此目录下
+#   - 默认: 项目根目录下的 .wiki/
+#   - 可配置为任意绝对路径或相对路径
+#   - 示例:
+#     wiki_dir: ~/.wiki              # 用户主目录下
+#     wiki_dir: /data/wiki           # 绝对路径
+#     wiki_dir: ./my-wiki            # 相对路径（相对于配置文件所在目录）
 
-ocr_mode: mineru               # Default OCR backend: mineru | paddle | deepseek
+wiki_dir: .wiki
 
-# MinerU — high-precision document parsing
-# Backends: pipeline (CPU, 85+ accuracy) | hybrid-auto-engine (GPU, 95+)
+# ============================================================
+# LLM 模型配置
+# ============================================================
+# 支持两种模式:
+#   1. URL 模式（远程 API）: 指定 provider, base_url, api_key
+#   2. 本地模式（Ollama）: 设置 provider: ollama, 不需要 api_key
+
+llm:
+  # 模型提供商: deepseek | openai | ollama | custom
+  provider: deepseek
+  
+  # API 密钥（远程 API 必填，Ollama 模式无需设置）
+  # 建议使用环境变量: api_key: ${DEEPSEEK_API_KEY}
+  api_key: "your-api-key-here"
+  
+  # API 基础 URL（根据 provider 自动设置默认值）
+  # - deepseek: https://api.deepseek.com
+  # - openai: https://api.openai.com
+  # - ollama: http://localhost:11434
+  # - custom: 必须手动指定
+  base_url: "https://api.deepseek.com"
+  
+  # 模型名称
+  # - deepseek: deepseek-chat, deepseek-v4-flash
+  # - openai: gpt-4o, gpt-4o-mini
+  # - ollama: llama3.2, qwen2.5, deepseek-r1:7b
+  model: "deepseek-v4-flash"
+  
+  # 生成参数
+  temperature: 0.3
+  max_tokens: 32000
+
+# ============================================================
+# Ollama 本地模型配置（当 provider: ollama 时使用）
+# ============================================================
+ollama:
+  # Ollama 服务地址
+  base_url: "http://localhost:11434"
+  
+  # 模型名称
+  model: "llama3.2"
+  
+  # 生成参数
+  temperature: 0.3
+  num_ctx: 32768    # 上下文窗口大小
+  
+  # 嵌入模型（用于向量搜索）
+  embedding_model: "nomic-embed-text"
+
+# ============================================================
+# 自定义 API 配置（当 provider: custom 时使用）
+# ============================================================
+# 示例：使用自部署的 OpenAI 兼容服务
+custom:
+  # 完整的 API URL（必须包含 /v1/chat/completions 路径）
+  # api_url: "http://your-server:8000/v1/chat/completions"
+  
+  # 或者分开配置
+  base_url: "http://your-server:8000"
+  api_key: "your-custom-api-key"
+  model: "your-model-name"
+
+# ============================================================
+# 查询配置
+# ============================================================
+query:
+  # 是否使用 LLM 合成答案（false = 仅返回搜索结果，更快）
+  llm_synthesis: true
+  
+  # 默认输出格式: markdown | table | timeline | slides | json
+  default_format: markdown
+  
+  # 搜索结果数量上限
+  max_results: 5
+
+# ============================================================
+# OCR 后端配置（三选一）
+# ============================================================
+
+# MinerU（默认）— 公式→LaTeX，表格→HTML，纯 CPU
 mineru:
-  backend: pipeline            # pipeline | hybrid-auto-engine | vlm-auto-engine
-  lang: ch                     # ch | en | korean | japan | ...
-  method: auto                 # auto | txt | ocr
-  formula: true                # Formula → LaTeX
-  table: true                  # Table → HTML
-  start_page:                  # Optional: start page (0-indexed)
-  timeout: 600                 # CLI timeout in seconds
+  backend: pipeline
+  lang: ch           # ch | en
+  formula: true      # 识别公式
+  table: true        # 识别表格
 
-# PaddleOCR — PP-OCRv5 text recognition, 109 languages, doc unwarping
+# PaddleOCR — PP-OCRv5，109 语言，文档纠偏
 paddleocr:
-  lang: ch                     # ch | en | korean | japan | ...
-  use_doc_orientation_classify: true   # Auto-rotate skewed documents
-  use_doc_unwarping: true              # Fix warped/curved pages
-  text_det_thresh: 0.3
-  text_rec_score_thresh: 0.5
+  lang: ch
+  use_doc_orientation_classify: true   # 文档方向校正
+  use_doc_unwarping: true              # 文档展平
 
-# DeepSeek-OCR — grounding + text extraction via API
+# DeepSeek-OCR — grounding + 提取（需要 GPU 或 API）
 ocr:
   api_url: "http://127.0.0.1:12345/v1/chat/completions"
   api_key: "your-ocr-api-key"
   model: "DeepSeek-OCR-4bit"
-  pdf_dpi: 150
 
-llm:
-  provider: deepseek
-  api_key: "your-llm-api-key"
-  base_url: "https://api.deepseek.com"
-  model: "deepseek-v4-flash"
-  temperature: 0.3
-
-# --- Wiki behavior ---
-
+# ============================================================
+# 自动化 Hooks
+# ============================================================
 hooks:
-  on_new_source: {enabled: true, auto_ingest: true}
-  on_session_end: {enabled: true, auto_crystallize: true}
+  # 新源文件检测
+  on_new_source:
+    enabled: false
+    auto_ingest: false
+  
+  # 会话开始
+  session_start:
+    enabled: false
+    inject_context: true
+  
+  # 会话结束
+  session_end:
+    enabled: false
+    crystallize: true
 
+# ============================================================
+# 知识保留配置
+# ============================================================
 retention:
+  # 各类型实体的半衰期（天）
   architecture: {half_life_days: 180}
   project: {half_life_days: 130}
+  pattern: {half_life_days: 87}
   bug: {half_life_days: 20}
   meeting: {half_life_days: 10}
-  pattern: {half_life_days: 87}
   preference: {half_life_days: 527}
+  
+  # 衰减阈值
+  stale_threshold: 0.5    # 低于此值标记为过期
+  archive_threshold: 0.15 # 低于此值标记为归档
 
+# ============================================================
+# 质量控制
+# ============================================================
 quality:
+  # 自动修复
   auto_heal: true
+  
+  # 最低置信度阈值
   min_score: 0.4
+  
+  # 每个文档提取的页面数量范围
+  min_pages_per_doc: 10
+  max_pages_per_doc: 20
 
-query:
-  llm_synthesis: true         # LLM synthesis (true=full answer, false=raw search results)
+# ============================================================
+# 向量搜索配置
+# ============================================================
+embeddings:
+  # 嵌入模型
+  model: "sentence-transformers/all-MiniLM-L6-v2"
+  
+  # 向量维度
+  dimension: 384
+  
+  # 索引类型: faiss | qdrant
+  backend: faiss
+  
+  # 缓存路径（相对于 wiki_dir）
+  cache_path: "graph/embeddings.json"
 
-# --- Optional production-scale backends ---
-# Uncomment to enable:
-
-# qdrant:
-#   url: "http://localhost:6333"
-#   api_key: ""
-
-# agensgraph:
-#   host: "localhost"
-#   port: 5433
-#   user: "agensgraph"
-#   password: "agensgraph"
-#   database: "agensgraph"
+# ============================================================
+# 日志配置
+# ============================================================
+logging:
+  # 日志级别: DEBUG | INFO | WARNING | ERROR
+  level: INFO
+  
+  # 日志文件（相对于 wiki_dir）
+  file: "wiki.log"
