@@ -13,6 +13,8 @@ Usage:
     python3 scripts/generate_embeddings.py --verify     # check status
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import os

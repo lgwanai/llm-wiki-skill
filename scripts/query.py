@@ -11,6 +11,8 @@ Usage:
     python scripts/query.py "Explain Muon optimizer" --file-back
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import os

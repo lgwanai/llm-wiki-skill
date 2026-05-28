@@ -8,16 +8,21 @@ Entity types and relationship types are defined in .wiki/schema.md.
 """
 
 import json
+import os
 import re
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Optional
 
 import requests
 import yaml
 
+sys.path.insert(0, str(Path(__file__).parent))
+from config import get_wiki_dir
+
 CONFIG_PATH = Path(__file__).parent.parent / "wiki_config.yaml"
-WIKI_DIR = Path(os.environ.get("LLM_WIKI_DIR", str(Path(__file__).parent.parent / ".wiki")))
+WIKI_DIR = get_wiki_dir()
 SCHEMA_PATH = WIKI_DIR / "schema.md"
 
 ENTITY_TYPES = []

@@ -26,6 +26,8 @@ Environment Variables:
     LLM_WIKI_CONFIG  Override config file path
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import os

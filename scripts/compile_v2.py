@@ -1,16 +1,9 @@
 #!/usr/bin/env python3
 """compile_v2.py — Simplified wiki compilation.
-
-Following Karpathy's original design: LLM reads source, writes wiki pages directly.
-No complex regex, no JSON parsing, minimal Python processing.
-
-Process:
-1. Read source document
-2. Ask LLM to write wiki pages in markdown
-3. Split output by clear separators
-4. Write pages to .wiki/pages/
-5. Update index.md
+...
 """
+
+from __future__ import annotations
 
 import json
 import os
