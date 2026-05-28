@@ -146,27 +146,50 @@ ollama:
 
 ### OCR 后端
 
-三款 OCR 引擎随需切换，**MinerU 为默认**（效果最好，纯 CPU 可用）：
+**四款** OCR 引擎随需切换，**MinerU 为默认**（效果最好，纯 CPU 可用）：
 
-| 后端 | 引擎 | 核心优势 | GPU 需求 |
-|------|------|---------|---------|
-| `mineru` ★ | MinerU 3.1 | 公式→LaTeX，表格→HTML，多栏排版，页眉页脚移除 | 无需（pipeline，4GB RAM） |
-| `paddle` | PaddleOCR 3.5 / PP-OCRv5 | 109 语言，文档纠偏/展平，方向校正 | 无需（CPU OK） |
-| `deepseek` | DeepSeek-OCR | Grounding 图像定位，图表裁剪 | GPU（vLLM）或 API |
+| 后端 | 引擎 | 核心优势 | 设备需求 | 模型大小 |
+|------|------|---------|---------|---------|
+| `mineru` ★ | MinerU 3.1 | 公式→LaTeX，表格→HTML，多栏排版 | CPU | ~2GB |
+| `deepseek` | DeepSeek-OCR-2 | Vision-Language OCR，文档理解 | GPU/MPS/CPU | ~6.3GB |
+| `logics` | Logics-Parsing-v2 | Qwen3VL，多模态文档解析 | GPU/MPS/CPU | ~8.4GB |
+| `paddle` | PaddleOCR 3.5 | 109 语言，文档纠偏/展平 | CPU | ~100MB |
+
+**配置选择：**
+
+```yaml
+# 选择默认 OCR 后端
+ocr_mode: mineru  # mineru | deepseek | logics | paddle
+```
+
+**使用方式：**
 
 ```bash
-# MinerU（默认）
-python3 scripts/ocr.py paper.pdf
+# MinerU（默认，CPU）
+python scripts/ocr.py paper.pdf
 
-# PaddleOCR
-python3 scripts/ocr.py paper.pdf --backend paddle
+# DeepSeek-OCR-2（GPU/MPS）
+python scripts/ocr.py paper.pdf --backend deepseek
 
-# DeepSeek-OCR
-python3 scripts/ocr.py paper.pdf --backend deepseek
+# Logics-Parsing（GPU/MPS）
+python scripts/ocr.py paper.pdf --backend logics
+
+# PaddleOCR（CPU）
+python scripts/ocr.py paper.pdf --backend paddle
 
 # PDF → Wiki 完整流程
-python3 scripts/ocr.py paper.pdf -o .wiki/source/paper/
-python3 scripts/wiki.py compile .wiki/source/paper/paper/auto/paper.md
+python scripts/ocr.py paper.pdf -o .wiki/source/paper/
+python scripts/wiki.py compile .wiki/source/paper/paper.md
+```
+
+**模型目录结构：**
+
+```
+models/
+├── mineru/models           # MinerU PDF-Extract-Kit
+├── deepseek-ocr-v2/model   # DeepSeek-OCR-2
+├── logics-parsing-v2/model # Logics-Parsing Qwen3VL
+└── paddleocr/              # PaddleOCR (auto-downloaded)
 ```
 
 ---
@@ -289,10 +312,20 @@ source: DeepSeek-V4 Technical Report
 llm-wiki-skill/
 ├── SKILL.md                     # Claude Code skill 入口
 ├── README.md                    # 本文件
-├── pyproject.toml               # Python 项目配置
+├── CONFIGURATION.md             # 配置指南
+├── pyproject.toml               # Python 项目配置（含 wiki CLI 入口）
+├── wiki_config.yaml.example     # 配置文件模板
+├── wiki_config.yaml             # 本地配置（不提交）
 │
-├── scripts/                     # 所有自动化脚本（17 个）
-│   ├── wiki.py                  # 统一 CLI
+├── models/                      # OCR 模型目录
+│   ├── mineru/models           # MinerU PDF-Extract-Kit
+│   ├── deepseek-ocr-v2/model   # DeepSeek-OCR-2 (~6.3GB)
+│   ├── logics-parsing-v2/model # Logics-Parsing Qwen3VL (~8.4GB)
+│   └── README.md               # 模型目录说明
+│
+├── scripts/                     # 所有自动化脚本（26 个）
+│   ├── wiki.py                  # 统一 CLI ★
+│   ├── config.py                # 统一配置加载 ★
 │   ├── compile_v2.py            # 主编译：源 → Wiki ★
 │   ├── query.py                 # 查询：搜索 + 合成 + 回填 ★
 │   ├── lint.py                  # 检查：健康扫描 + 自愈 ★
@@ -301,18 +334,15 @@ llm-wiki-skill/
 │   ├── consolidate.py           # 内存整合：层级提升 + 衰减
 │   ├── crystallize.py           # 结晶化：Session → Digest
 │   ├── bulk.py                  # 批量操作：删除/导出/合并
-│   ├── generate_embeddings.py   # 向量嵌入生成
-│   ├── url2markdown.py          # URL → Markdown 转换
-│   ├── ocr.py                   # OCR 接口（3 后端：mineru / paddle / deepseek）
-│   ├── _mineru_ocr.py           # MinerU 引擎（公式→LaTeX，表格→HTML，纯 CPU）★
-│   ├── _paddle_ocr.py           # PaddleOCR 引擎（PP-OCRv5，109 语言，纠偏）
-│   ├── _deepseek_ocr.py         # DeepSeek-OCR 引擎（grounding + 提取）
-│   ├── _llm_extract.py          # LLM 实体提取
-│   ├── _ollama.py               # 嵌入生成（Ollama）
-│   ├── _qdrant.py               # Qdrant 向量库（可选）
-│   ├── _agensgraph.py           # AgensGraph 图库（可选）
-│   ├── wiki_config.yaml.example # 配置文件模板
-│   └── wiki_config.yaml         # 本地配置（不提交）
+│   ├── generate_embeddings.py   # 向量嵌入生成（支持 API）
+│   ├── download_models.py       # 模型下载/链接工具
+│   ├── ocr.py                   # OCR 接口（4 后端）
+│   ├── _mineru_ocr.py           # MinerU 引擎（CPU）★
+│   ├── _paddle_ocr.py           # PaddleOCR 引擎（CPU）
+│   ├── _deepseek_ocr2.py        # DeepSeek-OCR-2 引擎（GPU/MPS）
+│   ├── _logics_parsing.py      # Logics-Parsing 引擎（GPU/MPS）
+│   ├── _ollama.py               # Ollama 嵌入生成
+│   └── ...
 │
 ├── .wiki/                       # Wiki 数据（LLM 生成）
 │   ├── pages/
@@ -348,6 +378,71 @@ llm-wiki-skill/
 query.py → search.py → graph.py
 consolidate.py → crystallize.py
 wiki.py → compile_v2.py, query.py, lint.py, bulk.py, generate_embeddings.py
+```
+
+---
+
+## 模型设置
+
+### 检查模型状态
+
+```bash
+python scripts/download_models.py --info
+```
+
+输出示例：
+```
+✓ mineru
+  Path: models/mineru/models
+  Backend: CPU
+  ✓ Layout
+  ✓ OCR
+  ✓ MFR
+
+✓ deepseek-ocr-v2
+  Path: models/deepseek-ocr-v2/model
+  Backend: GPU/MPS/CPU
+  ✓ config.json
+  ✓ model-00001-of-000001.safetensors
+
+✓ logics-parsing-v2
+  Path: models/logics-parsing-v2/model
+  Backend: GPU/MPS/CPU
+  ✓ config.json
+  ✓ model-00001-of-00002.safetensors
+```
+
+### 链接现有模型
+
+如果已有模型文件，创建符号链接：
+
+```bash
+python scripts/download_models.py --setup-links
+```
+
+自动链接位置：
+- MinerU: `~/.cache/modelscope/.../PDF-Extract-Kit-1.0/models`
+- DeepSeek-OCR-2: `~/project/DeepSeek-OCR-2/models/DeepSeek-OCR-2`
+- Logics-Parsing: `~/project/Logics-Parsing/weights/Logics-Parsing-v2`
+
+### 环境变量
+
+```bash
+# Wiki 目录
+export LLM_WIKI_DIR=/path/to/wiki
+
+# LLM 配置
+export DEEPSEEK_API_KEY=sk-xxx
+export OPENAI_API_KEY=sk-xxx
+
+# Embedding
+export EMBEDDING_MODE=local
+export OLLAMA_BASE_URL=http://localhost:11434
+
+# OCR 模型路径
+export MINERU_MODELS_PATH=models/mineru/models
+export DEEPSEEK_OCR_MODEL_PATH=models/deepseek-ocr-v2/model
+export LOGICS_PARSING_MODEL_PATH=models/logics-parsing-v2/model
 ```
 
 ---
@@ -611,15 +706,17 @@ wiki_dir: .wiki
 
 # LLM 模型配置
 llm:
-  provider: deepseek              # deepseek | openai | ollama
+  provider: deepseek              # deepseek | openai | ollama | custom
   api_key: ${DEEPSEEK_API_KEY}    # 使用环境变量
   model: deepseek-v4-flash
 
-# 本地模型（无需 API key）
-# llm:
-#   provider: ollama
-# ollama:
-#   model: llama3.2
+# OCR 后端选择
+ocr_mode: mineru  # mineru | deepseek | logics | paddle
+
+# Embedding 模式
+embeddings:
+  mode: local  # local | api
+  model: "sentence-transformers/all-MiniLM-L6-v2"
 ```
 
 ### 配置项说明
@@ -630,7 +727,91 @@ llm:
 | `llm.provider` | 模型提供商 | `deepseek` |
 | `llm.api_key` | API 密钥（支持环境变量） | - |
 | `llm.model` | 模型名称 | `deepseek-v4-flash` |
+| `ocr_mode` | 默认 OCR 后端 | `mineru` |
+| `embeddings.mode` | Embedding 模式 | `local` |
 | `query.llm_synthesis` | 是否使用 LLM 合成答案 | `true` |
+
+### LLM 模型配置
+
+支持四种模式：
+
+```yaml
+# 1. DeepSeek API（默认）
+llm:
+  provider: deepseek
+  api_key: ${DEEPSEEK_API_KEY}
+  model: deepseek-v4-flash
+
+# 2. OpenAI API
+llm:
+  provider: openai
+  api_key: ${OPENAI_API_KEY}
+  model: gpt-4o
+
+# 3. Ollama 本地模型（无需 API key）
+llm:
+  provider: ollama
+ollama:
+  model: llama3.2
+
+# 4. 自定义 API 端点
+llm:
+  provider: custom
+custom:
+  base_url: http://your-server:8000
+  api_key: your-custom-key
+  model: your-model
+```
+
+### OCR 后端配置
+
+```yaml
+# MinerU（默认，CPU）
+mineru:
+  models_path: models/mineru/models
+  lang: ch
+  formula: true
+
+# DeepSeek-OCR-2（GPU/MPS）
+deepseek_ocr:
+  model_path: models/deepseek-ocr-v2/model
+  device: mps  # mps | cuda | cpu
+
+# Logics-Parsing（GPU/MPS）
+logics_parsing:
+  model_path: models/logics-parsing-v2/model
+  device: mps
+
+# PaddleOCR（CPU）
+paddleocr:
+  lang: ch
+  use_doc_orientation_classify: true
+```
+
+### Embedding 配置
+
+支持本地和 API 两种模式：
+
+```yaml
+# 本地模式（默认）
+embeddings:
+  mode: local
+  model: "sentence-transformers/all-MiniLM-L6-v2"
+  dimension: 384
+
+# 或使用 Ollama
+embeddings:
+  mode: local
+  model: "ollama:nomic-embed-text"
+
+# API 模式
+embeddings:
+  mode: api
+  api_url: "https://api.openai.com/v1/embeddings"
+  api_key: ${OPENAI_API_KEY}
+  api_model: "text-embedding-3-small"
+  dimension: 1536
+```
 
 ### 更多配置
 
@@ -638,6 +819,7 @@ llm:
 - Wiki 目录配置
 - URL/本地模型切换
 - OCR 后端配置
+- Embedding API 配置
 - 知识保留策略
 - 向量搜索配置
 
@@ -672,6 +854,60 @@ llm:
 | 审计追踪 | Rohit | `audit.json` 每次操作记录 |
 | 自动化 hooks | Rohit | session-start/end, on-new-source, scheduled |
 | 结晶化 | Rohit | Session → Digest → Wiki 页面 |
+
+---
+
+## 更新日志
+
+### v2.1.0 (2025-05-27)
+
+**新增功能：**
+
+- **统一 CLI 系统**
+  - `wiki` 命令入口点（安装后直接使用）
+  - `wiki config` 显示/创建配置
+  - `wiki init` 初始化 Wiki 结构
+
+- **统一配置系统**
+  - `wiki_config.yaml` 集中管理所有配置
+  - 支持 `wiki_dir` 自定义 Wiki 存储路径
+  - 环境变量支持 `${VAR_NAME}` 语法
+
+- **四个 OCR 后端**
+  - MinerU（默认，CPU）
+  - DeepSeek-OCR-2（GPU/MPS/CPU）
+  - Logics-Parsing-v2（GPU/MPS/CPU）
+  - PaddleOCR（CPU）
+  - `ocr_mode` 配置项选择默认后端
+
+- **模型管理**
+  - `models/` 目录统一存放 OCR 模型
+  - `download_models.py --info` 查看模型状态
+  - `download_models.py --setup-links` 链接现有模型
+
+- **Embedding API 支持**
+  - `mode: local | api` 切换本地/API 模式
+  - 支持 OpenAI/DeepSeek Embedding API
+  - 支持 Ollama 本地嵌入
+
+- **LLM 模型切换**
+  - DeepSeek API（默认）
+  - OpenAI API
+  - Ollama 本地模型
+  - 自定义 API 端点
+
+**修复问题：**
+
+- 修复 `_llm_extract.py` 缺少 `import os`
+- 修复多个文件缺少 `__future__ annotations`
+- 统一所有脚本使用 `config` 模块
+- Python 3.9+ 兼容性修复
+
+**文档更新：**
+
+- 新增 `CONFIGURATION.md` 详细配置指南
+- 更新 README 包含最新功能说明
+- 更新模型目录结构说明
 
 ---
 
