@@ -51,3 +51,6 @@ docs/
 # Build output
 dist/
 backup/
+
+# Offline deployment wheels
+offline/wheels/

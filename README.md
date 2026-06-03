@@ -112,6 +112,37 @@ wiki config
 3. **OCR/lightpanda**：`url2markdown.py` 使用的 `lightpanda` 工具暂无 Windows 原生支持。可在 WSL 中使用，或使用其他 URL 转 Markdown 工具。
 4. **计划任务**：`.claude/hooks/scheduled/` 目录下的定时任务脚本使用 Python 编写，跨平台通用。在 Windows 上可通过任务计划程序设置定时执行。
 
+### 离线部署
+
+适合无网络或内网环境，提前下载所有 wheel 包，安装时不需要再次下载。
+
+```bash
+# 1. 在有网络的机器上下载所有依赖（当前平台）
+python scripts/offline_download.py
+
+# 2. 下载指定平台的 wheel（跨平台部署）
+python scripts/offline_download.py --platform macos     # macOS (arm64 + x86_64)
+python scripts/offline_download.py --platform windows   # Windows (x86_64)
+python scripts/offline_download.py --platform linux     # Linux (x86_64)
+
+# 3. 仅下载核心依赖（跳过 OCR 和大模型相关包）
+python scripts/offline_download.py --core-only
+```
+
+下载后的目录结构：
+```
+offline/wheels/
+├── pyyaml-6.0.2-cp311-cp311-macosx_14_0_arm64.whl
+├── requests-2.32.3-py3-none-any.whl
+├── numpy-2.2.0-cp311-cp311-macosx_14_0_arm64.whl
+└── ...
+```
+
+在离线机器上安装：
+```bash
+pip install --no-index --find-links offline/wheels/ .
+```
+
 ### CLI 命令
 
 | 命令 | 说明 |
@@ -362,7 +393,7 @@ llm-wiki-skill/
 │   ├── logics-parsing-v2/model # Logics-Parsing Qwen3VL (~8.4GB)
 │   └── README.md               # 模型目录说明
 │
-├── scripts/                     # 所有自动化脚本（26 个）
+├── scripts/                     # 所有自动化脚本（28 个）
 │   ├── wiki.py                  # 统一 CLI ★
 │   ├── config.py                # 统一配置加载 ★
 │   ├── compile_v2.py            # 主编译：源 → Wiki ★
@@ -375,7 +406,10 @@ llm-wiki-skill/
 │   ├── bulk.py                  # 批量操作：删除/导出/合并
 │   ├── generate_embeddings.py   # 向量嵌入生成（支持 API）
 │   ├── download_models.py       # 模型下载/链接工具
-│   ├── ocr.py                   # OCR 接口（4 后端）
+│   ├── offline_download.py      # 离线部署 wheel 下载
+│   ├── ocr.py                   # OCR 接口（5 模式: 4 本地 + API）
+│   ├── _ocr_api.py              # 通用 API OCR（OpenAI 兼容视觉 API）
+│   ├── _hook_utils.py           # 跨平台钩子工具
 │   ├── _mineru_ocr.py           # MinerU 引擎（CPU）★
 │   ├── _paddle_ocr.py           # PaddleOCR 引擎（CPU）
 │   ├── _deepseek_ocr2.py        # DeepSeek-OCR-2 引擎（GPU/MPS）
@@ -585,7 +619,7 @@ python scripts/wiki.py lint --auto-heal
 python scripts/lint.py --auto-heal
 
 # 生成报告文件
-python scripts/lint.py --auto-heal --report-file .wiki/reports/lint-$(date +%Y-%m-%d).md
+python scripts/lint.py --auto-heal --report-file .wiki/reports/lint-report.md
 ```
 
 **检测项：**
@@ -662,7 +696,7 @@ ls -la .wiki/memory/
 python scripts/crystallize.py session.md --topic "DeepSeek-V4 Research"
 
 # 自动结晶化（通过 session-end hook）
-# .claude/hooks/session-end.sh → 自动触发
+# .claude/hooks/session_end.py → 自动触发
 ```
 
 提取内容：问题是什么？发现了什么？涉及哪些文件/实体？教训是什么？
@@ -752,7 +786,10 @@ llm:
   model: deepseek-v4-flash
 
 # OCR 后端选择
-ocr_mode: mineru  # mineru | deepseek | logics | paddle
+ocr:
+  mode: local        # local | api
+  backend: mineru    # 本地: mineru | deepseek | logics | paddle
+  api_provider: ""   # API: siliconflow | paddleocr-vl | deepseek | openai
 
 # Embedding 模式
 embeddings:
@@ -768,7 +805,10 @@ embeddings:
 | `llm.provider` | 模型提供商 | `deepseek` |
 | `llm.api_key` | API 密钥（支持环境变量） | - |
 | `llm.model` | 模型名称 | `deepseek-v4-flash` |
-| `ocr_mode` | 默认 OCR 后端 | `mineru` |
+| `ocr_mode` | 默认 OCR 后端（已被 ocr.backend 取代） | `mineru` |
+| `ocr.mode` | OCR 模式: local / api | `local` |
+| `ocr.backend` | 本地 OCR 引擎 | `mineru` |
+| `ocr.api_provider` | API provider 预设 | - |
 | `embeddings.mode` | Embedding 模式 | `local` |
 | `query.llm_synthesis` | 是否使用 LLM 合成答案 | `true` |
 
