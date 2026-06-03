@@ -114,34 +114,51 @@ wiki config
 
 ### 离线部署
 
-适合无网络或内网环境，提前下载所有 wheel 包，安装时不需要再次下载。
+适合无网络或内网环境，在有网络的机器上提前下载所有 wheel 包，拷贝到目标机后直接安装，无需再次下载。
+
+**下载 wheels（在有网络的机器上）：**
 
 ```bash
-# 1. 在有网络的机器上下载所有依赖（当前平台）
+# 下载当前平台的所有依赖
 python scripts/offline_download.py
 
-# 2. 下载指定平台的 wheel（跨平台部署）
-python scripts/offline_download.py --platform macos     # macOS (arm64 + x86_64)
-python scripts/offline_download.py --platform windows   # Windows (x86_64)
-python scripts/offline_download.py --platform linux     # Linux (x86_64)
+# 下载所有平台（macOS arm64/x86_64 + Windows + Linux）
+python scripts/offline_download.py --all
 
-# 3. 仅下载核心依赖（跳过 OCR 和大模型相关包）
-python scripts/offline_download.py --core-only
+# 下载指定平台
+python scripts/offline_download.py --platform macos
+python scripts/offline_download.py --platform windows
+
+# 有些纯 Python 包没有预编译 wheel，允许下载源码包
+python scripts/offline_download.py --include-source
 ```
 
 下载后的目录结构：
 ```
-offline/wheels/
-├── pyyaml-6.0.2-cp311-cp311-macosx_14_0_arm64.whl
-├── requests-2.32.3-py3-none-any.whl
-├── numpy-2.2.0-cp311-cp311-macosx_14_0_arm64.whl
-└── ...
+offline/
+└── wheels/
+    ├── macos-arm64/        # Apple Silicon wheels
+    ├── macos-x86_64/       # Intel Mac wheels
+    ├── windows-x86_64/     # Windows wheels
+    └── linux-x86_64/       # Linux wheels
+        ├── pyyaml-6.0.2-cp311-cp311-*.whl
+        ├── requests-2.32.3-py3-none-any.whl
+        ├── requirements.txt
+        └── ...
 ```
 
-在离线机器上安装：
+**离线安装（在目标机器上）：**
+
 ```bash
-pip install --no-index --find-links offline/wheels/ .
+# 1. 将整个 offline/ 目录拷贝到目标机器
+# 2. 进入项目目录，执行：
+pip install --no-index --find-links offline/wheels/macos-arm64/ .
+
+# Windows 示例：
+pip install --no-index --find-links offline\wheels\windows-x86_64\ .
 ```
+
+> **注意**：wheel 是平台相关的。在 Mac 上下载的 wheel 只能用于 Mac，Windows 亦然。下载时请匹配目标机器的架构（arm64 vs x86_64）。
 
 ### CLI 命令
 
