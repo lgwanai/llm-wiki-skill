@@ -7,20 +7,35 @@
   "hooks": {
     "SessionStart": [
       {
-        "command": ".claude/hooks/session-start.sh",
-        "description": "llm-wiki: inject wiki context at session start"
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/session_start.py"
+          }
+        ]
       }
     ],
     "PreToolUse": [
       {
-        "command": ".claude/hooks/on-new-source.sh",
-        "description": "llm-wiki: auto-ingest sources when files are written"
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/on_new_source.py"
+          }
+        ]
       }
     ],
     "Stop": [
       {
-        "command": ".claude/hooks/session-end.sh",
-        "description": "llm-wiki: crystallize session to wiki at session end"
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/session_end.py"
+          }
+        ]
       }
     ]
   }

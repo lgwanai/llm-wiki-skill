@@ -1,3 +1,11 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
+last_updated: "2026-06-03T17:12:25.517Z"
+---
+
 # State: llm-wiki-skill
 
 **Project:** llm-wiki-skill

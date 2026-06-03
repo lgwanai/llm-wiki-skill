@@ -91,8 +91,40 @@ query:
   max_results: 5
 
 # ============================================================
-# OCR 后端选择
+# OCR 配置（统一）
 # ============================================================
+# 模式: local | api
+# - local: 使用本地 OCR 引擎（由 backend 字段选择）
+# - api: 使用远程 OpenAI 兼容视觉 API（如 DeepSeek-VL2、GPT-4o 等）
+#
+# 本地模式 (mode: local):
+#   由 backend 选择引擎: mineru | deepseek | logics | paddle
+#   各引擎详细配置见下方对应段落
+#
+# API 模式 (mode: api):
+#   需配置 api_url, api_key, api_model
+#   支持任意 OpenAI 兼容的视觉 API
+
+ocr:
+  mode: local                    # local | api
+
+  # 本地模式：选择后端引擎（默认继承 ocr_mode）
+  backend: mineru                # mineru | deepseek | logics | paddle
+
+  # API 模式：provider 预设（siliconflow | paddleocr-vl | deepseek | openai）
+  # 自动设置 api_url、默认 model 和 prompt，也可手动覆盖
+  api_provider: ""               # 预设: siliconflow | deepseek | openai
+
+  # API 模式手动配置（覆盖 provider 预设值）
+  api_url: ""                    # OpenAI 兼容视觉 API 端点
+  api_key: ""                    # API 密钥（支持 ${ENV_VAR} 环境变量语法）
+  api_model: ""                  # 模型名称（如 deepseek-ai/DeepSeek-OCR）
+  api_prompt: ""                 # OCR 提示词（空则使用 provider 默认值）
+
+  # PDF 渲染分辨率（API 模式下影响页面对 API 的发送质量）
+  pdf_dpi: 150
+
+# 向后兼容: ocr_mode（当 ocr.backend 未设置时生效）
 # 可选: mineru | deepseek | logics | paddle
 ocr_mode: mineru
 

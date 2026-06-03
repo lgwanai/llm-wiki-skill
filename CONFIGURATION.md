@@ -23,6 +23,37 @@ wiki query "What is X?"
 
 ---
 
+## 平台说明
+
+LLM Wiki v2 完全支持 **Windows**、**macOS** 和 **Linux**。所有自动化脚本均使用 Python 编写，跨平台通用。
+
+### Windows 特别注意
+
+1. **Python 命令**：使用 `python` 而非 `python3`。确保 Python 在 PATH 中（安装时勾选"Add Python to PATH"）。
+2. **符号链接**：`download_models.py --setup-links` 创建模型符号链接在 Windows 上需要启用[开发者模式](https://learn.microsoft.com/windows/apps/get-started/enable-your-device-for-development)（设置 → 隐私和安全性 → 开发者模式），或使用管理员终端运行。
+3. **计划任务**：`.claude/hooks/scheduled/` 中的 Python 脚本可通过 Windows 任务计划程序或 Claude Code cron 定时执行。
+4. **lightpanda**：`url2markdown.py` 依赖的 lightpanda 工具暂无 Windows 原生支持。可在 WSL 中使用，或使用其他 URL 转 Markdown 工具。
+
+### 路径格式
+
+所有配置支持跨平台路径：
+
+```yaml
+# 相对路径（跨平台推荐）
+wiki_dir: .wiki
+
+# 用户目录（跨平台）
+wiki_dir: ~/.wiki
+
+# Windows 绝对路径
+wiki_dir: C:\\Users\\YourName\\wiki
+
+# macOS/Linux 绝对路径
+wiki_dir: /home/user/wiki
+```
+
+---
+
 ## 配置文件位置
 
 配置文件按以下优先级查找：
@@ -163,22 +194,83 @@ query:
 
 ---
 
-## OCR 后端配置
+## OCR 配置
 
-LLM Wiki 支持四种 OCR 引擎：
+LLM Wiki 支持**本地**和 **API** 两种 OCR 模式：
 
-### 选择默认后端
+### 统一配置
 
 ```yaml
-# 可选: mineru | deepseek | logics | paddle
+ocr:
+  mode: local                    # local | api
+  backend: mineru                # 本地模式后端
+  # API 模式 provider 预设
+  api_provider: ""               # siliconflow | deepseek | openai
+  # 手动配置（覆盖 provider 预设值）
+  api_url: ""                    # OpenAI 兼容视觉 API 端点
+  api_key: ""                    # API 密钥
+  api_model: ""                  # 模型名称
+  api_prompt: ""                 # OCR 提示词
+  pdf_dpi: 150
+
+# 向后兼容
 ocr_mode: mineru
+```
+
+### 本地模式 (mode: local)
+
+使用本地 OCR 引擎，由 `ocr.backend` 选择：
+
+```yaml
+ocr:
+  mode: local
+  backend: mineru    # mineru | deepseek | logics | paddle
 ```
 
 或通过命令行覆盖：
 
 ```bash
 python scripts/ocr.py document.pdf --backend deepseek
+python scripts/ocr.py document.pdf --backend logics
+python scripts/ocr.py document.pdf --backend paddle
 ```
+
+### API 模式 (mode: api)
+
+使用远程 OpenAI 兼容视觉 API，无需本地模型。支持三种 provider 预设：
+
+| Provider | 平台 | 默认模型 | 备注 |
+|----------|------|---------|------|
+| `siliconflow` | 硅基流动 | `deepseek-ai/DeepSeek-OCR` | 免费额度 |
+| `paddleocr-vl` | 硅基流动 | `PaddlePaddle/PaddleOCR-VL-1.5` | PaddleOCR 视觉模型 |
+| `deepseek` | DeepSeek 官方 | `deepseek-ocr-2` | 需充值 |
+| `openai` | OpenAI | `gpt-4o` | 需 API key |
+
+**推荐配置（硅基流动，免费）：**
+
+```yaml
+ocr:
+  mode: api
+  api_provider: siliconflow
+  api_key: "${SILICONFLOW_API_KEY}"
+```
+
+**手动配置（自定义 API 端点）：**
+
+```yaml
+ocr:
+  mode: api
+  api_url: "https://api.siliconflow.cn/v1/chat/completions"
+  api_key: "${SILICONFLOW_API_KEY}"
+  api_model: "deepseek-ai/DeepSeek-OCR"
+  api_prompt: "<image>\n<|grounding|>OCR this image."
+```
+
+```bash
+python scripts/ocr.py document.pdf --backend api
+```
+
+API 模式支持任意 OpenAI 兼容的视觉模型。PDF 页面会被渲染为图片后发送至 API。
 
 ### MinerU（推荐，默认）
 

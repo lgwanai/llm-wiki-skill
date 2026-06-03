@@ -41,7 +41,7 @@ Wiki:   Source → [编译] → Wiki 持久化 → 查询时直接使用已有�
 ### 真实案例：编译 DeepSeek-V4 技术报告
 
 ```bash
-$ python3 scripts/wiki.py compile .wiki/source/deepseek-v4/output.md
+$ python scripts/wiki.py compile .wiki/source/deepseek-v4/output.md
 Compiling output.md (262658 chars)...
 Calling LLM...
   Created: deepseek-v4-series.md (model)
@@ -62,7 +62,7 @@ Compiled output.md: 15 pages created
 
 查询效果：
 ```bash
-$ python3 scripts/wiki.py query "What is DeepSeek-V4's architecture?"
+$ python scripts/wiki.py query "What is DeepSeek-V4's architecture?"
 **Answer**: Hybrid attention combining CSA and HCA, with mHC connections and Muon optimizer.
 **Sources**: [[deepseek-v4-series]], [[deepseek-v4-pro]]
 **Related**: [[compressed-sparse-attention]], [[manifold-constrained-hyper-connections]]
@@ -103,6 +103,15 @@ wiki status
 wiki config
 ```
 
+### Windows 设置
+
+项目完全支持 Windows、macOS 和 Linux。部分注意事项：
+
+1. **Python 命令**：所有命令示例使用 `python`。在 Windows 上确保 Python 在 PATH 中（安装时勾选"Add Python to PATH"）。如果 PATH 中没有 `python`，可使用 `py` 命令。
+2. **符号链接**：`download_models.py --setup-links` 创建模型符号链接在 Windows 上需要启用[开发者模式](https://learn.microsoft.com/windows/apps/get-started/enable-your-device-for-development)（设置 → 隐私和安全性 → 开发者模式），或使用管理员终端运行。
+3. **OCR/lightpanda**：`url2markdown.py` 使用的 `lightpanda` 工具暂无 Windows 原生支持。可在 WSL 中使用，或使用其他 URL 转 Markdown 工具。
+4. **计划任务**：`.claude/hooks/scheduled/` 目录下的定时任务脚本使用 Python 编写，跨平台通用。在 Windows 上可通过任务计划程序设置定时执行。
+
 ### CLI 命令
 
 | 命令 | 说明 |
@@ -142,11 +151,13 @@ ollama:
   model: llama3.2
 ```
 
-详细配置见 [docs/CONFIGURATION.md](docs/CONFIGURATION.md)。
+详细配置见 [CONFIGURATION.md](CONFIGURATION.md)。
 
 ### OCR 后端
 
-**四款** OCR 引擎随需切换，**MinerU 为默认**（效果最好，纯 CPU 可用）：
+**五**种模式随需切换，**MinerU 为默认**（效果最好，纯 CPU 可用）：
+
+**本地模式（4 个引擎）：**
 
 | 后端 | 引擎 | 核心优势 | 设备需求 | 模型大小 |
 |------|------|---------|---------|---------|
@@ -155,27 +166,55 @@ ollama:
 | `logics` | Logics-Parsing-v2 | Qwen3VL，多模态文档解析 | GPU/MPS/CPU | ~8.4GB |
 | `paddle` | PaddleOCR 3.5 | 109 语言，文档纠偏/展平 | CPU | ~100MB |
 
+**API 模式（无需本地模型）：**
+
+| 后端 | 说明 | 需求 |
+|------|------|------|
+| `api` | OpenAI 兼容视觉 API | api_url + api_key |
+
 **配置选择：**
 
 ```yaml
-# 选择默认 OCR 后端
-ocr_mode: mineru  # mineru | deepseek | logics | paddle
+# 统一 OCR 配置
+ocr:
+  mode: local                    # local | api
+  backend: mineru                # 本地模式: mineru | deepseek | logics | paddle
+
+  # API 模式：provider 预设自动配置 URL 和模型
+  api_provider: siliconflow      # siliconflow | deepseek | openai
+  api_key: "${SILICONFLOW_API_KEY}"
+
+  # 或手动指定 API 参数（会覆盖 provider 预设）
+  # api_url: "https://api.siliconflow.cn/v1/chat/completions"
+  # api_model: "deepseek-ai/DeepSeek-OCR"
+  # api_prompt: "<image>\n<|grounding|>OCR this image."
+
+# 向后兼容
+ocr_mode: mineru
 ```
+
+**API 提供商标识：**
+
+| Provider | Base URL | 默认模型 |
+|----------|----------|---------|
+| `siliconflow` | `https://api.siliconflow.cn/v1` | `deepseek-ai/DeepSeek-OCR` |
+| `paddleocr-vl` | `https://api.siliconflow.cn/v1` | `PaddlePaddle/PaddleOCR-VL-1.5` |
+| `deepseek` | `https://api.deepseek.com/v1` | `deepseek-ocr-2` |
+| `openai` | `https://api.openai.com/v1` | `gpt-4o` |
 
 **使用方式：**
 
 ```bash
-# MinerU（默认，CPU）
+# MinerU（默认，本地 CPU）
 python scripts/ocr.py paper.pdf
 
-# DeepSeek-OCR-2（GPU/MPS）
+# 本地引擎切换
 python scripts/ocr.py paper.pdf --backend deepseek
-
-# Logics-Parsing（GPU/MPS）
 python scripts/ocr.py paper.pdf --backend logics
-
-# PaddleOCR（CPU）
 python scripts/ocr.py paper.pdf --backend paddle
+
+# API 模式（远程视觉 API，无需本地模型）
+python scripts/ocr.py paper.pdf --backend api
 
 # PDF → Wiki 完整流程
 python scripts/ocr.py paper.pdf -o .wiki/source/paper/
@@ -247,16 +286,16 @@ models/
 
 ```bash
 # 摄入：源文档 → Wiki 页面
-python3 scripts/wiki.py compile source.md
+python scripts/wiki.py compile source.md
 
 # 查询：搜索 Wiki → 合成答案 → （可选）回填
-python3 scripts/wiki.py query "What is X?" --file-back
+python scripts/wiki.py query "What is X?" --file-back
 
 # 快速搜索：跳过 LLM 合成，0.5s 出结果
-python3 scripts/wiki.py query "专家评审组" --no-synthesis
+python scripts/wiki.py query "专家评审组" --no-synthesis
 
 # 检查：健康扫描 → 自动修复
-python3 scripts/wiki.py lint --auto-heal
+python scripts/wiki.py lint --auto-heal
 ```
 
 ### 查询模式
@@ -360,12 +399,13 @@ llm-wiki-skill/
 │   └── schema.md                # Wiki 模式
 │
 ├── .claude/hooks/               # 自动化钩子（可启用）
-│   ├── session-start.sh         # 会话开始时注入上下文
-│   ├── session-end.sh           # 会话结束时结晶化
-│   └── scheduled/               # 定时任务
-│       ├── lint-daily.sh
-│       ├── consolidate-daily.sh
-│       └── maintenance-weekly.sh
+│   ├── session_start.py          # 会话开始时注入上下文
+│   ├── session_end.py            # 会话结束时结晶化
+│   ├── on_new_source.py          # 写入文件时自动编译
+│   └── scheduled/               # 定时任务（Python，跨平台）
+│       ├── lint_daily.py
+│       ├── consolidate_daily.py
+│       └── maintenance_weekly.py
 │
 ├── references/                  # 深度参考文档
 ├── templates/                   # 页面模板
@@ -475,14 +515,14 @@ export LOGICS_PARSING_MODEL_PATH=models/logics-parsing-v2/model
 
 ```bash
 # 编译一个源文档
-python3 scripts/wiki.py compile source.md
+python scripts/wiki.py compile source.md
 
 # 或直接使用脚本
-python3 scripts/compile_v2.py source.md
+python scripts/compile_v2.py source.md
 
 # 强制重新编译（覆盖已有页面 + 检测矛盾）
-python3 scripts/wiki.py compile source.md --force
-python3 scripts/compile_v2.py source.md --force
+python scripts/wiki.py compile source.md --force
+python scripts/compile_v2.py source.md --force
 ```
 
 **做了什么：**
@@ -501,13 +541,13 @@ python3 scripts/compile_v2.py source.md --force
 
 ```bash
 # 查看图谱
-python3 scripts/graph.py show
+python scripts/graph.py show
 
 # 遍历实体关系（下游影响分析）
-python3 scripts/graph.py traverse deepseek-v4-series --depth 2
+python scripts/graph.py traverse deepseek-v4-series --depth 2
 
 # 统计
-python3 scripts/wiki.py bulk stats
+python scripts/wiki.py bulk stats
 ```
 
 **关系类型（12 种）：**
@@ -519,17 +559,17 @@ python3 scripts/wiki.py bulk stats
 
 ```bash
 # 默认 markdown 格式
-python3 scripts/wiki.py query "What is DeepSeek-V4's architecture?"
+python scripts/wiki.py query "What is DeepSeek-V4's architecture?"
 
 # 多种输出格式
-python3 scripts/wiki.py query "compare models" --format table
-python3 scripts/wiki.py query "history of X" --format timeline
-python3 scripts/wiki.py query "present findings" --format slides
-python3 scripts/wiki.py query "export all" --format json
+python scripts/wiki.py query "compare models" --format table
+python scripts/wiki.py query "history of X" --format timeline
+python scripts/wiki.py query "present findings" --format slides
+python scripts/wiki.py query "export all" --format json
 
 # 搜索 + 答案回填
-python3 scripts/wiki.py query "Explain Muon optimizer" --file-back
-python3 scripts/query.py "What is CSA?" --file-back
+python scripts/wiki.py query "Explain Muon optimizer" --file-back
+python scripts/query.py "What is CSA?" --file-back
 ```
 
 ### 阶段 4：健康检查 & 自愈（Lint + Auto-heal）
@@ -538,14 +578,14 @@ python3 scripts/query.py "What is CSA?" --file-back
 
 ```bash
 # 仅检查
-python3 scripts/wiki.py lint
+python scripts/wiki.py lint
 
 # 检查 + 自动修复
-python3 scripts/wiki.py lint --auto-heal
-python3 scripts/lint.py --auto-heal
+python scripts/wiki.py lint --auto-heal
+python scripts/lint.py --auto-heal
 
 # 生成报告文件
-python3 scripts/lint.py --auto-heal --report-file .wiki/reports/lint-$(date +%Y-%m-%d).md
+python scripts/lint.py --auto-heal --report-file .wiki/reports/lint-$(date +%Y-%m-%d).md
 ```
 
 **检测项：**
@@ -561,7 +601,7 @@ python3 scripts/lint.py --auto-heal --report-file .wiki/reports/lint-$(date +%Y-
 
 ```bash
 # 重新编译 → 自动检测矛盾
-python3 scripts/compile_v2.py source.md
+python scripts/compile_v2.py source.md
 # 输出示例：
 #   Updated: compressed-sparse-attention.md (4 contradictions)
 #   Updated: manifold-constrained-hyper-connections.md (10 contradictions)
@@ -597,7 +637,7 @@ LLM 自动推荐哪个声明更可靠。
 
 ```bash
 # 执行整合
-python3 scripts/consolidate.py
+python scripts/consolidate.py
 
 # 检查当前内存状态
 ls -la .wiki/memory/
@@ -619,7 +659,7 @@ ls -la .wiki/memory/
 
 ```bash
 # 从会话文件结晶化
-python3 scripts/crystallize.py session.md --topic "DeepSeek-V4 Research"
+python scripts/crystallize.py session.md --topic "DeepSeek-V4 Research"
 
 # 自动结晶化（通过 session-end hook）
 # .claude/hooks/session-end.sh → 自动触发
@@ -633,25 +673,25 @@ Wiki 增长后需要治理。所有操作可审计、可逆。
 
 ```bash
 # 预览清理
-python3 scripts/wiki.py bulk clean --dry-run
+python scripts/wiki.py bulk clean --dry-run
 
 # 执行清理
-python3 scripts/wiki.py bulk clean
+python scripts/wiki.py bulk clean
 
 # 合并重复实体
-python3 scripts/wiki.py bulk merge --dry-run
+python scripts/wiki.py bulk merge --dry-run
 
 # 删除过期页面
-python3 scripts/wiki.py bulk delete --stale --dry-run
+python scripts/wiki.py bulk delete --stale --dry-run
 
 # 删除低置信度页面
-python3 scripts/wiki.py bulk delete --confidence 0.3 --dry-run
+python scripts/wiki.py bulk delete --confidence 0.3 --dry-run
 
 # 导出子集
-python3 scripts/wiki.py bulk export --type concept
+python scripts/wiki.py bulk export --type concept
 
 # 详细统计
-python3 scripts/wiki.py bulk stats
+python scripts/wiki.py bulk stats
 ```
 
 ### 阶段 10：向量嵌入（Embeddings）
@@ -660,14 +700,14 @@ python3 scripts/wiki.py bulk stats
 
 ```bash
 # 生成所有页面嵌入
-python3 scripts/wiki.py embed
+python scripts/wiki.py embed
 
 # 验证覆盖
-python3 scripts/generate_embeddings.py --verify
+python scripts/generate_embeddings.py --verify
 # → total_pages: 15, total_embeddings: 15, coverage_pct: 100.0
 
 # 强制重新生成
-python3 scripts/wiki.py embed --force
+python scripts/wiki.py embed --force
 ```
 
 模型：`qwen3-embedding:8b` | 维度：4096 | 距离：Cosine
@@ -678,16 +718,17 @@ python3 scripts/wiki.py embed --force
 
 ```bash
 # 查看审计日志
-python3 -c "import json; print(json.dumps(json.load(open('.wiki/audit.json'))[-2:], indent=2, ensure_ascii=False))"
+python -c "import json; print(json.dumps(json.load(open('.wiki/audit.json'))[-2:], indent=2, ensure_ascii=False))"
 # → 最后 2 条操作记录（timestamp, operation, pages_created, contradictions）
 ```
 
 ### 自动化 Hooks（可选启用）
 
 ```bash
-# .claude/hooks/session-start.sh  — 会话开始时注入 Wiki 上下文
-# .claude/hooks/session-end.sh    — 会话结束时自动结晶化
-# .claude/hooks/scheduled/        — 定时任务（lint + consolidate + maintenance）
+# .claude/hooks/session_start.py   — 会话开始时注入 Wiki 上下文
+# .claude/hooks/session_end.py     — 会话结束时自动结晶化
+# .claude/hooks/on_new_source.py   — 写入文件时自动编译
+# .claude/hooks/scheduled/         — 定时任务（lint + consolidate + maintenance）
 ```
 
 ---

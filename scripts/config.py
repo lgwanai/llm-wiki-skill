@@ -220,12 +220,33 @@ def get_query_config() -> dict:
 
 
 def get_ocr_config() -> dict:
-    """Get OCR backend configuration."""
+    """Get unified OCR configuration with mode routing.
+
+    Returns a dict with keys for both local and API modes.
+    When the 'ocr' section is absent, falls back to legacy fields
+    for full backward compatibility.
+
+    Returns:
+        dict with keys: mode, backend, api_url, api_key, api_model,
+                        api_prompt, pdf_dpi
+    """
     config = get_config()
+    ocr = config.get("ocr", {})
+
+    # Legacy field: ocr_mode (top-level) acts as fallback for ocr.backend
+    legacy_backend = config.get("ocr_mode", "mineru")
+
     return {
-        "mineru": config.get("mineru", {}),
-        "paddleocr": config.get("paddleocr", {}),
-        "ocr": config.get("ocr", {}),
+        "mode": ocr.get("mode", "local"),
+        "backend": ocr.get("backend", legacy_backend),
+        "api_url": ocr.get("api_url", ""),
+        "api_key": ocr.get("api_key", ""),
+        "api_model": ocr.get("api_model", ""),
+        "api_prompt": ocr.get(
+            "api_prompt",
+            "Convert the document to clean markdown format.",
+        ),
+        "pdf_dpi": ocr.get("pdf_dpi", 150),
     }
 
 

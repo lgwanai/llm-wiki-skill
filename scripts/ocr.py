@@ -6,12 +6,12 @@ Backends:
     deepseek:          DeepSeek-OCR-2 — Vision-Language OCR, GPU/MPS/CPU.
     logics:            Logics-Parsing-v2 — Qwen3VL-based OCR, GPU/MPS/CPU.
     paddle:            PaddleOCR — PP-OCRv5, 109 languages, doc unwarping.
+    api:               Generic API — OpenAI-compatible vision API (GPT-4o, DeepSeek-VL2, etc.)
 
 Usage:
-    python ocr.py document.pdf                        # Default: MinerU
+    python ocr.py document.pdf                        # Default: MinerU (local)
     python ocr.py document.pdf --backend deepseek     # DeepSeek-OCR-2
-    python ocr.py document.pdf --backend logics       # Logics-Parsing
-    python ocr.py document.pdf --backend paddle       # PaddleOCR
+    python ocr.py document.pdf --backend api          # Vision API
     python ocr.py document.pdf -o results/            # Output directory
     python ocr.py --batch screenshots/                # Batch process
 """
@@ -22,24 +22,23 @@ import os
 import sys
 from pathlib import Path
 
-import yaml
-
 sys.path.insert(0, str(Path(__file__).parent))
-from config import get_config
-
-CONFIG_PATH = Path(__file__).parent.parent / "wiki_config.yaml"
+from config import get_ocr_config
 
 
 def _get_default_backend() -> str:
-    """Read ocr_mode from wiki_config.yaml, default to mineru."""
-    config = get_config()
-    return config.get("ocr_mode", "mineru")
+    """Read OCR config and return backend name (or 'api' for API mode)."""
+    ocr_config = get_ocr_config()
+    mode = ocr_config.get("mode", "local")
+    if mode == "api":
+        return "api"
+    return ocr_config.get("backend", "mineru")
 
 
 def main():
     parser = argparse.ArgumentParser(description="Multi-backend OCR — Image & PDF OCR")
     parser.add_argument("file", nargs="?", help="Image or PDF file path")
-    parser.add_argument("--backend", choices=["mineru", "deepseek", "logics", "paddle"],
+    parser.add_argument("--backend", choices=["mineru", "deepseek", "logics", "paddle", "api"],
                         default=_get_default_backend(),
                         help=f"OCR backend (default: {_get_default_backend()})")
     parser.add_argument("--batch", help="Process all images/PDFs in a directory")
@@ -48,7 +47,10 @@ def main():
     args = parser.parse_args()
 
     # Lazy import based on backend
-    if args.backend == "mineru":
+    if args.backend == "api":
+        from _ocr_api import OCRApiBackend
+        ocr = OCRApiBackend.from_config()
+    elif args.backend == "mineru":
         from _mineru_ocr import MinerUOCR
         ocr = MinerUOCR.from_config()
     elif args.backend == "deepseek":

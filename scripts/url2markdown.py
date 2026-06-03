@@ -17,6 +17,7 @@ Usage:
 import argparse
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -72,6 +73,15 @@ def fetch_html_with_lightpanda(url: str, timeout: int = 30000) -> str:
     """
     lightpanda_path = shutil.which("lightpanda")
     if not lightpanda_path:
+        if platform.system() == "Windows":
+            raise RuntimeError(
+                "lightpanda is not available on Windows. "
+                "Options:\n"
+                "  1) Run inside WSL with lightpanda installed\n"
+                "  2) Use a Playwright-based fetcher instead\n"
+                "  3) Manually fetch the page and save as markdown\n"
+                "See: https://lightpanda.io/docs/open-source/installation"
+            )
         raise RuntimeError(
             "lightpanda not found. Install from: https://lightpanda.io/docs/open-source/installation"
         )
