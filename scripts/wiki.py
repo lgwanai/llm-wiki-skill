@@ -280,7 +280,73 @@ Environment:
     del_sub.add_argument("--stale", action="store_true", help="Delete stale pages")
     del_sub.add_argument("--confidence", type=float, help="Delete below confidence threshold")
     del_sub.add_argument("--dry-run", action="store_true", help="Preview only")
-    
+
+    # ── Ledger / 台账 ──────────────────────────────────────────────
+    ledger_parser = subparsers.add_parser("ledger", help="Ledger/台账 management")
+    ledger_sub = ledger_parser.add_subparsers(dest="ledger_cmd", required=True)
+
+    ledger_sub.add_parser("list", help="List all tables")
+
+    show_lp = ledger_sub.add_parser("show", help="Show table schema and data")
+    show_lp.add_argument("table", help="Table name (display or actual)")
+
+    create_lp = ledger_sub.add_parser("create", help="Create a new table")
+    create_lp.add_argument("display_name", help="Display name for the table")
+    create_lp.add_argument("--fields", required=True, help='Field definitions JSON')
+    create_lp.add_argument("--unique", default=None, help="Unique key field(s)")
+    create_lp.add_argument("--auto-increment", action="store_true", help="Add auto-increment _id field")
+    create_lp.add_argument("--table-name", default=None, help="Override safe table name")
+    create_lp.add_argument("--description", default="", help="Table description")
+
+    insert_lp = ledger_sub.add_parser("insert", help="Insert data into a table")
+    insert_lp.add_argument("table", help="Table name")
+    insert_lp.add_argument("--data", required=True, help="JSON data (object or array)")
+    insert_lp.add_argument("--batch", action="store_true", help="Continue on partial errors")
+
+    update_lp = ledger_sub.add_parser("update-schema", help="Modify table schema")
+    update_lp.add_argument("table", help="Table name")
+    update_lp.add_argument("--add", default=None, help="Add fields JSON")
+    update_lp.add_argument("--remove", default=None, help="Remove fields: name1,name2")
+    update_lp.add_argument("--rename", default=None, help="Rename field: old:new")
+    update_lp.add_argument("--modify", default=None, help="Change field type JSON")
+
+    del_lp = ledger_sub.add_parser("delete", help="Delete a table")
+    del_lp.add_argument("table", help="Table name")
+    del_lp.add_argument("--keep-files", action="store_true", help="Keep files on disk")
+
+    stats_lp = ledger_sub.add_parser("stats", help="Show table statistics")
+    stats_lp.add_argument("table", nargs="?", default=None, help="Table name (omit for all)")
+
+    embed_lp = ledger_sub.add_parser("embed", help="Generate embeddings for table rows")
+    embed_lp.add_argument("table", nargs="?", default=None, help="Table name (omit for all)")
+
+    schema_lp = ledger_sub.add_parser("schema", help="Show table schema for SQL generation")
+    schema_lp.add_argument("table", help="Table name")
+
+    sql_lp = ledger_sub.add_parser("sql", help="Execute raw SQL (read-only)")
+    sql_lp.add_argument("sql_text", help="SQL SELECT statement")
+
+    query_lp = ledger_sub.add_parser("query", help="Paginated SQL query on a table")
+    query_lp.add_argument("table", help="Table name")
+    query_lp.add_argument("--sql", required=True, help="SQL SELECT statement")
+    query_lp.add_argument("--page", type=int, default=1, help="Page number")
+    query_lp.add_argument("--page-size", type=int, default=20, help="Rows per page")
+
+    traverse_lp = ledger_sub.add_parser("traverse", help="Batch traversal through table rows")
+    traverse_lp.add_argument("table", help="Table name")
+    traverse_lp.add_argument("--batch-size", type=int, default=100, help="Rows per batch")
+    traverse_lp.add_argument("--offset", type=int, default=0, help="Starting offset")
+
+    ask_lp = ledger_sub.add_parser("ask", help="Natural language question → SQL → results")
+    ask_lp.add_argument("table", help="Table name")
+    ask_lp.add_argument("question", help="Natural language question")
+    ask_lp.add_argument("--page", type=int, default=1, help="Page number")
+    ask_lp.add_argument("--page-size", type=int, default=20, help="Rows per page")
+
+    ctx_lp = ledger_sub.add_parser("context", help="Prepare schema + function context for SQL generation")
+    ctx_lp.add_argument("table", help="Table name")
+    ctx_lp.add_argument("question", help="Natural language question")
+
     cons_parser = subparsers.add_parser("consolidate", help="Consolidate memory tiers and apply decay")
     cons_parser.add_argument("--tiers", default="working,episodic,semantic", help="Tiers to consolidate")
     cons_parser.add_argument("--decay-only", action="store_true", help="Only apply retention decay")
@@ -345,6 +411,77 @@ Environment:
         if hasattr(args, 'type') and args.type:
             bulk_args.extend(["--type", args.type])
         code, output = run_script("bulk.py", bulk_args)
+        print(output)
+
+    elif args.command == "ledger":
+        ledger_args = [args.ledger_cmd]
+        if args.ledger_cmd == "show":
+            ledger_args.append(args.table)
+        elif args.ledger_cmd == "create":
+            ledger_args.append(args.display_name)
+            ledger_args.extend(["--fields", args.fields])
+            if args.unique:
+                ledger_args.extend(["--unique", args.unique])
+            if args.auto_increment:
+                ledger_args.append("--auto-increment")
+            if args.table_name:
+                ledger_args.extend(["--table-name", args.table_name])
+            if args.description:
+                ledger_args.extend(["--description", args.description])
+        elif args.ledger_cmd == "insert":
+            ledger_args.append(args.table)
+            ledger_args.extend(["--data", args.data])
+            if args.batch:
+                ledger_args.append("--batch")
+        elif args.ledger_cmd == "update-schema":
+            ledger_args.append(args.table)
+            if args.add:
+                ledger_args.extend(["--add", args.add])
+            if args.remove:
+                ledger_args.extend(["--remove", args.remove])
+            if args.rename:
+                ledger_args.extend(["--rename", args.rename])
+            if args.modify:
+                ledger_args.extend(["--modify", args.modify])
+        elif args.ledger_cmd == "delete":
+            ledger_args.append(args.table)
+            if args.keep_files:
+                ledger_args.append("--keep-files")
+        elif args.ledger_cmd == "stats":
+            if args.table:
+                ledger_args.append(args.table)
+        elif args.ledger_cmd == "embed":
+            if args.table:
+                ledger_args.append(args.table)
+
+        # Dispatch: table_query.py handles schema/sql/query/traverse/ask/context;
+        # everything else goes to ledger.py
+        if args.ledger_cmd in ("schema", "sql", "query", "traverse", "ask", "context"):
+            tq_args = [args.ledger_cmd]
+            if args.ledger_cmd == "schema":
+                tq_args.append(args.table)
+            elif args.ledger_cmd == "sql":
+                tq_args.append(args.sql_text)
+            elif args.ledger_cmd == "ask":
+                tq_args.append(args.table)
+                tq_args.append(args.question)
+                tq_args.extend(["--page", str(args.page)])
+                tq_args.extend(["--page-size", str(args.page_size)])
+            elif args.ledger_cmd == "context":
+                tq_args.append(args.table)
+                tq_args.append(args.question)
+            elif args.ledger_cmd == "query":
+                tq_args.append(args.table)
+                tq_args.extend(["--sql", args.sql])
+                tq_args.extend(["--page", str(args.page)])
+                tq_args.extend(["--page-size", str(args.page_size)])
+            elif args.ledger_cmd == "traverse":
+                tq_args.append(args.table)
+                tq_args.extend(["--batch-size", str(args.batch_size)])
+                tq_args.extend(["--offset", str(args.offset)])
+            code, output = run_script("table_query.py", tq_args)
+        else:
+            code, output = run_script("ledger.py", ledger_args)
         print(output)
 
     elif args.command == "status":

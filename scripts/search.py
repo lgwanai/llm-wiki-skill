@@ -394,6 +394,162 @@ def reciprocal_rank_fusion(results: list[list[dict]], k: int = 60) -> list[dict]
     return sorted_results
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# Ledger table search
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def table_search(query: str, wiki_dir: str, limit: int = 10) -> list[dict]:
+    """BM25 search over text columns in all ledger tables.
+
+    Reuses jieba tokenization and BM25 scoring from bm25_search().
+    Returns results compatible with reciprocal_rank_fusion().
+    """
+    import duckdb
+
+    ledger_db = Path(wiki_dir) / "ledger" / "ledger.duckdb"
+    if not ledger_db.exists():
+        return []
+
+    conn = duckdb.connect(str(ledger_db))
+
+    rows = conn.execute(
+        "SELECT actual_name, display_name, fields_json FROM _registry WHERE record_count > 0"
+    ).fetchall()
+
+    if not rows:
+        conn.close()
+        return []
+
+    query_terms = [_stem(t) for t in _tokenize(query)]
+    if not query_terms:
+        conn.close()
+        return []
+
+    results: list[dict] = []
+    k1, b = 1.5, 0.75
+
+    for actual_name, display_name, fields_json_str in rows:
+        fields = json.loads(fields_json_str)
+        search_cols = [
+            f["name"] for f in fields
+            if f.get("type") in ("string", "text") and not f.get("auto_increment")
+        ]
+        if not search_cols:
+            continue
+
+        try:
+            table_rows = conn.execute(f'SELECT * FROM "{actual_name}"').fetchall()
+            col_names = [desc[0] for desc in conn.description]
+        except duckdb.Error:
+            continue
+
+        for row in table_rows:
+            row_dict = dict(zip(col_names, row))
+            row_id = row_dict.get("_id", "")
+
+            # Concatenate text columns for search
+            text_parts = [str(row_dict.get(c, "")) for c in search_cols if row_dict.get(c) is not None]
+            search_text = " ".join(text_parts)
+            if not search_text.strip():
+                continue
+
+            tokens = [_stem(t) for t in _tokenize(search_text)]
+            if not tokens:
+                continue
+
+            freq = Counter(tokens)
+            dl = len(tokens)
+
+            # BM25 scoring
+            score = 0.0
+            for term in query_terms:
+                f = freq.get(term, 0)
+                if f == 0:
+                    continue
+                # Approximate IDF using row length
+                idf = math.log(1.0 + (50.0 - 0.5) / (0.5 + 0.5))
+                score += idf * (f * (k1 + 1)) / (f + k1 * (1 - b + b * dl / 50.0))
+
+            if score > 0:
+                results.append({
+                    "file": f"table::{actual_name}::{row_id}",
+                    "path": "",
+                    "score": round(score, 3),
+                    "stream": "table",
+                    "table_name": actual_name,
+                    "display_name": display_name,
+                    "row_id": row_id,
+                    "row_data": {k: v for k, v in row_dict.items() if not k.startswith("_search")},
+                })
+
+    conn.close()
+    results.sort(key=lambda x: -x["score"])
+    return results[:limit]
+
+
+def table_vector_search(query: str, wiki_dir: str, limit: int = 10) -> list[dict]:
+    """Cosine similarity search over embedded table rows.
+
+    Uses _embeddings table and DuckDB array_cosine_similarity.
+    """
+    import duckdb
+
+    ledger_db = Path(wiki_dir) / "ledger" / "ledger.duckdb"
+    if not ledger_db.exists():
+        return []
+
+    conn = duckdb.connect(str(ledger_db))
+
+    # Check if embeddings exist
+    emb_count = conn.execute("SELECT COUNT(*) FROM _embeddings").fetchone()[0]
+    if emb_count == 0:
+        conn.close()
+        return []
+
+    # Get query embedding
+    try:
+        from _ollama import get_embedding
+        query_emb = get_embedding(query)
+    except (ImportError, Exception):
+        conn.close()
+        return []
+
+    if query_emb is None:
+        conn.close()
+        return []
+
+    dim = len(query_emb)
+    query_emb_str = "[" + ", ".join(str(v) for v in query_emb) + "]"
+
+    try:
+        rows = conn.execute(f"""
+            SELECT e.table_name, e.row_id,
+                   array_cosine_similarity(e.embedding, {query_emb_str}::FLOAT[{dim}]) AS sim,
+                   r.display_name
+            FROM _embeddings e
+            JOIN _registry r ON e.table_name = r.actual_name
+            WHERE len(e.embedding) = {dim}
+            ORDER BY sim DESC
+            LIMIT ?
+        """, [limit]).fetchall()
+    except duckdb.Error:
+        conn.close()
+        return []
+
+    conn.close()
+
+    return [{
+        "file": f"table::{r[0]}::{r[1]}",
+        "path": "",
+        "score": round(r[2], 4),
+        "stream": "table_vector",
+        "table_name": r[0],
+        "display_name": r[3],
+        "row_id": r[1],
+    } for r in rows if r[2] and r[2] > 0]
+
+
 def _main() -> None:
     parser = argparse.ArgumentParser(description='llm-wiki Hybrid Search')
     parser.add_argument('query', nargs='?', help='Search query')
@@ -429,6 +585,10 @@ def _main() -> None:
         all_results.append(vector_search(args.query, PAGES_DIR, args.limit))
     if 'graph' in streams:
         all_results.append(graph_search(args.query, GRAPH_DIR, args.limit))
+    if 'table' in streams:
+        all_results.append(table_search(args.query, str(WIKI_DIR), args.limit))
+    if 'table_vector' in streams:
+        all_results.append(table_vector_search(args.query, str(WIKI_DIR), args.limit))
 
     if len(all_results) >= 2:
         fused = reciprocal_rank_fusion(all_results)

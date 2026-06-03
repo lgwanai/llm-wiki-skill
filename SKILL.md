@@ -7,7 +7,7 @@ description: >
   this", "file away", "add to wiki", "second brain", "build knowledge base", "set
   up wiki", accumulating and structuring information that compounds over time.
 COMMANDS: /wiki-compile, /wiki-query, /wiki-lint, /wiki-embed, /wiki-bulk,
-/wiki-consolidate, /wiki-status, /wiki-init, /wiki-update.
+/wiki-consolidate, /wiki-status, /wiki-init, /wiki-update, /wiki-ledger.
 ---
 
 # LLM Wiki v2
@@ -127,6 +127,126 @@ python3 scripts/wiki.py embed --force          # Regenerate vector embeddings
 python3 scripts/wiki.py bulk stats             # Wiki analytics
 python3 scripts/wiki.py bulk clean --dry-run   # Preview orphan cleanup
 python3 scripts/consolidate.py                 # Memory tier promotion + decay
+```
+
+### `/wiki-ledger` — 台账管理 (Ledger, DuckDB 后端)
+
+结构化表格管理，基于 DuckDB 引擎，支持字段验证、唯一约束、自增序列、向量嵌入。
+
+**创建表格（多轮对话）：**
+
+Claude 会在创建前逐一确认：
+1. 表格名称和用途
+2. 字段定义（名称、类型、是否必填、备注）
+3. 唯一键字段（哪个字段不能重复？）
+4. 是否需要自动编号
+
+```bash
+# 创建表格
+python3 scripts/wiki.py ledger create "项目台账" \
+  --fields '[{"name":"项目名称","type":"string","required":true},{"name":"负责人","type":"string","required":true},{"name":"预算","type":"number"}]' \
+  --unique "项目名称" \
+  --auto-increment \
+  --description "项目管理台账"
+```
+
+**用户命名 vs 实际表名：**
+- 用户给的是显示名称（如"项目台账"），可以中文
+- 系统自动生成安全的实际表名（如 `table_a1b2c3d4` 或 `project_ledger`）
+- 映射关系维护在 `.wiki/ledger/registry.json` 中
+- 所有命令都支持用显示名称或实际名称引用表
+
+**插入数据（自然语言）：**
+
+用户用自然语言描述数据，Claude 自动提取字段信息、校验类型、检查唯一约束：
+
+```bash
+# 单行插入
+python3 scripts/wiki.py ledger insert "项目台账" \
+  --data '{"项目名称":"智能系统","负责人":"张三","预算":50}'
+
+# 批量插入
+python3 scripts/wiki.py ledger insert "项目台账" \
+  --data '[{"项目名称":"项目A","负责人":"李四"},{"项目名称":"项目B","负责人":"王五"}]'
+
+# 容错模式（跳过错误行，继续处理）
+python3 scripts/wiki.py ledger insert "项目台账" --data '[...]' --batch
+```
+
+**查询和管理：**
+
+```bash
+python3 scripts/wiki.py ledger list                # 列出所有表
+python3 scripts/wiki.py ledger show "项目台账"      # 查看表结构 + 前20行数据
+python3 scripts/wiki.py ledger stats               # 所有表统计
+python3 scripts/wiki.py ledger stats "项目台账"     # 单表统计
+```
+
+**修改表结构：**
+
+```bash
+# 添加字段
+python3 scripts/wiki.py ledger update-schema "项目台账" \
+  --add '[{"name":"备注","type":"text"}]'
+
+# 删除字段
+python3 scripts/wiki.py ledger update-schema "项目台账" --remove "旧字段"
+
+# 重命名字段
+python3 scripts/wiki.py ledger update-schema "项目台账" --rename "旧名:新名"
+
+# 修改字段类型（自动迁移数据）
+python3 scripts/wiki.py ledger update-schema "项目台账" \
+  --modify '[{"name":"预算","type":"integer"}]'
+
+# 删除表格
+python3 scripts/wiki.py ledger delete "项目台账"
+```
+
+**支持的数据类型：**
+
+| 类型 | 说明 | 示例 |
+|------|------|------|
+| `string` | 单行文本 | "张三" |
+| `text` | 多行文本 | "备注内容..." |
+| `integer` | 整数 | 100 |
+| `number` | 数字（含小数） | 50.5 |
+| `boolean` | 布尔值 | true |
+| `date` | 日期 | "2026-01-15" |
+| `datetime` | 日期时间 | "2026-01-15T10:30:00" |
+
+**存储结构（DuckDB）：**
+
+```
+.wiki/ledger/
+├── ledger.duckdb              # DuckDB 数据库文件
+│   ├── _registry             # 元数据表（显示名 → 实际名映射 + schema）
+│   ├── _embeddings           # 向量嵌入表（支持语义检索）
+│   ├── <actual_name>         # 用户表（SQL 类型列）
+│   └── seq_<actual_name>     # 自增序列
+└── registry.json              # 旧格式（自动迁移后保留）
+```
+
+**表格数据参与 Wiki 检索：**
+创建表格并插入数据后，`wiki query` 会自动搜索表格中的结构化数据，与 Wiki 页面结果合并返回。支持 BM25 关键词检索和向量语义检索两种模式。
+
+```bash
+# 生成表格向量嵌入（启用语义检索）
+python scripts/wiki.py ledger embed "项目台账"
+python scripts/wiki.py ledger embed   # 所有表
+```
+
+**典型工作流：**
+
+```
+用户: 帮我创建一个项目台账
+Claude: [询问字段、唯一键、是否需要编号]
+用户: 需要项目名称、负责人、开始日期、预算。项目名称唯一，要自动编号。
+Claude: [调用 wiki ledger create]
+用户: 帮我加一条，智能系统开发项目，张三负责，1月15开始，50万预算
+Claude: [解析自然语言 → 结构化JSON → 调用 wiki ledger insert]
+用户: 再加一个备注字段
+Claude: [调用 wiki ledger update-schema --add]
 ```
 
 ## Configuration

@@ -155,7 +155,25 @@ def search_wiki(query: str, limit: int = 5) -> list[dict]:
     except Exception:
         pass
 
-    # 3. Fuse results with RRF if multiple streams
+    # 4. Table BM25 search (ledger)
+    try:
+        from search import table_search
+        table_results = table_search(query, str(WIKI_DIR), limit=limit)
+        if table_results:
+            all_streams.append(table_results)
+    except Exception:
+        pass
+
+    # 5. Table vector search (ledger embeddings)
+    try:
+        from search import table_vector_search
+        table_vec_results = table_vector_search(query, str(WIKI_DIR), limit=limit)
+        if table_vec_results:
+            all_streams.append(table_vec_results)
+    except Exception:
+        pass
+
+    # Fuse results with RRF if multiple streams
     if len(all_streams) >= 2:
         try:
             from search import reciprocal_rank_fusion
@@ -273,7 +291,23 @@ def synthesize_answer(query: str, pages: list[dict], config: dict, fmt: str = "m
 
     contexts = []
     for i, page in enumerate(pages[:5]):
-        content = read_page_content(page["path"])
+        # Handle table/ledger results (structured data, no file path)
+        if page.get("stream") in ("table", "table_vector"):
+            table_name = page.get("display_name", page.get("table_name", "unknown"))
+            row_id = page.get("row_id", "")
+            row_data = page.get("row_data", {})
+            if row_data:
+                row_str = "\n".join(
+                    f"- {k}: {v}" for k, v in row_data.items()
+                    if not k.startswith("_")
+                )
+                contexts.append(
+                    f"--- TABLE: {table_name} (row {row_id}) ---\n{row_str}"
+                )
+            continue
+
+        # Wiki page (unstructured markdown)
+        content = read_page_content(page.get("path", ""))
         if content:
             contexts.append(f"--- PAGE {i+1}: {page.get('id', 'unknown')} ---\n{content[:2000]}")
 

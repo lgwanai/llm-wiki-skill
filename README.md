@@ -114,35 +114,43 @@ wiki config
 
 ### 离线部署
 
-适合无网络或内网环境，在有网络的机器上提前下载所有 wheel 包，拷贝到目标机后直接安装，无需再次下载。
+适合无网络或内网环境：在有网络的机器上提前下载所有依赖包，拷贝到目标机后直接安装，无需再次下载。
 
-**下载 wheels（在有网络的机器上）：**
+**下载依赖（在有网络的机器上）：**
 
 ```bash
-# 下载当前平台的所有依赖
+# 下载当前平台的所有依赖（自动检测 macOS/Windows/Linux + arm64/x86_64）
 python scripts/offline_download.py
 
-# 下载所有平台（macOS arm64/x86_64 + Windows + Linux）
+# 下载所有平台（macOS arm64/x86_64 + Windows x86_64 + Linux x86_64）
 python scripts/offline_download.py --all
 
-# 下载指定平台
+# 下载指定平台的所有架构
 python scripts/offline_download.py --platform macos
 python scripts/offline_download.py --platform windows
+python scripts/offline_download.py --platform linux
 
-# 有些纯 Python 包没有预编译 wheel，允许下载源码包
+# 允许 C 扩展包回退到源码包（目标机器需有 C 编译器）
 python scripts/offline_download.py --include-source
 ```
+
+**下载流程说明：**
+
+脚本自动按平台 tag 下载 `.whl` 预编译包，确保目标机器无需编译器即可安装。对于纯 Python 包（如 `jieba`）没有 `.whl` 的，脚本自动识别并下载 `.tar.gz` 源码包——纯 Python 源码无需编译，跨平台通用。
+
+`--include-source` 允许 **所有** 包回退到源码分发（包括 `numpy`、`faiss-cpu` 等 C 扩展包），意味着目标机器需要 C/C++ 编译器和 Python 开发头文件。仅建议在了解编译环境的情况下使用。
 
 下载后的目录结构：
 ```
 offline/
 └── wheels/
-    ├── macos-arm64/        # Apple Silicon wheels
-    ├── macos-x86_64/       # Intel Mac wheels
-    ├── windows-x86_64/     # Windows wheels
-    └── linux-x86_64/       # Linux wheels
-        ├── pyyaml-6.0.2-cp311-cp311-*.whl
+    ├── macos-arm64/        # Apple Silicon — 68 .whl + jieba .tar.gz (~237 MB)
+    ├── macos-x86_64/       # Intel Mac — 部分包无 wheel（见下方已知限制）
+    ├── windows-x86_64/     # Windows x64 — 68 .whl + jieba .tar.gz (~295 MB)
+    └── linux-x86_64/       # Linux x64 — 部分包无 wheel（见下方已知限制）
+        ├── pyyaml-6.0.2-cp312-cp312-*.whl
         ├── requests-2.32.3-py3-none-any.whl
+        ├── jieba-0.42.1.tar.gz        # 纯 Python，自动识别
         ├── requirements.txt
         └── ...
 ```
@@ -156,9 +164,21 @@ pip install --no-index --find-links offline/wheels/macos-arm64/ .
 
 # Windows 示例：
 pip install --no-index --find-links offline\wheels\windows-x86_64\ .
+
+# Linux 示例：
+pip install --no-index --find-links offline/wheels/linux-x86_64/ .
 ```
 
-> **注意**：wheel 是平台相关的。在 Mac 上下载的 wheel 只能用于 Mac，Windows 亦然。下载时请匹配目标机器的架构（arm64 vs x86_64）。
+**平台兼容性：**
+
+| 平台 | 完整下载 | 说明 |
+|------|---------|------|
+| macOS arm64 (Apple Silicon) | ✅ 69 包 | 全部 wheel 可用 |
+| Windows x86_64 | ✅ 69 包 | 全部 wheel 可用 |
+| macOS x86_64 (Intel) | ⚠️ 部分 | `faiss-cpu` 无此平台 wheel，需 `--include-source` 或使用 arm64 机器 |
+| Linux x86_64 | ⚠️ 部分 | `faiss-cpu` 无此平台 wheel，需 `--include-source` 或换用 `faiss-gpu` |
+
+> **注意**：wheel 是平台相关的。在 Mac 上下载的 `.whl` 只能用于 Mac，Windows 亦然。下载时请匹配目标机器的架构（arm64 vs x86_64）。纯 Python 的 `.tar.gz` 源码包（如 jieba）跨平台通用。
 
 ### CLI 命令
 
@@ -174,6 +194,100 @@ pip install --no-index --find-links offline\wheels\windows-x86_64\ .
 | `wiki embed` | 生成向量嵌入 |
 | `wiki bulk stats` | 详细统计 |
 | `wiki bulk clean` | 清理孤立页面 |
+| `wiki ledger list` | 列出所有台账表 |
+| `wiki ledger create` | 创建台账表 |
+| `wiki ledger ask` | 自然语言查询表数据 |
+| `wiki ledger sql` | 执行原始 SQL（只读） |
+
+### 台账管理（DuckDB）
+
+台账系统基于 **DuckDB** 引擎，管理结构化表格数据。与 Wiki 页面（非结构化文档）互补：
+- **Wiki 页面** — 处理文档、概念、知识图谱
+- **台账表格** — 处理结构化、关系型、类型严格的数据
+
+表格数据自动参与 `wiki query` 的混合检索（BM25 + 向量 + 表格），搜索结果合并返回。
+
+**创建表格（多轮对话确认字段）：**
+
+```bash
+# 创建项目台账
+wiki ledger create "项目台账" \
+  --fields '[{"name":"项目名称","type":"string","required":true},{"name":"预算","type":"number"},{"name":"状态","type":"string"}]' \
+  --unique "项目名称" \
+  --auto-increment \
+  --description "项目管理台账"
+```
+
+**自然语言查询：**
+
+```bash
+# 自然语言 → 自动生成 SQL → 执行 → 返回结果
+wiki ledger ask "项目台账" "进行中的项目有哪些？预算超过 40 万的按从高到低排"
+
+# 分页查询
+wiki ledger ask "项目台账" "按预算从高到低排序" --page 1 --page-size 20
+
+# 原始 SQL（高级查询）
+wiki ledger sql "SELECT \"项目名称\", SUM(\"预算\") FROM \"table_x\" GROUP BY \"项目名称\""
+
+# 批量遍历大数据表
+wiki ledger traverse "项目台账" --batch-size 100 --offset 0
+```
+
+**插入数据：**
+
+```bash
+# 单行
+wiki ledger insert "项目台账" --data '{"项目名称":"智能系统","预算":50,"状态":"进行中"}'
+
+# 批量
+wiki ledger insert "项目台账" --data '[{...},{...}]'
+
+# 容错模式
+wiki ledger insert "项目台账" --data '[...]' --batch
+```
+
+**修改表结构：**
+
+```bash
+wiki ledger update-schema "项目台账" --add '[{"name":"备注","type":"text"}]'
+wiki ledger update-schema "项目台账" --remove "旧字段"
+wiki ledger update-schema "项目台账" --rename "旧名:新名"
+```
+
+**存储架构：**
+
+```
+.wiki/ledger/
+├── ledger.duckdb           # DuckDB 数据库（单一文件）
+│   ├── _registry           # 元数据表（显示名→实际名映射）
+│   ├── _embeddings         # 向量嵌入表（支持语义检索）
+│   └── <table_name>        # 用户表（强类型 SQL 列）
+└── registry.json           # 旧格式（自动迁移后保留）
+```
+
+**SQL 生成流程：**
+
+```
+用户自然语言
+  ↓
+Claude 分析意图 → 预测需要的 SQL 函数类别
+  ↓
+加载 references/sql-functions.md 相关章节
+  ↓
+构建 Prompt: [Schema + 函数参考 + 问题]
+  ↓
+LLM 生成 SQL → DuckDB 执行 → 返回结果
+```
+
+| 支持类型 | DuckDB 映射 |
+|---------|-----------|
+| string / text | VARCHAR |
+| integer | INTEGER |
+| number | DOUBLE |
+| boolean | BOOLEAN |
+| date | DATE |
+| datetime | TIMESTAMP |
 
 ### 模型配置
 
@@ -404,6 +518,13 @@ llm-wiki-skill/
 ├── wiki_config.yaml.example     # 配置文件模板
 ├── wiki_config.yaml             # 本地配置（不提交）
 │
+├── offline/                     # 离线部署 wheel 包（不提交）
+│   └── wheels/
+│       ├── macos-arm64/        # Apple Silicon wheels
+│       ├── macos-x86_64/       # Intel Mac wheels
+│       ├── windows-x86_64/     # Windows wheels
+│       └── linux-x86_64/       # Linux wheels
+│
 ├── models/                      # OCR 模型目录
 │   ├── mineru/models           # MinerU PDF-Extract-Kit
 │   ├── deepseek-ocr-v2/model   # DeepSeek-OCR-2 (~6.3GB)
@@ -423,7 +544,9 @@ llm-wiki-skill/
 │   ├── bulk.py                  # 批量操作：删除/导出/合并
 │   ├── generate_embeddings.py   # 向量嵌入生成（支持 API）
 │   ├── download_models.py       # 模型下载/链接工具
-│   ├── offline_download.py      # 离线部署 wheel 下载
+│   ├── ledger.py                 # 台账管理（DuckDB 后端）★
+│   ├── table_query.py             # 自然语言 → SQL 查询引擎 ★
+│   ├── offline_download.py        # 离线部署 wheel 下载
 │   ├── ocr.py                   # OCR 接口（5 模式: 4 本地 + API）
 │   ├── _ocr_api.py              # 通用 API OCR（OpenAI 兼容视觉 API）
 │   ├── _hook_utils.py           # 跨平台钩子工具

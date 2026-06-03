@@ -30,12 +30,20 @@ import platform
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OFFLINE_DIR = PROJECT_ROOT / "offline"
 
 _PY_VER = f"{sys.version_info.major}{sys.version_info.minor}"
+
+# Packages that only ship source distributions (no pre-built wheels on any platform).
+# Download them as .tar.gz without platform restrictions — they're pure Python
+# and don't need compilation, so one source tarball works everywhere.
+_PURE_PYTHON_SOURCE_ONLY: set[str] = {
+    "jieba",
+}
 
 # Platform tag mapping for cross-platform pip download
 _PLATFORM_TARGETS: dict[str, dict[str, tuple[str, str]]] = {
@@ -87,32 +95,77 @@ def _run_pip_download(
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    cmd = [
-        sys.executable, "-m", "pip", "download",
-        "-r", str(req_path),
-        "-d", str(out_dir),
-        "--platform", plat_tag,
-        "--python-version", _PY_VER,
-        "--implementation", "cp",
-        "--abi", abi,
-    ]
-    if not include_source:
-        cmd += ["--only-binary", ":all:"]
+    # ── Separate pure-Python source-only packages ──────────────────────
+    # These packages only ship .tar.gz source distributions (no .whl files),
+    # but they're pure Python so the source tarball works on any platform.
+    # pip's --only-binary :all: blocks them entirely, so we download them
+    # separately without platform restrictions.
+    pure_pkgs: list[str] = []
+    filtered_lines: list[str] = []
+    with open(req_path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                filtered_lines.append(line.rstrip("\n"))
+                continue
+            pkg_name = stripped.split(">=")[0].split("==")[0].split(">")[0].split("<")[0].strip()
+            if pkg_name.lower() in _PURE_PYTHON_SOURCE_ONLY:
+                pure_pkgs.append(pkg_name)
+            else:
+                filtered_lines.append(line.rstrip("\n"))
 
-    print(f"  Target: {plat_tag} (abi={abi}) → {out_dir.name}")
-    result = subprocess.run(cmd, cwd=str(PROJECT_ROOT), capture_output=True, text=True)
+    # ── Download binary wheels ─────────────────────────────────────────
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".txt", prefix="offline_reqs_", delete=False
+    ) as tmp:
+        tmp.write("\n".join(filtered_lines) + "\n")
+        tmp_req = tmp.name
 
-    if result.returncode != 0:
-        err = result.stderr.strip()
-        errors = [l for l in err.split("\n") if "ERROR" in l]
-        if errors:
-            print(f"  ⚠ {len(errors)} package(s) missing wheels for this platform:")
-            for line in errors[:5]:
-                print(f"    {line.strip()}")
-        else:
-            for line in err.split("\n")[-3:]:
-                if line.strip():
+    try:
+        cmd = [
+            sys.executable, "-m", "pip", "download",
+            "-r", tmp_req,
+            "-d", str(out_dir),
+            "--platform", plat_tag,
+            "--python-version", _PY_VER,
+            "--implementation", "cp",
+            "--abi", abi,
+        ]
+        if not include_source:
+            cmd += ["--only-binary", ":all:"]
+
+        print(f"  Target: {plat_tag} (abi={abi}) → {out_dir.name}")
+        result = subprocess.run(cmd, cwd=str(PROJECT_ROOT), capture_output=True, text=True)
+
+        if result.returncode != 0:
+            err = result.stderr.strip()
+            errors = [l for l in err.split("\n") if "ERROR" in l]
+            if errors:
+                print(f"  ⚠ {len(errors)} package(s) missing wheels for this platform:")
+                for line in errors[:5]:
                     print(f"    {line.strip()}")
+            else:
+                for line in err.split("\n")[-3:]:
+                    if line.strip():
+                        print(f"    {line.strip()}")
+    finally:
+        Path(tmp_req).unlink(missing_ok=True)
+
+    # ── Download pure-Python source-only packages ──────────────────────
+    for pkg_name in pure_pkgs:
+        pkg_spec = pkg_name  # pip download handles version resolution
+        src_cmd = [
+            sys.executable, "-m", "pip", "download",
+            pkg_spec,
+            "-d", str(out_dir),
+            "--no-binary", ":all:",
+            "--no-deps",
+        ]
+        src_result = subprocess.run(src_cmd, cwd=str(PROJECT_ROOT), capture_output=True, text=True)
+        if src_result.returncode == 0:
+            print(f"    ✓ {pkg_name} (source .tar.gz)")
+        else:
+            print(f"    ⚠ {pkg_name} download failed")
 
     whl = len(list(out_dir.glob("*.whl")))
     tgz = len(list(out_dir.glob("*.tar.gz")))
