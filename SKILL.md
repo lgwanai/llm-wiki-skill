@@ -6,8 +6,9 @@ description: >
   management, organizing notes, ingesting research, structured knowledge, "remember
   this", "file away", "add to wiki", "second brain", "build knowledge base", "set
   up wiki", accumulating and structuring information that compounds over time.
-COMMANDS: /wiki-compile, /wiki-query, /wiki-lint, /wiki-embed, /wiki-bulk,
-/wiki-consolidate, /wiki-status, /wiki-init, /wiki-update, /wiki-ledger.
+COMMANDS: >
+  /wiki-compile, /wiki-query, /wiki-lint, /wiki-embed, /wiki-bulk,
+  /wiki-consolidate, /wiki-status, /wiki-init, /wiki-update, /wiki-ledger.
 ---
 
 # LLM Wiki v2

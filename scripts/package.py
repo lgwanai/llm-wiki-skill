@@ -51,7 +51,7 @@ SECRET_PATTERNS = {
         r'-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----',
         re.IGNORECASE,
     ),
-    "Generic secret": re.compile(r'(?:api_key|apikey|secret|password)\s*[:=]\s*["\'](?!\s*$|your-|sk-|pk-|changeme|example|xxx)[^"\'\s]{6,}["\']', re.IGNORECASE),
+    "Generic secret": re.compile(r'(?:api_key|apikey|secret|password)\s*[:=]\s*["\'](?!\s*$|\$|your-|sk-|pk-|changeme|example|xxx)[^"\'\s]{6,}["\']', re.IGNORECASE),
     "AWS key": re.compile(r'AKIA[0-9A-Z]{16}'),
     "JWT token": re.compile(r'eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+'),
 }
