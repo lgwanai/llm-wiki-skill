@@ -199,13 +199,34 @@ pip install --no-index --find-links offline/wheels/linux-x86_64/ .
 | `wiki ledger ask` | 自然语言查询表数据 |
 | `wiki ledger sql` | 执行原始 SQL（只读） |
 
-### 台账管理（DuckDB）
+### 台账管理
 
-台账系统基于 **DuckDB** 引擎，管理结构化表格数据。与 Wiki 页面（非结构化文档）互补：
+台账系统管理结构化表格数据，与 Wiki 页面互补：
 - **Wiki 页面** — 处理文档、概念、知识图谱
 - **台账表格** — 处理结构化、关系型、类型严格的数据
 
-表格数据自动参与 `wiki query` 的混合检索（BM25 + 向量 + 表格），搜索结果合并返回。
+表格数据自动参与 `wiki query` 的混合检索（BM25 + Vector + Graph + Ledger），搜索结果合并返回。
+
+**导入 CSV/Excel：**
+
+```bash
+# 导入表格文件
+wiki ledger import data.csv --name "AI 模型对比"
+wiki ledger import report.xlsx --name "季度报表"
+
+# 自动类型推断（int/float/date/boolean/percentage 等）
+# 自动字段名规范化为英文 slug
+```
+
+**查看与搜索：**
+
+```bash
+wiki ledger list                              # 列出所有台账
+wiki ledger show <table-id> -n 20              # 查看 schema + 前20行
+wiki ledger search "预算"                      # 搜索表名/字段/数据
+wiki ledger export <table-id> -o output.csv    # 导出 CSV
+wiki ledger delete <table-id>                  # 删除台账
+```
 
 **创建表格（多轮对话确认字段）：**
 
