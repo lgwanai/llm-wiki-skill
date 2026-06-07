@@ -108,13 +108,14 @@ query:
 ocr:
   mode: local                    # local | api
 
-  # 本地模式：选择后端引擎
+  # 本地模式：选择后端引擎（默认继承 ocr_mode）
   backend: mineru                # mineru | deepseek | logics | paddle
 
   # API 模式：provider 预设（siliconflow | paddleocr-vl | deepseek | openai）
-  api_provider: ""               # 自动配置 api_url、model 和 prompt
+  # 自动设置 api_url、默认 model 和 prompt，也可手动覆盖
+  api_provider: ""               # 预设: siliconflow | deepseek | openai
 
-  # API 模式配置（覆盖 provider 预设值，仅 mode: api 时使用）
+  # API 模式手动配置（覆盖 provider 预设值）
   api_url: ""                    # OpenAI 兼容视觉 API 端点
   api_key: ""                    # API 密钥（支持 ${ENV_VAR} 环境变量语法）
   api_model: ""                  # 模型名称（如 deepseek-ai/DeepSeek-OCR）
@@ -128,27 +129,42 @@ ocr:
 ocr_mode: mineru
 
 # ============================================================
-# OCR 后端配置（本地引擎详细配置）
+# OCR 后端配置（四选一）
 # ============================================================
 
-# MinerU（默认）— 公式→LaTeX，表格→HTML，纯 CPU
+# MinerU — 公式→LaTeX，表格→HTML，纯 CPU（默认）
 mineru:
   backend: pipeline
   lang: ch           # ch | en
   formula: true      # 识别公式
   table: true        # 识别表格
+  # 模型路径（默认: 项目根目录/models/mineru/models）
+  models_path: models/mineru/models
+
+# DeepSeek-OCR-2 — Vision-Language OCR，GPU 可选
+deepseek_ocr:
+  # 模型路径（默认: models/deepseek-ocr-v2/model）
+  model_path: models/deepseek-ocr-v2/model
+  # 或使用 API
+  api_url: ""
+  api_key: ""
+  # 设备（mps | cuda | cpu）
+  device: mps
+
+# Logics-Parsing-v2 — Omni OCR，支持多模态
+logics_parsing:
+  # 模型路径（默认: models/logics-parsing-v2/model）
+  model_path: models/logics-parsing-v2/model
+  # 设备（mps | cuda | cpu）
+  device: mps
 
 # PaddleOCR — PP-OCRv5，109 语言，文档纠偏
 paddleocr:
   lang: ch
   use_doc_orientation_classify: true   # 文档方向校正
   use_doc_unwarping: true              # 文档展平
-
-# DeepSeek-OCR — grounding + 提取（需要 GPU 或 API）
-ocr:
-  api_url: "http://127.0.0.1:12345/v1/chat/completions"
-  api_key: "your-ocr-api-key"
-  model: "DeepSeek-OCR-4bit"
+  # 模型路径（可选，默认使用系统缓存）
+  models_path: /path/to/paddleocr/models
 
 # ============================================================
 # 自动化 Hooks
@@ -203,8 +219,23 @@ quality:
 # 向量搜索配置
 # ============================================================
 embeddings:
-  # 嵌入模型
+  # 嵌入模式: local | api
+  # - local: 使用本地模型（sentence-transformers 或 ollama）
+  # - api: 使用远程 API（OpenAI、DeepSeek 等）
+  mode: local
+  
+  # 本地模型（mode: local 时使用）
   model: "sentence-transformers/all-MiniLM-L6-v2"
+  
+  # 或使用 Ollama 本地嵌入
+  # model: "ollama:nomic-embed-text"
+  
+  # 远程 API 配置（mode: api 时使用）
+  api_url: ""
+  api_key: ""
+  # api_url: "https://api.openai.com/v1/embeddings"
+  # api_key: "${OPENAI_API_KEY}"
+  # api_model: "text-embedding-3-small"
   
   # 向量维度
   dimension: 384

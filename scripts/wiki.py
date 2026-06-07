@@ -344,6 +344,16 @@ Environment:
     ask_lp.add_argument("--page-size", type=int, default=20, help="Rows per page")
 
     ctx_lp = ledger_sub.add_parser("context", help="Prepare schema + function context for SQL generation")
+
+    # Ledger import/export
+    li = ledger_sub.add_parser("import", help="Import CSV/Excel file as ledger table")
+    li.add_argument("file", help="CSV or XLSX file path")
+    li.add_argument("--name", help="Table display name")
+    lsk = ledger_sub.add_parser("search", help="Search across ledger tables (name/field/content)")
+    lsk.add_argument("query", help="Search query")
+    le = ledger_sub.add_parser("export", help="Export ledger table as CSV")
+    le.add_argument("table", help="Table name to export")
+    le.add_argument("-o", "--output", help="Output CSV path")
     ctx_lp.add_argument("table", help="Table name")
     ctx_lp.add_argument("question", help="Natural language question")
 
@@ -453,6 +463,16 @@ Environment:
         elif args.ledger_cmd == "embed":
             if args.table:
                 ledger_args.append(args.table)
+        elif args.ledger_cmd == "import":
+            ledger_args.append(args.file)
+            if args.name:
+                ledger_args.extend(["--name", args.name])
+        elif args.ledger_cmd == "search":
+            ledger_args.append(args.query)
+        elif args.ledger_cmd == "export":
+            ledger_args.append(args.table)
+            if args.output:
+                ledger_args.extend(["-o", args.output])
 
         # Dispatch: table_query.py handles schema/sql/query/traverse/ask/context;
         # everything else goes to ledger.py

@@ -155,21 +155,23 @@ def search_wiki(query: str, limit: int = 5) -> list[dict]:
     except Exception:
         pass
 
-    # 4. Table BM25 search (ledger)
+    # 4. Ledger search (structured tables)
     try:
-        from search import table_search
-        table_results = table_search(query, str(WIKI_DIR), limit=limit)
-        if table_results:
-            all_streams.append(table_results)
-    except Exception:
-        pass
-
-    # 5. Table vector search (ledger embeddings)
-    try:
-        from search import table_vector_search
-        table_vec_results = table_vector_search(query, str(WIKI_DIR), limit=limit)
-        if table_vec_results:
-            all_streams.append(table_vec_results)
+        from ledger import search_ledgers as ledger_search
+        ledger_results = ledger_search(query, limit=limit)
+        if ledger_results:
+            converted = []
+            for lr in ledger_results:
+                converted.append({
+                    "file": lr["id"],
+                    "path": str(WIKI_DIR / "ledger" / lr["id"]),
+                    "score": lr.get("score", 1),
+                    "stream": "ledger",
+                    "ledger_name": lr["name"],
+                    "ledger_fields": lr.get("fields", []),
+                    "ledger_preview": lr.get("preview", []),
+                })
+            all_streams.append(converted)
     except Exception:
         pass
 
