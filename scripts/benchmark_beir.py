@@ -315,6 +315,9 @@ def _get_embeddings_batch_api(texts: list[str], config: dict) -> list[Optional[l
             json={"model": api_model, "input": texts},
             timeout=120,
         )
+        if resp.status_code == 429:
+            time.sleep(5)
+            resp = requests.post(api_url, headers=headers, json={"model": api_model, "input": texts}, timeout=120)
         resp.raise_for_status()
         data = resp.json()
         embeddings = data.get("data", [])
@@ -596,12 +599,8 @@ def run_beir_benchmark(
     # Dense
     if "dense" in methods or "hybrid" in methods:
         t0 = time.time()
-        # For BEIR text benchmarks, default to local text embedding model
-        dense_retriever = DenseRetriever(
-            corpus,
-            embedding_mode="local",
-            embedding_model="sentence-transformers/all-MiniLM-L6-v2",
-        )
+        # Use config defaults unless overridden
+        dense_retriever = DenseRetriever(corpus)
         dense_retriever.index_corpus()
         index_time = time.time() - t0
         print(f"  Dense index built in {index_time:.1f}s", file=sys.stderr)
