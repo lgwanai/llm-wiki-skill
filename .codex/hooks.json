@@ -1,0 +1,36 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python '/Users/wuliang/workspace/llm-wiki-skill/.codex/hooks/on_new_source.py'"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python '/Users/wuliang/workspace/llm-wiki-skill/.codex/hooks/session_start.py'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python '/Users/wuliang/workspace/llm-wiki-skill/.codex/hooks/session_end.py'"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -3,7 +3,7 @@
 
 Commands:
     wiki init              Initialize wiki structure
-    wiki compile <source>  Compile source → build wiki pages
+    wiki compile <source>  Compile source file/directory → build wiki pages
     wiki query <question>  Search wiki → answer questions
     wiki lint              Health check → auto-heal
     wiki status            Show wiki statistics
@@ -40,12 +40,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 from config import (
     get_config, get_wiki_dir, get_llm_config, get_api_url,
     create_default_config, validate_config, print_config,
-    CONFIG_FILENAME
+    CONFIG_FILENAME, reset_config
 )
-
-WIKI_DIR = get_wiki_dir()
-PAGES_DIR = WIKI_DIR / "pages"
-GRAPH_DIR = WIKI_DIR / "graph"
 
 
 def run_script(script_name: str, args: list[str]) -> tuple[int, str]:
@@ -56,13 +52,23 @@ def run_script(script_name: str, args: list[str]) -> tuple[int, str]:
         capture_output=True,
         text=True
     )
-    return result.returncode, result.stdout
+    output = result.stdout
+    if result.stderr:
+        output = output + result.stderr
+    return result.returncode, output
 
 
-def cmd_compile(source: str, source_type: str = "doc", force: bool = False) -> dict:
+def cmd_compile(
+    source: str,
+    source_type: str = "doc",
+    force: bool = False,
+    depth: int | None = None,
+) -> dict:
     args = [source, "--type", source_type]
     if force:
         args.append("--force")
+    if depth is not None:
+        args.extend(["--depth", str(depth)])
 
     code, output = run_script("compile_v2.py", args)
 
@@ -124,11 +130,13 @@ def cmd_consolidate(tiers: str = "working,episodic,semantic", decay_only: bool =
 
 
 def cmd_status() -> dict:
-    pages_dir = PAGES_DIR
+    wiki_dir = get_wiki_dir()
+    pages_dir = wiki_dir / "pages"
+    graph_dir = wiki_dir / "graph"
     concepts = list((pages_dir / "concepts").glob("*.md")) if (pages_dir / "concepts").exists() else []
     entities = list((pages_dir / "entities").glob("*.md")) if (pages_dir / "entities").exists() else []
 
-    graph_file = GRAPH_DIR / "entities.json"
+    graph_file = graph_dir / "entities.json"
     entities_count = 0
     edges_count = 0
 
@@ -136,7 +144,7 @@ def cmd_status() -> dict:
         data = json.loads(graph_file.read_text())
         entities_count = len(data)
 
-    edges_file = GRAPH_DIR / "edges.json"
+    edges_file = graph_dir / "edges.json"
     if edges_file.exists():
         edges_data = json.loads(edges_file.read_text())
         edges = edges_data.get("edges", edges_data) if isinstance(edges_data, dict) else edges_data
@@ -154,46 +162,51 @@ def cmd_status() -> dict:
         },
         "files": {
             "index": (pages_dir / "index.md").exists(),
-            "log": (WIKI_DIR / "log.md").exists(),
-            "audit": (WIKI_DIR / "audit.json").exists(),
+            "log": (wiki_dir / "log.md").exists(),
+            "audit": (wiki_dir / "audit.json").exists(),
         }
     }
 
 
 def cmd_init() -> dict:
+    reset_config()
+    wiki_dir = get_wiki_dir()
+    pages_dir = wiki_dir / "pages"
+    graph_dir = wiki_dir / "graph"
     dirs = [
-        WIKI_DIR / "source" / "articles",
-        WIKI_DIR / "source" / "documents",
-        WIKI_DIR / "source" / "code",
-        WIKI_DIR / "source" / "misc",
-        PAGES_DIR / "concepts",
-        PAGES_DIR / "entities",
-        PAGES_DIR / "sessions",
-        GRAPH_DIR,
-        WIKI_DIR / "memory",
-        WIKI_DIR / "audit",
+        wiki_dir / "source" / "articles",
+        wiki_dir / "source" / "documents",
+        wiki_dir / "source" / "code",
+        wiki_dir / "source" / "misc",
+        pages_dir / "concepts",
+        pages_dir / "entities",
+        pages_dir / "sessions",
+        graph_dir,
+        wiki_dir / "ledger",
+        wiki_dir / "memory",
+        wiki_dir / "audit",
     ]
 
     for d in dirs:
         d.mkdir(parents=True, exist_ok=True)
 
-    index_file = PAGES_DIR / "index.md"
+    index_file = pages_dir / "index.md"
     if not index_file.exists():
         index_file.write_text("# Wiki Index\n\nWelcome to your knowledge base.\n")
     
     schema_src = Path(__file__).parent.parent / "templates" / "schema.md"
-    schema_dest = WIKI_DIR / "schema.md"
+    schema_dest = wiki_dir / "schema.md"
     if schema_src.exists() and not schema_dest.exists():
         import shutil
         shutil.copy2(schema_src, schema_dest)
         
-    log_file = WIKI_DIR / "log.md"
+    log_file = wiki_dir / "log.md"
     if not log_file.exists():
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         log_file.write_text(f"# Wiki Log\n\nChronological record of all wiki operations.\n\n## [{now}] init | wiki initialized\n")
 
-    return {"success": True, "created": len(dirs)}
+    return {"success": True, "created": len(dirs), "wiki_dir": str(wiki_dir)}
 
 
 def cmd_config(init: bool = False, show: bool = True) -> dict:
@@ -246,12 +259,14 @@ Environment:
     config_parser = subparsers.add_parser("config", help="Show or create configuration")
     config_parser.add_argument("--init", action="store_true", help="Create default config file")
 
-    compile_parser = subparsers.add_parser("compile", help="Compile source to wiki")
-    compile_parser.add_argument("source", help="Source file to compile")
+    compile_parser = subparsers.add_parser("compile", help="Compile source file/directory to wiki")
+    compile_parser.add_argument("source", help="Source file or directory to compile")
     compile_parser.add_argument("--type", dest="source_type", default="doc",
                                 choices=["doc", "article", "code", "conversation"],
                                 help="Source type (controls entity focus)")
     compile_parser.add_argument("--force", action="store_true", help="Force re-compile")
+    compile_parser.add_argument("--depth", type=int, default=None,
+                                help="Directory recursion depth: 0 = direct files only, omit = all subdirectories")
 
     query_parser = subparsers.add_parser("query", help="Query wiki")
     query_parser.add_argument("question", help="Question to answer")
@@ -369,7 +384,7 @@ Environment:
     if args.command == "init":
         result = cmd_init()
         print(f"Wiki initialized: {result['created']} directories created")
-        print(f"Wiki directory: {WIKI_DIR}")
+        print(f"Wiki directory: {result['wiki_dir']}")
 
     elif args.command == "config":
         result = cmd_config(init=args.init)
@@ -383,7 +398,12 @@ Environment:
             print_config()
 
     elif args.command == "compile":
-        result = cmd_compile(args.source, source_type=args.source_type, force=args.force)
+        result = cmd_compile(
+            args.source,
+            source_type=args.source_type,
+            force=args.force,
+            depth=args.depth,
+        )
         if result.get("success"):
             print(result.get("message", "Done"))
         else:
@@ -503,6 +523,8 @@ Environment:
         else:
             code, output = run_script("ledger.py", ledger_args)
         print(output)
+        if code != 0:
+            sys.exit(code)
 
     elif args.command == "status":
         result = cmd_status()

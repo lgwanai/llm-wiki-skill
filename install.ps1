@@ -159,7 +159,7 @@ if ($LASTEXITCODE -eq 0) {
     $allOk = $false
 }
 
-$cliCheck = python -c "from scripts.wiki import main; print('OK')" 2>&1
+$cliCheck = wiki --help 2>&1
 if ($LASTEXITCODE -eq 0) {
     Write-Host "  wiki CLI:    OK" -ForegroundColor Green
 } else {
@@ -201,8 +201,8 @@ Write-Host ""
 Write-Host "  Next steps:" -ForegroundColor White
 Write-Host "    1. Copy wiki_config.yaml.example to wiki_config.yaml" -ForegroundColor DarkGray
 Write-Host "    2. Edit wiki_config.yaml with your API keys" -ForegroundColor DarkGray
-Write-Host "    3. Run: python scripts\wiki.py init" -ForegroundColor DarkGray
-Write-Host "    4. Run: python scripts\wiki.py --help" -ForegroundColor DarkGray
+Write-Host "    3. Run: wiki init" -ForegroundColor DarkGray
+Write-Host "    4. Run: wiki --help" -ForegroundColor DarkGray
 Write-Host ""
 
 if (-not $ocrOk) {

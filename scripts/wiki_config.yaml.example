@@ -1,257 +1,79 @@
-# LLM Wiki v2 配置文件
-# 复制此文件为 wiki_config.yaml 并根据需要修改
+# LLM Wiki v2 configuration
+# Copy to wiki_config.yaml and edit the values you actually need.
 
-# ============================================================
-# Wiki 存储目录配置
-# ============================================================
-# wiki_dir: Wiki 数据存储根目录
-#   - 编译后的页面存放在此目录下
-#   - 默认: 项目根目录下的 .wiki/
-#   - 可配置为任意绝对路径或相对路径
-#   - 示例:
-#     wiki_dir: ~/.wiki              # 用户主目录下
-#     wiki_dir: /data/wiki           # 绝对路径
-#     wiki_dir: ./my-wiki            # 相对路径（相对于配置文件所在目录）
-
+# Wiki data directory. Relative paths are resolved from the current project root.
 wiki_dir: .wiki
 
-# ============================================================
-# LLM 模型配置
-# ============================================================
-# 支持两种模式:
-#   1. URL 模式（远程 API）: 指定 provider, base_url, api_key
-#   2. 本地模式（Ollama）: 设置 provider: ollama, 不需要 api_key
-
-llm:
-  # 模型提供商: deepseek | openai | ollama | custom
+# Chat model used for compile/query/ledger ask.
+# provider: deepseek | openai | ollama | custom
+model:
   provider: deepseek
-  
-  # API 密钥（远程 API 必填，Ollama 模式无需设置）
-  # 建议使用环境变量: api_key: ${DEEPSEEK_API_KEY}
-  api_key: "your-api-key-here"
-  
-  # API 基础 URL（根据 provider 自动设置默认值）
-  # - deepseek: https://api.deepseek.com
-  # - openai: https://api.openai.com
-  # - ollama: http://localhost:11434
-  # - custom: 必须手动指定
-  base_url: "https://api.deepseek.com"
-  
-  # 模型名称
-  # - deepseek: deepseek-chat, deepseek-v4-flash
-  # - openai: gpt-4o, gpt-4o-mini
-  # - ollama: llama3.2, qwen2.5, deepseek-r1:7b
-  model: "deepseek-v4-flash"
-  
-  # 生成参数
+  model: deepseek-v4-flash
+  api_key: ${DEEPSEEK_API_KEY}
+  base_url: https://api.deepseek.com
   temperature: 0.3
   max_tokens: 32000
 
-# ============================================================
-# Ollama 本地模型配置（当 provider: ollama 时使用）
-# ============================================================
-ollama:
-  # Ollama 服务地址
-  base_url: "http://localhost:11434"
-  
-  # 模型名称
-  model: "llama3.2"
-  
-  # 生成参数
-  temperature: 0.3
-  num_ctx: 32768    # 上下文窗口大小
-  
-  # 嵌入模型（用于向量搜索）
-  embedding_model: "nomic-embed-text"
+  # Ollama example:
+  # provider: ollama
+  # model: llama3.2
+  # base_url: http://localhost:11434
+  # num_ctx: 32768
 
-# ============================================================
-# 自定义 API 配置（当 provider: custom 时使用）
-# ============================================================
-# 示例：使用自部署的 OpenAI 兼容服务
-custom:
-  # 完整的 API URL（必须包含 /v1/chat/completions 路径）
-  # api_url: "http://your-server:8000/v1/chat/completions"
-  
-  # 或者分开配置
-  base_url: "http://your-server:8000"
-  api_key: "your-custom-api-key"
-  model: "your-model-name"
+  # Custom OpenAI-compatible endpoint:
+  # provider: custom
+  # api_url: http://localhost:8000/v1/chat/completions
+  # api_key: ${LLM_API_KEY}
 
-# ============================================================
-# 查询配置
-# ============================================================
 query:
-  # 是否使用 LLM 合成答案（false = 仅返回搜索结果，更快）
   llm_synthesis: true
-  
-  # 默认输出格式: markdown | table | timeline | slides | json
   default_format: markdown
-  
-  # 搜索结果数量上限
   max_results: 5
 
-# ============================================================
-# OCR 配置（统一）
-# ============================================================
-# 模式: local | api
-# - local: 使用本地 OCR 引擎（由 backend 字段选择）
-# - api: 使用远程 OpenAI 兼容视觉 API（如 DeepSeek-VL2、GPT-4o 等）
-#
-# 本地模式 (mode: local):
-#   由 backend 选择引擎: mineru | deepseek | logics | paddle
-#   各引擎详细配置见下方对应段落
-#
-# API 模式 (mode: api):
-#   需配置 api_url, api_key, api_model
-#   支持任意 OpenAI 兼容的视觉 API
-
+# OCR is optional. Local mode uses one backend; API mode uses an
+# OpenAI-compatible vision endpoint or a provider preset.
 ocr:
-  mode: local                    # local | api
+  mode: local              # local | api
+  backend: mineru          # mineru | deepseek | logics | paddle
 
-  # 本地模式：选择后端引擎（默认继承 ocr_mode）
-  backend: mineru                # mineru | deepseek | logics | paddle
+  # Backend-specific local options. Change only when needed.
+  options:
+    models_path: models/mineru/models
+    lang: ch
+    formula: true
+    table: true
 
-  # API 模式：provider 预设（siliconflow | paddleocr-vl | deepseek | openai）
-  # 自动设置 api_url、默认 model 和 prompt，也可手动覆盖
-  api_provider: ""               # 预设: siliconflow | deepseek | openai
-
-  # API 模式手动配置（覆盖 provider 预设值）
-  api_url: ""                    # OpenAI 兼容视觉 API 端点
-  api_key: ""                    # API 密钥（支持 ${ENV_VAR} 环境变量语法）
-  api_model: ""                  # 模型名称（如 deepseek-ai/DeepSeek-OCR）
-  api_prompt: ""                 # OCR 提示词（空则使用 provider 默认值）
-
-  # PDF 渲染分辨率（API 模式下影响页面对 API 的发送质量）
+  # API OCR example:
+  # mode: api
+  # api_provider: siliconflow
+  # api_key: ${SILICONFLOW_API_KEY}
+  # api_model: deepseek-ai/DeepSeek-OCR
+  # api_url: https://api.siliconflow.cn/v1/chat/completions
+  # api_prompt: "<image>\n<|grounding|>OCR this image."
   pdf_dpi: 150
 
-# 向后兼容: ocr_mode（当 ocr.backend 未设置时生效）
-# 可选: mineru | deepseek | logics | paddle
-ocr_mode: mineru
+# Optional image understanding for `wiki compile <image-or-directory>`.
+# When enabled, images are first analyzed by a VL/omni model; OCR can then
+# add dense text extraction for screenshots or document images.
+image_analysis:
+  enabled: false
+  api_provider: ""         # siliconflow | openai | deepseek | paddleocr-vl
+  api_url: ""              # optional OpenAI-compatible /v1/chat/completions endpoint
+  api_key: ""              # e.g. ${OPENAI_API_KEY} or ${SILICONFLOW_API_KEY}
+  api_model: ""            # e.g. gpt-4o, qwen-vl, deepseek-vl, PaddleOCR-VL
+  ocr_fallback: true
+  ocr_min_chars: 800
 
-# ============================================================
-# OCR 后端配置（四选一）
-# ============================================================
-
-# MinerU — 公式→LaTeX，表格→HTML，纯 CPU（默认）
-mineru:
-  backend: pipeline
-  lang: ch           # ch | en
-  formula: true      # 识别公式
-  table: true        # 识别表格
-  # 模型路径（默认: 项目根目录/models/mineru/models）
-  models_path: models/mineru/models
-
-# DeepSeek-OCR-2 — Vision-Language OCR，GPU 可选
-deepseek_ocr:
-  # 模型路径（默认: models/deepseek-ocr-v2/model）
-  model_path: models/deepseek-ocr-v2/model
-  # 或使用 API
-  api_url: ""
-  api_key: ""
-  # 设备（mps | cuda | cpu）
-  device: mps
-
-# Logics-Parsing-v2 — Omni OCR，支持多模态
-logics_parsing:
-  # 模型路径（默认: models/logics-parsing-v2/model）
-  model_path: models/logics-parsing-v2/model
-  # 设备（mps | cuda | cpu）
-  device: mps
-
-# PaddleOCR — PP-OCRv5，109 语言，文档纠偏
-paddleocr:
-  lang: ch
-  use_doc_orientation_classify: true   # 文档方向校正
-  use_doc_unwarping: true              # 文档展平
-  # 模型路径（可选，默认使用系统缓存）
-  models_path: /path/to/paddleocr/models
-
-# ============================================================
-# 自动化 Hooks
-# ============================================================
-hooks:
-  # 新源文件检测
-  on_new_source:
-    enabled: false
-    auto_ingest: false
-  
-  # 会话开始
-  session_start:
-    enabled: false
-    inject_context: true
-  
-  # 会话结束
-  session_end:
-    enabled: false
-    crystallize: true
-
-# ============================================================
-# 知识保留配置
-# ============================================================
-retention:
-  # 各类型实体的半衰期（天）
-  architecture: {half_life_days: 180}
-  project: {half_life_days: 130}
-  pattern: {half_life_days: 87}
-  bug: {half_life_days: 20}
-  meeting: {half_life_days: 10}
-  preference: {half_life_days: 527}
-  
-  # 衰减阈值
-  stale_threshold: 0.5    # 低于此值标记为过期
-  archive_threshold: 0.15 # 低于此值标记为归档
-
-# ============================================================
-# 质量控制
-# ============================================================
-quality:
-  # 自动修复
-  auto_heal: true
-  
-  # 最低置信度阈值
-  min_score: 0.4
-  
-  # 每个文档提取的页面数量范围
-  min_pages_per_doc: 10
-  max_pages_per_doc: 20
-
-# ============================================================
-# 向量搜索配置
-# ============================================================
 embeddings:
-  # 嵌入模式: local | api
-  # - local: 使用本地模型（sentence-transformers 或 ollama）
-  # - api: 使用远程 API（OpenAI、DeepSeek 等）
   mode: local
-  
-  # 本地模型（mode: local 时使用）
-  model: "sentence-transformers/all-MiniLM-L6-v2"
-  
-  # 或使用 Ollama 本地嵌入
-  # model: "ollama:nomic-embed-text"
-  
-  # 远程 API 配置（mode: api 时使用）
-  api_url: ""
-  api_key: ""
-  # api_url: "https://api.openai.com/v1/embeddings"
-  # api_key: "${OPENAI_API_KEY}"
-  # api_model: "text-embedding-3-small"
-  
-  # 向量维度
+  model: sentence-transformers/all-MiniLM-L6-v2
   dimension: 384
-  
-  # 索引类型: faiss | qdrant
   backend: faiss
-  
-  # 缓存路径（相对于 wiki_dir）
-  cache_path: "graph/embeddings.json"
+  cache_path: graph/embeddings.json
 
-# ============================================================
-# 日志配置
-# ============================================================
+quality:
+  auto_heal: true
+  min_score: 0.4
+
 logging:
-  # 日志级别: DEBUG | INFO | WARNING | ERROR
   level: INFO
-  
-  # 日志文件（相对于 wiki_dir）
-  file: "wiki.log"

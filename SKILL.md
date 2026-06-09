@@ -40,17 +40,24 @@ Schema (schema.md + wiki_config.yaml) — single source of truth for types & rul
 
 ## Commands
 
+Use the installed shell CLI (`wiki ...`, or the alias `llm-wiki ...`) for all commands.
+
 ### `/wiki-compile <source>` — Ingest Source
 
 LLM reads source document, extracts entities, builds typed knowledge graph.
 
 ```bash
-python3 scripts/wiki.py compile source.md
-python3 scripts/wiki.py compile source.md --force  # re-compile + detect contradictions
+wiki compile source.md
+wiki compile docs/                 # recursively compile supported files
+wiki compile docs/ --depth 1       # only direct files + one directory level
+wiki compile diagram.png           # image source via image analysis/OCR config
+wiki compile source.md --force  # re-compile + detect contradictions
 ```
 
 **What happens:**
 - Source sanitized (API keys, tokens, passwords, emails stripped)
+- Directories are expanded recursively by default; `.wiki` and `.git` are skipped
+- Images are converted to markdown before compile, with the original image path retained as source context
 - LLM generates 10–20 structured Wiki pages (YAML frontmatter + Overview/Key Details/Relationships/Source Context)
 - **Cross-document entity protection**: same-named entities from different sources auto-prefixed (e.g., `coursepl-专家评审组`), concept aggregation pages auto-created
 - Entity types dynamically loaded from `schema.md` (single source of truth)
@@ -63,18 +70,18 @@ python3 scripts/wiki.py compile source.md --force  # re-compile + detect contrad
 Hybrid search (BM25 + Graph + RRF fusion), LLM synthesizes answer with citations.
 
 ```bash
-python3 scripts/wiki.py query "What is X?"
+wiki query "What is X?"
 
 # Fast mode — skip LLM synthesis (0.5s)
-python3 scripts/wiki.py query "专家评审组" --no-synthesis
+wiki query "专家评审组" --no-synthesis
 
 # Output formats
-python3 scripts/wiki.py query "compare" --format table
-python3 scripts/wiki.py query "history" --format timeline
-python3 scripts/wiki.py query "export" --format json
+wiki query "compare" --format table
+wiki query "history" --format timeline
+wiki query "export" --format json
 
 # File answer back as new wiki page
-python3 scripts/wiki.py query "Explain X" --file-back
+wiki query "Explain X" --file-back
 ```
 
 | Mode | Flag | Time | Output |
@@ -88,8 +95,8 @@ Search index cached to disk (`.wiki/graph/.bm25_index.json`), auto-invalidated o
 ### `/wiki-lint` — Health Check
 
 ```bash
-python3 scripts/wiki.py lint              # Check only
-python3 scripts/wiki.py lint --auto-heal  # Check + fix
+wiki lint              # Check only
+wiki lint --auto-heal  # Check + fix
 ```
 
 Checks: contradictions, stale claims, orphan pages, broken links, missing concepts.
@@ -97,13 +104,13 @@ Checks: contradictions, stale claims, orphan pages, broken links, missing concep
 ### `/wiki-status` — Wiki Overview
 
 ```bash
-python3 scripts/wiki.py status
+wiki status
 ```
 
 ### `/wiki-init` — Initialize
 
 ```bash
-python3 scripts/wiki.py init
+wiki init
 ```
 
 Creates `.wiki/` directory structure.
@@ -111,7 +118,7 @@ Creates `.wiki/` directory structure.
 ### `/wiki-update` — Update Skill
 
 ```bash
-python3 scripts/wiki.py update
+wiki update
 ```
 
 Pulls latest code from GitHub, backs up old files to `backup/` (compressed with date stamp).
@@ -124,9 +131,9 @@ Pulls latest code from GitHub, backs up old files to `backup/` (compressed with 
 ### Other Commands
 
 ```bash
-python3 scripts/wiki.py embed --force          # Regenerate vector embeddings
-python3 scripts/wiki.py bulk stats             # Wiki analytics
-python3 scripts/wiki.py bulk clean --dry-run   # Preview orphan cleanup
+wiki embed --force          # Regenerate vector embeddings
+wiki bulk stats             # Wiki analytics
+wiki bulk clean --dry-run   # Preview orphan cleanup
 python3 scripts/consolidate.py                 # Memory tier promotion + decay
 ```
 
@@ -144,7 +151,7 @@ Claude 会在创建前逐一确认：
 
 ```bash
 # 创建表格
-python3 scripts/wiki.py ledger create "项目台账" \
+wiki ledger create "项目台账" \
   --fields '[{"name":"项目名称","type":"string","required":true},{"name":"负责人","type":"string","required":true},{"name":"预算","type":"number"}]' \
   --unique "项目名称" \
   --auto-increment \
@@ -154,7 +161,7 @@ python3 scripts/wiki.py ledger create "项目台账" \
 **用户命名 vs 实际表名：**
 - 用户给的是显示名称（如"项目台账"），可以中文
 - 系统自动生成安全的实际表名（如 `table_a1b2c3d4` 或 `project_ledger`）
-- 映射关系维护在 `.wiki/ledger/registry.json` 中
+- 映射关系维护在 `.wiki/ledger/ledger.duckdb` 的 `_registry` 表中
 - 所有命令都支持用显示名称或实际名称引用表
 
 **插入数据（自然语言）：**
@@ -163,45 +170,45 @@ python3 scripts/wiki.py ledger create "项目台账" \
 
 ```bash
 # 单行插入
-python3 scripts/wiki.py ledger insert "项目台账" \
+wiki ledger insert "项目台账" \
   --data '{"项目名称":"智能系统","负责人":"张三","预算":50}'
 
 # 批量插入
-python3 scripts/wiki.py ledger insert "项目台账" \
+wiki ledger insert "项目台账" \
   --data '[{"项目名称":"项目A","负责人":"李四"},{"项目名称":"项目B","负责人":"王五"}]'
 
 # 容错模式（跳过错误行，继续处理）
-python3 scripts/wiki.py ledger insert "项目台账" --data '[...]' --batch
+wiki ledger insert "项目台账" --data '[...]' --batch
 ```
 
 **查询和管理：**
 
 ```bash
-python3 scripts/wiki.py ledger list                # 列出所有表
-python3 scripts/wiki.py ledger show "项目台账"      # 查看表结构 + 前20行数据
-python3 scripts/wiki.py ledger stats               # 所有表统计
-python3 scripts/wiki.py ledger stats "项目台账"     # 单表统计
+wiki ledger list                # 列出所有表
+wiki ledger show "项目台账"      # 查看表结构 + 前20行数据
+wiki ledger stats               # 所有表统计
+wiki ledger stats "项目台账"     # 单表统计
 ```
 
 **修改表结构：**
 
 ```bash
 # 添加字段
-python3 scripts/wiki.py ledger update-schema "项目台账" \
+wiki ledger update-schema "项目台账" \
   --add '[{"name":"备注","type":"text"}]'
 
 # 删除字段
-python3 scripts/wiki.py ledger update-schema "项目台账" --remove "旧字段"
+wiki ledger update-schema "项目台账" --remove "旧字段"
 
 # 重命名字段
-python3 scripts/wiki.py ledger update-schema "项目台账" --rename "旧名:新名"
+wiki ledger update-schema "项目台账" --rename "旧名:新名"
 
 # 修改字段类型（自动迁移数据）
-python3 scripts/wiki.py ledger update-schema "项目台账" \
+wiki ledger update-schema "项目台账" \
   --modify '[{"name":"预算","type":"integer"}]'
 
 # 删除表格
-python3 scripts/wiki.py ledger delete "项目台账"
+wiki ledger delete "项目台账"
 ```
 
 **支持的数据类型：**
@@ -225,7 +232,7 @@ python3 scripts/wiki.py ledger delete "项目台账"
 │   ├── _embeddings           # 向量嵌入表（支持语义检索）
 │   ├── <actual_name>         # 用户表（SQL 类型列）
 │   └── seq_<actual_name>     # 自增序列
-└── registry.json              # 旧格式（自动迁移后保留）
+└── registry.json / index.json  # 旧 JSON 格式（自动迁移后保留）
 ```
 
 **表格数据参与 Wiki 检索：**
@@ -233,8 +240,8 @@ python3 scripts/wiki.py ledger delete "项目台账"
 
 ```bash
 # 生成表格向量嵌入（启用语义检索）
-python scripts/wiki.py ledger embed "项目台账"
-python scripts/wiki.py ledger embed   # 所有表
+wiki ledger embed "项目台账"
+wiki ledger embed   # 所有表
 ```
 
 **典型工作流：**
@@ -255,28 +262,27 @@ Claude: [调用 wiki ledger update-schema --add]
 Single config file: `wiki_config.yaml` (copy from `.example`). Config is gitignored.
 
 ```yaml
-ocr_mode: mineru               # Default OCR: mineru | paddle | deepseek
-
-mineru:
-  backend: pipeline            # pipeline (CPU) | hybrid-auto-engine (GPU)
-  lang: ch
-  formula: true
-  table: true
-
-paddleocr:
-  lang: ch
-  use_doc_orientation_classify: true
-  use_doc_unwarping: true
-
-ocr:                           # DeepSeek-OCR (legacy)
-  api_url: "http://127.0.0.1:12345/v1/chat/completions"
-  api_key: "your-key"
-  model: "DeepSeek-OCR-4bit"
-
-llm:
+model:
   provider: deepseek
-  api_key: "sk-xxx"
   model: "deepseek-v4-flash"
+  api_key: "sk-xxx"
+
+ocr:
+  mode: local
+  backend: mineru
+  options:
+    models_path: models/mineru/models
+    lang: ch
+    formula: true
+    table: true
+
+image_analysis:
+  enabled: false                  # true to analyze image sources before OCR
+  api_provider: openai            # siliconflow | openai | deepseek | paddleocr-vl
+  api_url: ""                     # optional OpenAI-compatible API URL
+  api_key: "${OPENAI_API_KEY}"
+  api_model: gpt-4o
+  ocr_fallback: true              # append OCR text for dense screenshots/docs
 
 query:
   llm_synthesis: true          # true=LLM合成, false=仅搜索
@@ -292,7 +298,7 @@ quality:
 
 ## OCR Pipeline
 
-Three pluggable backends, default via `ocr_mode` config.
+Pluggable backends, default via `ocr.backend` config.
 
 ```bash
 # Default (from config)
@@ -304,7 +310,7 @@ python3 scripts/ocr.py document.pdf --backend deepseek
 
 # PDF → Wiki full pipeline
 python3 scripts/ocr.py paper.pdf -o .wiki/source/paper/
-python3 scripts/wiki.py compile .wiki/source/paper/paper/auto/paper.md
+wiki compile .wiki/source/paper/paper/auto/paper.md
 ```
 
 | Backend | Engine | Strengths | GPU |

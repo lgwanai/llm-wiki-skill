@@ -117,7 +117,7 @@ if errorlevel 1 (
 ) else (
     echo   Core deps: OK
 )
-python -c "from scripts.wiki import main; print('  wiki CLI:   OK')" 2>nul
+wiki --help >nul 2>&1
 if errorlevel 1 (
     echo [WARNING] wiki CLI check failed
 ) else (
@@ -132,7 +132,7 @@ echo.
 echo   Next steps:
 echo     1. Copy wiki_config.yaml.example to wiki_config.yaml
 echo     2. Edit wiki_config.yaml with your API keys
-echo     3. Run: python scripts\wiki.py init
-echo     4. Run: python scripts\wiki.py --help
+echo     3. Run: wiki init
+echo     4. Run: wiki --help
 echo.
 pause

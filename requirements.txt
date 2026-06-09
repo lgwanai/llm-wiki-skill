@@ -6,6 +6,7 @@ markitdown>=0.1      # Multi-format file → Markdown (PDF, DOCX, PPTX, XLSX, HT
 
 # Search (Level 5)
 duckdb>=1.0                   # SQL database for ledger tables + FTS/vector search
+openpyxl>=3.1                 # XLSX import for ledger tables
 jieba>=0.42                   # Chinese text segmentation for BM25/vector search
 sentence-transformers>=2.2     # Embedding generation for vector search
 faiss-cpu>=1.7                # Vector index for similarity search

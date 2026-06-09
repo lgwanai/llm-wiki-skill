@@ -16,7 +16,14 @@ import requests
 import yaml
 
 sys.path.insert(0, str(Path(__file__).parent))
-from config import get_config, get_wiki_dir, get_llm_config, get_api_url
+from config import (
+    get_config,
+    get_wiki_dir,
+    get_llm_config,
+    get_api_url,
+    get_image_analysis_config,
+    get_ocr_config,
+)
 
 SENSITIVE_PATTERNS: list[tuple[str, str]] = [
     (r'(?:sk|pk|rk)-(?:[a-zA-Z0-9]{20,})', '[REDACTED: API key]'),
@@ -56,6 +63,62 @@ KEYWORD_RELATION_MAP = [
     (r'(?:实现|实施|执行|落实|负责|承担|主持)\s*\[\[', 'implemented_by'),
 ]
 
+TEXT_EXTENSIONS = {
+    ".md", ".markdown", ".txt", ".rst", ".adoc",
+    ".csv", ".tsv", ".json", ".jsonl", ".yaml", ".yml",
+    ".html", ".htm", ".xml",
+    ".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".rs", ".java",
+    ".c", ".cc", ".cpp", ".h", ".hpp", ".cs", ".php", ".rb",
+    ".sh", ".bash", ".zsh", ".sql", ".toml", ".ini", ".cfg",
+}
+IMAGE_EXTENSIONS = {
+    ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp",
+    ".tiff", ".tif", ".avif", ".heic", ".heif", ".svg",
+}
+SKIP_DIR_NAMES = {".wiki", ".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+DEFAULT_ENTITY_TYPES = [
+    "entity", "concept", "process", "rule", "role", "event",
+    "model", "technique", "framework", "benchmark", "paper",
+]
+DEFAULT_RELATIONSHIP_TYPES = [
+    "uses", "depends_on", "extends", "improves_upon", "contradicts",
+    "supersedes", "caused_by", "fixed_by", "replaces", "relates_to",
+    "part_of", "implemented_by",
+]
+CONCEPT_LIKE_TYPES = {"concept", "technique", "model", "framework", "benchmark", "paper", "pattern"}
+INGEST_RULES = {
+    "doc": (
+        ["entity", "concept", "process", "rule", "role", "event"],
+        "core concepts, named entities, processes, roles, rules, and events",
+    ),
+    "article": (
+        ["concept", "entity", "model", "technique", "benchmark", "paper"],
+        "claims, concepts, models, techniques, benchmarks, and cited work",
+    ),
+    "code": (
+        ["entity", "concept", "framework", "tool", "file", "library", "decision"],
+        "source files, libraries, tools, architectural decisions, and implementation patterns",
+    ),
+    "conversation": (
+        ["decision", "concept", "entity", "process", "rule"],
+        "decisions, findings, open questions, rules, and follow-up actions",
+    ),
+}
+
+IMAGE_ANALYSIS_PROMPT = """Analyze this image for knowledge-base ingestion.
+
+Return clean markdown in Chinese when the image contains Chinese; otherwise use the image's main language.
+
+Required:
+- Identify what the image is and what it contains.
+- Preserve visible text, labels, headings, legends, axes, units, numbers, tables, and annotations.
+- If it is a mind map, restore the hierarchy as nested bullet lists.
+- If it is a flowchart or process diagram, restore steps, branches, dependencies, and direction.
+- If it is a chart, restore chart type, series, axis meanings, numeric values, and trends.
+- If it is a document screenshot, extract the text faithfully and keep section structure.
+- Avoid generic visual descriptions when structured information is visible.
+"""
+
 
 def strip_sensitive(content: str) -> str:
     for pattern, replacement in SENSITIVE_PATTERNS:
@@ -63,11 +126,189 @@ def strip_sensitive(content: str) -> str:
     return content
 
 
+def is_text_source(path: Path) -> bool:
+    return path.suffix.lower() in TEXT_EXTENSIONS
+
+
+def is_image_source(path: Path) -> bool:
+    return path.suffix.lower() in IMAGE_EXTENSIONS
+
+
+def is_supported_source(path: Path) -> bool:
+    return path.is_file() and (is_text_source(path) or is_image_source(path))
+
+
+def iter_source_files(root: Path, max_depth: int | None = None) -> list[Path]:
+    """Return supported source files under root, sorted for deterministic compiles.
+
+    max_depth counts directory levels below root:
+    - 0: only files directly under root
+    - 1: include root's direct child directories
+    - None: recurse through all subdirectories
+    """
+    files: list[Path] = []
+
+    for current, dirnames, filenames in os.walk(root):
+        current_path = Path(current)
+        rel_parts = current_path.relative_to(root).parts
+        depth = len(rel_parts)
+
+        dirnames[:] = sorted(
+            d for d in dirnames
+            if d not in SKIP_DIR_NAMES and not (current_path / d).is_symlink()
+        )
+
+        if max_depth is not None and depth >= max_depth:
+            dirnames[:] = []
+
+        for filename in sorted(filenames):
+            path = current_path / filename
+            if path.is_symlink():
+                continue
+            if is_supported_source(path):
+                files.append(path)
+
+    return files
+
+
+def _ocr_image_with_config(image_path: Path) -> str:
+    """Run the configured OCR backend on an image and return markdown text."""
+    ocr_config = get_ocr_config()
+    backend = ocr_config.get("backend", "mineru")
+
+    if ocr_config.get("mode") == "api" or backend == "api":
+        from _ocr_api import OCRApiBackend
+        return OCRApiBackend.from_config().ocr_image(str(image_path))
+    if backend == "deepseek":
+        from _deepseek_ocr2 import DeepSeekOCR2
+        return DeepSeekOCR2.from_config().ocr_image(str(image_path))
+    if backend == "logics":
+        from _logics_parsing import LogicsParsingOCR
+        return LogicsParsingOCR.from_config().ocr_image(str(image_path))
+    if backend == "paddle":
+        from _paddle_ocr import PaddleOCRWrapper
+        return PaddleOCRWrapper.from_config().ocr_image(str(image_path))
+    from _mineru_ocr import MinerUOCR
+    return MinerUOCR.from_config().ocr_image(str(image_path))
+
+
+def analyze_image_for_compile(image_path: Path) -> str:
+    """Convert an image source to markdown for wiki compilation."""
+    image_config = get_image_analysis_config()
+    analysis = ""
+    ocr_text = ""
+
+    if image_config.get("enabled"):
+        try:
+            from _ocr_api import create_vision_backend
+            backend = create_vision_backend(image_config, IMAGE_ANALYSIS_PROMPT)
+            analysis = backend.ocr_image(str(image_path))
+        except Exception as e:
+            print(f"  WARNING: image analysis failed for {image_path}: {e}", file=sys.stderr)
+
+    should_ocr = bool(image_config.get("ocr_fallback", True))
+    if should_ocr:
+        min_chars = int(image_config.get("ocr_min_chars", 800) or 0)
+        # Run OCR after visual analysis when the image likely contains dense text,
+        # or when no enhanced analysis model is configured/available.
+        if not analysis or len(analysis) >= min_chars:
+            try:
+                ocr_text = _ocr_image_with_config(image_path)
+            except Exception as e:
+                print(f"  WARNING: OCR fallback failed for {image_path}: {e}", file=sys.stderr)
+
+    if not analysis and not ocr_text:
+        raise RuntimeError(
+            "Image compile requires image_analysis.enabled or a working OCR backend."
+        )
+
+    sections = [
+        f"# Image Source: {image_path.name}",
+        "",
+        f"> Source image: {image_path.resolve()}",
+        "",
+    ]
+
+    if analysis:
+        sections.extend(["## Visual Analysis", "", analysis.strip(), ""])
+    if ocr_text and ocr_text.strip() != analysis.strip():
+        sections.extend(["## OCR Text", "", ocr_text.strip(), ""])
+
+    return "\n".join(sections).strip() + "\n"
+
+
+def read_source_content(source_path: str | Path) -> tuple[str, str]:
+    """Read a compile source and return (content, display_name)."""
+    path = Path(source_path)
+    if is_image_source(path):
+        return analyze_image_for_compile(path), path.name
+
+    with open(path, encoding="utf-8") as f:
+        return f.read(), path.name
+
+
 def extract_edge_type(line: str) -> str:
     for pattern, rel_type in KEYWORD_RELATION_MAP:
         if re.search(pattern, line):
             return rel_type
     return "relates_to"
+
+
+def _parse_schema_table(section_title: str) -> list[list[str]]:
+    """Parse a backtick-based markdown table from schema.md."""
+    if not SCHEMA_PATH.exists():
+        return []
+
+    rows: list[list[str]] = []
+    in_section = False
+    for line in SCHEMA_PATH.read_text(encoding="utf-8").splitlines():
+        if line.strip() == section_title:
+            in_section = True
+            continue
+        if in_section and line.startswith("## ") and line.strip() != section_title:
+            break
+        if in_section and line.startswith("| `"):
+            parts = [part.strip().strip("`").strip() for part in line.split("|")[1:-1]]
+            if parts:
+                rows.append(parts)
+    return rows
+
+
+def load_entity_types_from_schema() -> tuple[list[str], str, str]:
+    """Load entity and relationship type prompt context from .wiki/schema.md."""
+    entity_rows = _parse_schema_table("## Entity Types")
+    rel_rows = _parse_schema_table("## Relationship Types")
+
+    entity_types: list[str] = []
+    entity_lines: list[str] = []
+    for row in entity_rows:
+        if len(row) >= 3 and row[0] and row[0] != "type":
+            entity_types.append(row[0])
+            entity_lines.append(f"- **{row[0]}**: {row[2]}")
+
+    rel_types: list[str] = []
+    rel_lines: list[str] = []
+    for row in rel_rows:
+        if row and row[0] and row[0].lower() != "type":
+            rel_types.append(row[0])
+            meaning = row[2] if len(row) >= 3 else f"entity A {row[0]} entity B"
+            rel_lines.append(f"- **{row[0]}**: {meaning}")
+
+    for entity_type in DEFAULT_ENTITY_TYPES:
+        if entity_type not in entity_types:
+            entity_types.append(entity_type)
+            entity_lines.append(f"- **{entity_type}**: {entity_type} page")
+
+    for rel_type in DEFAULT_RELATIONSHIP_TYPES:
+        if rel_type not in rel_types:
+            rel_lines.append(f"- **{rel_type}**: entity A {rel_type} entity B")
+
+    return entity_types, "\n".join(entity_lines), "\n".join(rel_lines)
+
+
+def load_ingest_rules_from_schema(source_type: str) -> tuple[list[str], str]:
+    """Return source-type focus rules for compile prompts."""
+    return INGEST_RULES.get(source_type, INGEST_RULES["doc"])
 
 def load_config():
     return get_config()
@@ -252,12 +493,14 @@ def compile_source(source_path: str, source_type: str = "doc", force: bool = Fal
     if not os.path.exists(source_path):
         raise FileNotFoundError(f"Source not found: {source_path}")
 
-    with open(source_path, encoding="utf-8") as f:
-        content = f.read()
+    source_file = Path(source_path)
+    if source_file.is_dir():
+        return compile_path(source_path, source_type=source_type, force=force)
+
+    content, source_name = read_source_content(source_file)
 
     content = strip_sensitive(content)
 
-    source_name = os.path.basename(source_path)
     config = load_config()
 
     lang = detect_language(content)
@@ -434,7 +677,7 @@ Output pages separated by ===PAGE_END==="""
     import re as _re
     src_stem = Path(source_name).stem
     source_abbr = _re.sub(r'[^\u4e00-\u9fff\w]', '', src_stem)[:8].lower() or "doc"
-    concept_types = set(entity_types) if entity_types else {"concept", "technique", "model", "framework", "benchmark", "paper"}
+    concept_types = CONCEPT_LIKE_TYPES
     # Track which entity IDs need concept pages (base name → list of instance IDs)
     concept_groups: dict[str, list[dict]] = {}
 
@@ -688,6 +931,62 @@ source: 跨文档聚合
     }
 
 
+def compile_path(
+    source_path: str,
+    source_type: str = "doc",
+    force: bool = False,
+    depth: int | None = None,
+) -> dict:
+    """Compile a single source file or every supported file under a directory."""
+    path = Path(source_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Source not found: {source_path}")
+
+    if path.is_file():
+        return compile_source(str(path), source_type=source_type, force=force)
+
+    if depth is not None and depth < 0:
+        raise ValueError("--depth must be >= 0")
+
+    sources = iter_source_files(path, max_depth=depth)
+    if not sources:
+        return {
+            "source": str(path),
+            "directory": True,
+            "files_found": 0,
+            "compiled": [],
+            "failed": [],
+            "pages_created": 0,
+            "pages_updated": 0,
+        }
+
+    compiled = []
+    failed = []
+    pages_created = 0
+    pages_updated = 0
+
+    print(f"Compiling directory {path} ({len(sources)} files)...", file=sys.stderr)
+    for source in sources:
+        try:
+            result = compile_source(str(source), source_type=source_type, force=force)
+            compiled.append(result)
+            pages_created += result.get("pages_created", 0)
+            pages_updated += result.get("pages_updated", 0)
+        except Exception as e:
+            failed.append({"source": str(source), "error": str(e)})
+            print(f"  ERROR: failed to compile {source}: {e}", file=sys.stderr)
+
+    return {
+        "source": str(path),
+        "directory": True,
+        "files_found": len(sources),
+        "compiled": compiled,
+        "failed": failed,
+        "pages_created": pages_created,
+        "pages_updated": pages_updated,
+    }
+
+
 def update_log(source_name: str, pages_count: int, operation: str = "compile"):
     """Update log.md with new operation."""
     log_file = WIKI_DIR / "log.md"
@@ -841,18 +1140,28 @@ def update_index(pages: list, source_name: str):
 def main():
     import argparse
     parser = argparse.ArgumentParser(description='Wiki compilation')
-    parser.add_argument('source', help='Source file to compile')
+    parser.add_argument('source', help='Source file or directory to compile')
     parser.add_argument('--type', dest='source_type', default='doc',
                         choices=['doc', 'article', 'code', 'conversation'],
                         help='Source type (controls entity focus)')
     parser.add_argument('--force', action='store_true', help='Force re-compile (overwrite existing pages)')
+    parser.add_argument('--depth', type=int, default=None,
+                        help='Directory recursion depth: 0 = direct files only, omit = all subdirectories')
     args = parser.parse_args()
 
-    result = compile_source(args.source, source_type=args.source_type, force=args.force)
+    result = compile_path(args.source, source_type=args.source_type, force=args.force, depth=args.depth)
 
     pages_created = result.get('pages_created', 0)
     pages_updated = result.get('pages_updated', 0)
-    print(f"\nCompiled {result['source']}: {pages_created} pages created, {pages_updated} pages updated")
+    if result.get("directory"):
+        failed = len(result.get("failed", []))
+        print(
+            f"\nCompiled {result['source']}: {len(result.get('compiled', []))}/"
+            f"{result.get('files_found', 0)} files, {pages_created} pages created, "
+            f"{pages_updated} pages updated, {failed} failed"
+        )
+    else:
+        print(f"\nCompiled {result['source']}: {pages_created} pages created, {pages_updated} pages updated")
     print("  → Updated log.md and graph/entities.json")
 
 

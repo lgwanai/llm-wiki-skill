@@ -41,7 +41,7 @@ Wiki:   Source → [编译] → Wiki 持久化 → 查询时直接使用已有�
 ### 真实案例：编译 DeepSeek-V4 技术报告
 
 ```bash
-$ python scripts/wiki.py compile .wiki/source/deepseek-v4/output.md
+$ wiki compile .wiki/source/deepseek-v4/output.md
 Compiling output.md (262658 chars)...
 Calling LLM...
   Created: deepseek-v4-series.md (model)
@@ -62,7 +62,7 @@ Compiled output.md: 15 pages created
 
 查询效果：
 ```bash
-$ python scripts/wiki.py query "What is DeepSeek-V4's architecture?"
+$ wiki query "What is DeepSeek-V4's architecture?"
 **Answer**: Hybrid attention combining CSA and HCA, with mHC connections and Muon optimizer.
 **Sources**: [[deepseek-v4-series]], [[deepseek-v4-pro]]
 **Related**: [[compressed-sparse-attention]], [[manifold-constrained-hyper-connections]]
@@ -75,6 +75,10 @@ $ python scripts/wiki.py query "What is DeepSeek-V4's architecture?"
 ```bash
 # 安装
 pip install -e .
+
+# 安装后 shell 中会出现两个等价命令：
+#   wiki
+#   llm-wiki
 
 # 创建配置文件（或复制 example）
 wiki config --init
@@ -107,7 +111,7 @@ wiki config
 
 项目完全支持 Windows、macOS 和 Linux。部分注意事项：
 
-1. **Python 命令**：所有命令示例使用 `python`。在 Windows 上确保 Python 在 PATH 中（安装时勾选"Add Python to PATH"）。如果 PATH 中没有 `python`，可使用 `py` 命令。
+1. **CLI 命令**：安装后直接使用 `wiki ...`。在 Windows 上确保 Python 和 Scripts 目录在 PATH 中；如果没有 `python` 命令，可用 `py -m pip install -e .` 安装。
 2. **符号链接**：`download_models.py --setup-links` 创建模型符号链接在 Windows 上需要启用[开发者模式](https://learn.microsoft.com/windows/apps/get-started/enable-your-device-for-development)（设置 → 隐私和安全性 → 开发者模式），或使用管理员终端运行。
 3. **OCR/lightpanda**：`url2markdown.py` 使用的 `lightpanda` 工具暂无 Windows 原生支持。可在 WSL 中使用，或使用其他 URL 转 Markdown 工具。
 4. **计划任务**：`.claude/hooks/scheduled/` 目录下的定时任务脚本使用 Python 编写，跨平台通用。在 Windows 上可通过任务计划程序设置定时执行。
@@ -187,7 +191,7 @@ pip install --no-index --find-links offline/wheels/linux-x86_64/ .
 | `wiki init` | 初始化 Wiki 结构 |
 | `wiki config` | 显示当前配置 |
 | `wiki config --init` | 创建默认配置文件 |
-| `wiki compile <file>` | 编译源文档 → Wiki 页面 |
+| `wiki compile <file-or-dir>` | 编译源文件或目录 → Wiki 页面 |
 | `wiki query <question>` | 查询 Wiki → 生成答案 |
 | `wiki lint --auto-heal` | 健康检查 + 自动修复 |
 | `wiki status` | Wiki 统计信息 |
@@ -198,6 +202,15 @@ pip install --no-index --find-links offline/wheels/linux-x86_64/ .
 | `wiki ledger create` | 创建台账表 |
 | `wiki ledger ask` | 自然语言查询表数据 |
 | `wiki ledger sql` | 执行原始 SQL（只读） |
+
+目录编译默认递归所有子目录，跳过 `.wiki` 和 `.git`：
+
+```bash
+wiki compile docs/
+wiki compile docs/ --depth 0    # 只处理 docs/ 下的直接文件
+wiki compile docs/ --depth 1    # 处理直接文件和一层子目录
+wiki compile diagram.png        # 图片会先转成带 source 路径的 markdown
+```
 
 ### 台账管理
 
@@ -222,7 +235,7 @@ wiki ledger import report.xlsx --name "季度报表"
 
 ```bash
 wiki ledger list                              # 列出所有台账
-wiki ledger show <table-id> -n 20              # 查看 schema + 前20行
+wiki ledger show <table-id>                    # 查看 schema + 前20行
 wiki ledger search "预算"                      # 搜索表名/字段/数据
 wiki ledger export <table-id> -o output.csv    # 导出 CSV
 wiki ledger delete <table-id>                  # 删除台账
@@ -284,7 +297,7 @@ wiki ledger update-schema "项目台账" --rename "旧名:新名"
 │   ├── _registry           # 元数据表（显示名→实际名映射）
 │   ├── _embeddings         # 向量嵌入表（支持语义检索）
 │   └── <table_name>        # 用户表（强类型 SQL 列）
-└── registry.json           # 旧格式（自动迁移后保留）
+└── registry.json / index.json # 旧 JSON 格式（自动迁移后保留）
 ```
 
 **SQL 生成流程：**
@@ -312,26 +325,19 @@ LLM 生成 SQL → DuckDB 执行 → 返回结果
 
 ### 模型配置
 
-支持三种模式：
+统一使用 `model` 段：
 
 ```yaml
-# 1. DeepSeek API（默认）
-llm:
+model:
   provider: deepseek
-  api_key: ${DEEPSEEK_API_KEY}
   model: deepseek-v4-flash
+  api_key: ${DEEPSEEK_API_KEY}
+  base_url: https://api.deepseek.com
 
-# 2. OpenAI API
-llm:
-  provider: openai
-  api_key: ${OPENAI_API_KEY}
-  model: gpt-4o
-
-# 3. Ollama 本地模型（无需 API key）
-llm:
-  provider: ollama
-ollama:
-  model: llama3.2
+# Ollama:
+# provider: ollama
+# model: llama3.2
+# base_url: http://localhost:11434
 ```
 
 详细配置见 [CONFIGURATION.md](CONFIGURATION.md)。
@@ -362,18 +368,19 @@ ollama:
 ocr:
   mode: local                    # local | api
   backend: mineru                # 本地模式: mineru | deepseek | logics | paddle
+  options:
+    models_path: models/mineru/models
+    lang: ch
 
   # API 模式：provider 预设自动配置 URL 和模型
-  api_provider: siliconflow      # siliconflow | deepseek | openai
-  api_key: "${SILICONFLOW_API_KEY}"
+  # mode: api
+  # api_provider: siliconflow    # siliconflow | paddleocr-vl | deepseek | openai
+  # api_key: ${SILICONFLOW_API_KEY}
 
   # 或手动指定 API 参数（会覆盖 provider 预设）
   # api_url: "https://api.siliconflow.cn/v1/chat/completions"
   # api_model: "deepseek-ai/DeepSeek-OCR"
   # api_prompt: "<image>\n<|grounding|>OCR this image."
-
-# 向后兼容
-ocr_mode: mineru
 ```
 
 **API 提供商标识：**
@@ -401,7 +408,7 @@ python scripts/ocr.py paper.pdf --backend api
 
 # PDF → Wiki 完整流程
 python scripts/ocr.py paper.pdf -o .wiki/source/paper/
-python scripts/wiki.py compile .wiki/source/paper/paper.md
+wiki compile .wiki/source/paper/paper.md
 ```
 
 **模型目录结构：**
@@ -469,16 +476,16 @@ models/
 
 ```bash
 # 摄入：源文档 → Wiki 页面
-python scripts/wiki.py compile source.md
+wiki compile source.md
 
 # 查询：搜索 Wiki → 合成答案 → （可选）回填
-python scripts/wiki.py query "What is X?" --file-back
+wiki query "What is X?" --file-back
 
 # 快速搜索：跳过 LLM 合成，0.5s 出结果
-python scripts/wiki.py query "专家评审组" --no-synthesis
+wiki query "专家评审组" --no-synthesis
 
 # 检查：健康扫描 → 自动修复
-python scripts/wiki.py lint --auto-heal
+wiki lint --auto-heal
 ```
 
 ### 查询模式
@@ -710,13 +717,13 @@ export LOGICS_PARSING_MODEL_PATH=models/logics-parsing-v2/model
 
 ```bash
 # 编译一个源文档
-python scripts/wiki.py compile source.md
+wiki compile source.md
 
 # 或直接使用脚本
 python scripts/compile_v2.py source.md
 
 # 强制重新编译（覆盖已有页面 + 检测矛盾）
-python scripts/wiki.py compile source.md --force
+wiki compile source.md --force
 python scripts/compile_v2.py source.md --force
 ```
 
@@ -742,7 +749,7 @@ python scripts/graph.py show
 python scripts/graph.py traverse deepseek-v4-series --depth 2
 
 # 统计
-python scripts/wiki.py bulk stats
+wiki bulk stats
 ```
 
 **关系类型（12 种）：**
@@ -754,16 +761,16 @@ python scripts/wiki.py bulk stats
 
 ```bash
 # 默认 markdown 格式
-python scripts/wiki.py query "What is DeepSeek-V4's architecture?"
+wiki query "What is DeepSeek-V4's architecture?"
 
 # 多种输出格式
-python scripts/wiki.py query "compare models" --format table
-python scripts/wiki.py query "history of X" --format timeline
-python scripts/wiki.py query "present findings" --format slides
-python scripts/wiki.py query "export all" --format json
+wiki query "compare models" --format table
+wiki query "history of X" --format timeline
+wiki query "present findings" --format slides
+wiki query "export all" --format json
 
 # 搜索 + 答案回填
-python scripts/wiki.py query "Explain Muon optimizer" --file-back
+wiki query "Explain Muon optimizer" --file-back
 python scripts/query.py "What is CSA?" --file-back
 ```
 
@@ -773,10 +780,10 @@ python scripts/query.py "What is CSA?" --file-back
 
 ```bash
 # 仅检查
-python scripts/wiki.py lint
+wiki lint
 
 # 检查 + 自动修复
-python scripts/wiki.py lint --auto-heal
+wiki lint --auto-heal
 python scripts/lint.py --auto-heal
 
 # 生成报告文件
@@ -868,25 +875,25 @@ Wiki 增长后需要治理。所有操作可审计、可逆。
 
 ```bash
 # 预览清理
-python scripts/wiki.py bulk clean --dry-run
+wiki bulk clean --dry-run
 
 # 执行清理
-python scripts/wiki.py bulk clean
+wiki bulk clean
 
 # 合并重复实体
-python scripts/wiki.py bulk merge --dry-run
+wiki bulk merge --dry-run
 
 # 删除过期页面
-python scripts/wiki.py bulk delete --stale --dry-run
+wiki bulk delete --stale --dry-run
 
 # 删除低置信度页面
-python scripts/wiki.py bulk delete --confidence 0.3 --dry-run
+wiki bulk delete --confidence 0.3 --dry-run
 
 # 导出子集
-python scripts/wiki.py bulk export --type concept
+wiki bulk export --type concept
 
 # 详细统计
-python scripts/wiki.py bulk stats
+wiki bulk stats
 ```
 
 ### 阶段 10：向量嵌入（Embeddings）
@@ -895,14 +902,14 @@ python scripts/wiki.py bulk stats
 
 ```bash
 # 生成所有页面嵌入
-python scripts/wiki.py embed
+wiki embed
 
 # 验证覆盖
 python scripts/generate_embeddings.py --verify
 # → total_pages: 15, total_embeddings: 15, coverage_pct: 100.0
 
 # 强制重新生成
-python scripts/wiki.py embed --force
+wiki embed --force
 ```
 
 模型：`qwen3-embedding:8b` | 维度：4096 | 距离：Cosine
@@ -941,16 +948,25 @@ python -c "import json; print(json.dumps(json.load(open('.wiki/audit.json'))[-2:
 wiki_dir: .wiki
 
 # LLM 模型配置
-llm:
+model:
   provider: deepseek              # deepseek | openai | ollama | custom
-  api_key: ${DEEPSEEK_API_KEY}    # 使用环境变量
   model: deepseek-v4-flash
+  api_key: ${DEEPSEEK_API_KEY}    # 使用环境变量
 
 # OCR 后端选择
 ocr:
   mode: local        # local | api
   backend: mineru    # 本地: mineru | deepseek | logics | paddle
   api_provider: ""   # API: siliconflow | paddleocr-vl | deepseek | openai
+
+# 图片编译增强：启用后图片先用 VL/omni 模型解析，再按需追加 OCR 文本
+image_analysis:
+  enabled: false
+  api_provider: ""   # siliconflow | openai | deepseek | paddleocr-vl
+  api_url: ""        # OpenAI-compatible /v1/chat/completions endpoint
+  api_key: ""
+  api_model: ""
+  ocr_fallback: true
 
 # Embedding 模式
 embeddings:
@@ -963,44 +979,46 @@ embeddings:
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
 | `wiki_dir` | Wiki 数据存储目录 | `.wiki` |
-| `llm.provider` | 模型提供商 | `deepseek` |
-| `llm.api_key` | API 密钥（支持环境变量） | - |
-| `llm.model` | 模型名称 | `deepseek-v4-flash` |
-| `ocr_mode` | 默认 OCR 后端（已被 ocr.backend 取代） | `mineru` |
+| `model.provider` | 模型提供商 | `deepseek` |
+| `model.api_key` | API 密钥（支持环境变量） | - |
+| `model.model` | 模型名称 | `deepseek-v4-flash` |
 | `ocr.mode` | OCR 模式: local / api | `local` |
 | `ocr.backend` | 本地 OCR 引擎 | `mineru` |
+| `ocr.options` | 当前 OCR 后端的本地参数 | `{}` |
 | `ocr.api_provider` | API provider 预设 | - |
+| `image_analysis.enabled` | compile 图片时是否先用视觉模型理解图片 | `false` |
+| `image_analysis.api_url` | 图片识别增强模型的 OpenAI-compatible API URL | - |
+| `image_analysis.ocr_fallback` | 图片视觉解析后是否追加 OCR 文字识别 | `true` |
 | `embeddings.mode` | Embedding 模式 | `local` |
 | `query.llm_synthesis` | 是否使用 LLM 合成答案 | `true` |
 
 ### LLM 模型配置
 
-支持四种模式：
+支持四种模式，均写在 `model` 段：
 
 ```yaml
 # 1. DeepSeek API（默认）
-llm:
+model:
   provider: deepseek
-  api_key: ${DEEPSEEK_API_KEY}
   model: deepseek-v4-flash
+  api_key: ${DEEPSEEK_API_KEY}
 
 # 2. OpenAI API
-llm:
+model:
   provider: openai
-  api_key: ${OPENAI_API_KEY}
   model: gpt-4o
+  api_key: ${OPENAI_API_KEY}
 
 # 3. Ollama 本地模型（无需 API key）
-llm:
+model:
   provider: ollama
-ollama:
   model: llama3.2
+  base_url: http://localhost:11434
 
 # 4. 自定义 API 端点
-llm:
+model:
   provider: custom
-custom:
-  base_url: http://your-server:8000
+  api_url: http://your-server:8000/v1/chat/completions
   api_key: your-custom-key
   model: your-model
 ```
@@ -1008,26 +1026,19 @@ custom:
 ### OCR 后端配置
 
 ```yaml
-# MinerU（默认，CPU）
-mineru:
-  models_path: models/mineru/models
-  lang: ch
-  formula: true
+ocr:
+  mode: local
+  backend: mineru
+  options:
+    models_path: models/mineru/models
+    lang: ch
+    formula: true
 
-# DeepSeek-OCR-2（GPU/MPS）
-deepseek_ocr:
-  model_path: models/deepseek-ocr-v2/model
-  device: mps  # mps | cuda | cpu
-
-# Logics-Parsing（GPU/MPS）
-logics_parsing:
-  model_path: models/logics-parsing-v2/model
-  device: mps
-
-# PaddleOCR（CPU）
-paddleocr:
-  lang: ch
-  use_doc_orientation_classify: true
+# DeepSeek-OCR-2:
+# backend: deepseek
+# options:
+#   model_path: models/deepseek-ocr-v2/model
+#   device: auto
 ```
 
 ### Embedding 配置
@@ -1120,7 +1131,7 @@ embeddings:
   - DeepSeek-OCR-2（GPU/MPS/CPU）
   - Logics-Parsing-v2（GPU/MPS/CPU）
   - PaddleOCR（CPU）
-  - `ocr_mode` 配置项选择默认后端
+  - `ocr.backend` 配置项选择默认后端
 
 - **模型管理**
   - `models/` 目录统一存放 OCR 模型

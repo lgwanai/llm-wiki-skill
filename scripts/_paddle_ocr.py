@@ -23,8 +23,6 @@ import os
 from pathlib import Path
 from typing import Optional
 
-import yaml
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -50,17 +48,10 @@ class PaddleOCRWrapper:
 
     @classmethod
     def from_config(cls, path: Optional[Path] = None) -> "PaddleOCRWrapper":
-        """Create instance from YAML config (paddleocr section)."""
-        config_path = path or CONFIG_PATH
-        config = {}
-        
-        if config_path.exists():
-            try:
-                config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-            except Exception:
-                pass
-        
-        paddleocr_config = config.get("paddleocr", {})
+        """Create instance from unified OCR config."""
+        from config import get_ocr_config
+
+        paddleocr_config = get_ocr_config().get("options", {})
         
         return cls(
             lang=paddleocr_config.get("lang", "ch"),

@@ -603,3 +603,48 @@ def test_stats_nonexistent_table(ledger_module):
     """Stats on unknown table should fail."""
     result = ledger_module.cmd_stats("unknown")
     assert not result["success"]
+
+
+# ── Import / Search / Export ───────────────────────────────────────────
+
+
+def test_import_csv_uses_duckdb_backend(ledger_module, tmp_path):
+    """CSV import should create a DuckDB table, not JSON-only files."""
+    csv_file = tmp_path / "models.csv"
+    csv_file.write_text("模型,分数,上线\nDeepSeek,95,true\nGPT,98,false\n", encoding="utf-8")
+
+    result = ledger_module.cmd_import(str(csv_file), table_name="模型对比")
+    assert result["success"]
+    assert result["row_count"] == 2
+    assert _table_exists(ledger_module, result["actual_name"])
+
+    show = ledger_module.cmd_show("模型对比")
+    assert show["success"]
+    assert show["total_rows"] == 2
+    assert show["data"][0]["模型"] == "DeepSeek"
+    assert show["data"][0]["分数"] == 95
+
+
+def test_search_ledgers_reads_duckdb_rows(ledger_module):
+    """Ledger search should scan DuckDB registry and table rows."""
+    r = _create_table(ledger_module, "项目台账")
+    _insert(ledger_module, r["actual_name"], {"名称": "智能系统", "数量": 3})
+
+    results = ledger_module.search_ledgers("智能", limit=5)
+    assert len(results) == 1
+    assert results[0]["id"] == r["actual_name"]
+    assert results[0]["preview"][0]["名称"] == "智能系统"
+
+
+def test_export_csv_from_duckdb(ledger_module, tmp_path):
+    """Export should read data from DuckDB tables."""
+    r = _create_table(ledger_module, "导出台账")
+    _insert(ledger_module, r["actual_name"], {"名称": "项目X", "数量": 7})
+    out = tmp_path / "out.csv"
+
+    result = ledger_module.cmd_export("导出台账", output_path=str(out))
+    assert result["success"]
+    assert out.exists()
+    text = out.read_text(encoding="utf-8")
+    assert "名称" in text
+    assert "项目X" in text

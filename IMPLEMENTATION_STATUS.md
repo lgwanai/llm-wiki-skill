@@ -297,19 +297,19 @@ $ python3 scripts/compile_v2.py .wiki/source/deepseek-v4/output.md
 ### Using wiki.py CLI (Recommended)
 ```bash
 # Initialize wiki
-python3 scripts/wiki.py init
+wiki init
 
 # Compile source
-python3 scripts/wiki.py compile source.md
+wiki compile source.md
 
 # Query wiki
-python3 scripts/wiki.py query "What is X?"
+wiki query "What is X?"
 
 # Health check
-python3 scripts/wiki.py lint --auto-heal
+wiki lint --auto-heal
 
 # Show status
-python3 scripts/wiki.py status
+wiki status
 ```
 
 ### Using Direct Scripts

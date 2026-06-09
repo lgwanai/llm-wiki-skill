@@ -26,8 +26,6 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-import yaml
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -68,17 +66,11 @@ class DeepSeekOCR2:
 
     @classmethod
     def from_config(cls, path: Optional[Path] = None) -> "DeepSeekOCR2":
-        """Create instance from YAML config (deepseek_ocr section)."""
-        config_path = path or CONFIG_PATH
-        config = {}
-        
-        if config_path.exists():
-            try:
-                config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-            except Exception:
-                pass
-        
-        deepseek_config = config.get("deepseek_ocr", {})
+        """Create instance from unified OCR config."""
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from config import get_ocr_config
+
+        deepseek_config = get_ocr_config().get("options", {})
         
         model_path = (
             deepseek_config.get("model_path")

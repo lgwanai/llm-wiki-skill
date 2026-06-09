@@ -191,14 +191,12 @@ class LLMExtractor:
 
     @classmethod
     def from_config(cls, path: Path | None = None) -> "LLMExtractor":
-        """Create instance from YAML config (llm section) or environment variables."""
+        """Create instance from YAML config or environment variables."""
         import os as _os
-        config_path = path or CONFIG_PATH
-        if config_path.exists():
-            config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-            llm = config.get("llm", {})
-        else:
-            llm = {}
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from config import get_llm_config
+
+        llm = get_llm_config()
 
         return cls(
             api_key=llm.get("api_key") or _os.environ.get("LLM_API_KEY", ""),

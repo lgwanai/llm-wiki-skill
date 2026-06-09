@@ -72,19 +72,19 @@ python3 scripts/crystallize.py session.md --topic "Research"
 ### CLI Wrapper
 ```bash
 # Compile
-python3 scripts/wiki.py compile source.md
+wiki compile source.md
 
 # Query
-python3 scripts/wiki.py query "What is X?"
+wiki query "What is X?"
 
 # Lint
-python3 scripts/wiki.py lint --auto-heal
+wiki lint --auto-heal
 
 # Status
-python3 scripts/wiki.py status
+wiki status
 
 # Initialize
-python3 scripts/wiki.py init
+wiki init
 ```
 
 ## File Structure

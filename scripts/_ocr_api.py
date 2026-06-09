@@ -35,6 +35,10 @@ _MIME_TYPES: dict[str, str] = {
     ".bmp": "image/bmp",
     ".tiff": "image/tiff",
     ".tif": "image/tiff",
+    ".avif": "image/avif",
+    ".heic": "image/heic",
+    ".heif": "image/heif",
+    ".svg": "image/svg+xml",
 }
 
 DEFAULT_PROMPT = "Convert the document to clean markdown format."
@@ -63,6 +67,48 @@ _PROVIDER_PRESETS: dict[str, dict[str, str]] = {
         "default_prompt": "Convert the document to clean markdown format.",
     },
 }
+
+
+def create_vision_backend(settings: dict, default_prompt: str = DEFAULT_PROMPT) -> "OCRApiBackend":
+    """Create an OpenAI-compatible vision backend from compact settings."""
+    provider = settings.get("api_provider", "") or settings.get("provider", "")
+    preset: dict[str, str] = {}
+    if provider and provider in _PROVIDER_PRESETS:
+        preset = _PROVIDER_PRESETS[provider]
+
+    api_url = settings.get("api_url", "") or preset.get("api_url", "")
+    if not api_url:
+        raise RuntimeError(
+            "Vision API requires api_url or api_provider in wiki_config.yaml."
+        )
+
+    api_key = settings.get("api_key", "")
+    if not api_key:
+        api_key = os.environ.get("OCR_API_KEY", "")
+    if not api_key:
+        api_key = os.environ.get("SILICONFLOW_API_KEY", "")
+    if not api_key:
+        api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    if not api_key:
+        api_key = os.environ.get("OPENAI_API_KEY", "")
+
+    api_model = (
+        settings.get("api_model", "")
+        or settings.get("model", "")
+        or preset.get("default_model", "")
+    )
+
+    api_prompt = settings.get("api_prompt", "") or settings.get("prompt", "")
+    if not api_prompt:
+        api_prompt = preset.get("default_prompt", default_prompt)
+
+    return OCRApiBackend(
+        api_url=api_url,
+        api_key=api_key,
+        model=api_model,
+        prompt=api_prompt,
+        pdf_dpi=settings.get("pdf_dpi", DEFAULT_DPI),
+    )
 
 
 def _expand_env(value: str) -> str:
@@ -116,58 +162,21 @@ class OCRApiBackend:
         _project_root = Path(__file__).resolve().parent.parent
         sys.path.insert(0, str(_project_root / "scripts"))
 
-        from config import get_config  # noqa: E402
+        from config import get_ocr_config  # noqa: E402
 
-        config = get_config()
-        ocr_config = config.get("ocr", {})
+        ocr_config = get_ocr_config()
 
-        # Resolve provider preset (if set)
-        provider = ocr_config.get("api_provider", "")
-        preset: dict[str, str] = {}
-        if provider and provider in _PROVIDER_PRESETS:
-            preset = _PROVIDER_PRESETS[provider]
-
-        # Resolve api_url: explicit config > provider preset > deepseek_ocr fallback
-        api_url = ocr_config.get("api_url", "") or preset.get("api_url", "")
-        if not api_url:
-            ds_config = config.get("deepseek_ocr", {})
-            api_url = ds_config.get("api_url", "")
-        if not api_url:
+        try:
+            return create_vision_backend(ocr_config, DEFAULT_PROMPT)
+        except RuntimeError as e:
             raise RuntimeError(
                 "OCR API mode requires api_url or api_provider to be configured in wiki_config.yaml.\n"
                 "Example:\n"
                 "  ocr:\n"
                 "    mode: api\n"
-                '    api_provider: "siliconflow"\n'
+                '    api_provider: siliconflow\n'
                 '    api_key: "${SILICONFLOW_API_KEY}"\n'
-            )
-
-        # Resolve api_key: explicit config > environment variable
-        api_key = ocr_config.get("api_key", "")
-        if not api_key:
-            api_key = os.environ.get("OCR_API_KEY", "")
-        if not api_key:
-            api_key = os.environ.get("SILICONFLOW_API_KEY", "")
-        if not api_key:
-            api_key = os.environ.get("DEEPSEEK_API_KEY", "")
-
-        # Resolve model: explicit config > provider preset > empty
-        api_model = ocr_config.get("api_model", "") or preset.get("default_model", "")
-
-        # Resolve prompt: explicit config > provider preset > default
-        api_prompt = ocr_config.get("api_prompt", "")
-        if not api_prompt:
-            api_prompt = preset.get("default_prompt", DEFAULT_PROMPT)
-
-        pdf_dpi = ocr_config.get("pdf_dpi", DEFAULT_DPI)
-
-        return cls(
-            api_url=api_url,
-            api_key=api_key,
-            model=api_model,
-            prompt=api_prompt,
-            pdf_dpi=pdf_dpi,
-        )
+            ) from e
 
     def ocr_image(self, image_path: str) -> str:
         """OCR a single image via the vision API.

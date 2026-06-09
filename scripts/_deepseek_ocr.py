@@ -66,18 +66,16 @@ class DeepSeekOCR:
 
     @classmethod
     def from_config(cls, path: Path | None = None) -> "DeepSeekOCR":
-        """Create instance from YAML config (ocr section) or environment variables."""
-        config_path = path or CONFIG_PATH
-        if config_path.exists():
-            config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-            ocr = config.get("ocr", {})
-        else:
-            ocr = {}
+        """Create instance from unified OCR config or environment variables."""
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from config import get_ocr_config
+
+        ocr = get_ocr_config()
 
         return cls(
             api_url=ocr.get("api_url") or os.environ.get("OCR_API_URL", ""),
             api_key=ocr.get("api_key") or os.environ.get("OCR_API_KEY", ""),
-            model=ocr.get("model") or os.environ.get("OCR_MODEL", "DeepSeek-OCR-4bit"),
+            model=ocr.get("api_model") or os.environ.get("OCR_MODEL", "DeepSeek-OCR-4bit"),
             pdf_dpi=ocr.get("pdf_dpi", 150),
         )
 
