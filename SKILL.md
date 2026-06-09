@@ -71,6 +71,10 @@ Hybrid search (BM25 + Graph + RRF fusion), LLM synthesizes answer with citations
 
 ```bash
 wiki query "What is X?"
+wiki query "What is X?" --debug-search
+wiki search doctor
+wiki search eval .wiki/evals/retrieval.jsonl
+wiki embed --chunks --force
 
 # Fast mode — skip LLM synthesis (0.5s)
 wiki query "专家评审组" --no-synthesis
@@ -91,6 +95,18 @@ wiki query "Explain X" --file-back
 
 Chinese search via jieba segmentation. English via BM25 + Porter stemming.
 Search index cached to disk (`.wiki/graph/.bm25_index.json`), auto-invalidated on page changes.
+
+Retrieval quality features:
+
+- Chunk-level search retrieves the relevant section instead of only the page start.
+- Metadata search indexes `aliases`, `keywords`, `questions`, and `summary`.
+- Chunk vector search retrieves semantically relevant sections when `wiki embed --chunks` has run.
+- Query planning prioritizes ledger/graph/page streams by intent.
+- Query rewriting adds lightweight lexical variants for recall.
+- Lightweight reranking improves final ordering after RRF.
+- Embedding index metadata prevents page/query embedding model mismatch.
+- `wiki search doctor` reports stale embeddings, chunk coverage, and graph health.
+- `wiki search eval` measures Recall@K and MRR from jsonl eval cases.
 
 ### `/wiki-lint` — Health Check
 

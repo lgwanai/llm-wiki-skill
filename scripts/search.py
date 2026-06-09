@@ -14,6 +14,8 @@ from collections import Counter
 sys.path.insert(0, str(Path(__file__).parent))
 from config import get_wiki_dir
 
+import yaml
+
 try:
     import jieba
 except ImportError:
@@ -31,6 +33,8 @@ _entities_cache: dict | None = None
 _edges_cache: dict | list | None = None
 _bm25_index: dict | None = None
 _BM25_CACHE_FILE = WIKI_DIR / "graph" / ".bm25_index.json"
+_CHUNK_CACHE_FILE = WIKI_DIR / "graph" / ".chunk_index.json"
+_METADATA_CACHE_FILE = WIKI_DIR / "graph" / ".metadata_index.json"
 
 
 def _pages_changed() -> bool:
@@ -141,6 +145,55 @@ def _read_page_content(filepath: str) -> str:
     return content
 
 
+def _read_page_parts(filepath: str) -> tuple[dict, str]:
+    """Read a page as (frontmatter, body)."""
+    try:
+        raw = Path(filepath).read_text(encoding="utf-8")
+    except OSError:
+        return {}, ""
+    if not raw.startswith("---"):
+        return {}, raw
+    lines = raw.split("\n")
+    end = 0
+    for i, line in enumerate(lines):
+        if i > 0 and line.strip() == "---":
+            end = i
+            break
+    if end <= 0:
+        return {}, raw
+    frontmatter_text = "\n".join(lines[1:end])
+    try:
+        frontmatter = yaml.safe_load(frontmatter_text) or {}
+        if not isinstance(frontmatter, dict):
+            frontmatter = {}
+    except Exception:
+        frontmatter = {}
+    return frontmatter, "\n".join(lines[end + 1:])
+
+
+def _page_path_for_id(page_id: str, pages_dir: str | Path = PAGES_DIR) -> str:
+    """Find a wiki page path by page id across known page directories."""
+    base = Path(pages_dir)
+    for subdir in ('concepts', 'entities', 'models', 'techniques', 'frameworks',
+                   'benchmarks', 'papers', 'decisions', 'sessions', 'patterns'):
+        path = base / subdir / f"{page_id}.md"
+        if path.exists():
+            return str(path)
+    return ""
+
+
+def _known_page_paths(pages_dir: str | Path = PAGES_DIR) -> list[Path]:
+    """Return all known wiki page paths."""
+    base = Path(pages_dir)
+    paths: list[Path] = []
+    for subdir in ('concepts', 'entities', 'models', 'techniques', 'frameworks',
+                   'benchmarks', 'papers', 'decisions', 'sessions', 'patterns'):
+        scan_dir = base / subdir
+        if scan_dir.is_dir():
+            paths.extend(sorted(scan_dir.glob("*.md")))
+    return paths
+
+
 def _tokenize(text: str) -> list[str]:
     """Split text into tokens: jieba for Chinese, regex for English."""
     tokens: list[str] = []
@@ -154,6 +207,239 @@ def _tokenize(text: str) -> list[str]:
     if cjk_chars > 0 and len(text) > cjk_chars * 1.5:
         tokens.extend(re.findall(r'[a-z0-9]+', text.lower()))
     return tokens
+
+
+def _split_markdown_chunks(content: str, page_id: str, path: str, max_chars: int = 1800) -> list[dict]:
+    """Split markdown into heading-aware chunks for more precise retrieval."""
+    chunks: list[dict] = []
+    heading_path: list[str] = []
+    current_lines: list[str] = []
+
+    def flush() -> None:
+        text = "\n".join(current_lines).strip()
+        if not text:
+            return
+        while len(text) > max_chars:
+            part = text[:max_chars]
+            cut = max(part.rfind("\n\n"), part.rfind("\n"), part.rfind(". "))
+            if cut < max_chars // 2:
+                cut = max_chars
+            chunk_text = text[:cut].strip()
+            chunks.append({
+                "chunk_id": f"{page_id}#chunk-{len(chunks)+1}",
+                "page_id": page_id,
+                "path": path,
+                "heading_path": list(heading_path),
+                "text": chunk_text,
+            })
+            text = text[cut:].strip()
+        if text:
+            chunks.append({
+                "chunk_id": f"{page_id}#chunk-{len(chunks)+1}",
+                "page_id": page_id,
+                "path": path,
+                "heading_path": list(heading_path),
+                "text": text,
+            })
+
+    for line in content.splitlines():
+        match = re.match(r"^(#{1,6})\s+(.+)$", line)
+        if match:
+            flush()
+            current_lines = []
+            level = len(match.group(1))
+            title = match.group(2).strip()
+            heading_path = heading_path[: level - 1]
+            heading_path.append(title)
+            current_lines.append(line)
+        else:
+            current_lines.append(line)
+    flush()
+    return chunks
+
+
+def build_chunk_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
+    """Build chunk metadata for all pages."""
+    chunks: list[dict] = []
+    for path in _known_page_paths(pages_dir):
+        content = _read_page_content(str(path))
+        if not content:
+            continue
+        chunks.extend(_split_markdown_chunks(content, path.stem, str(path)))
+    return chunks
+
+
+def _load_chunk_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
+    """Load or rebuild the disk-backed chunk index."""
+    if _pages_changed() or not _CHUNK_CACHE_FILE.exists():
+        chunks = build_chunk_index(pages_dir)
+        try:
+            _CHUNK_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _CHUNK_CACHE_FILE.write_text(json.dumps(chunks, ensure_ascii=False), encoding="utf-8")
+        except OSError:
+            pass
+        return chunks
+    try:
+        data = json.loads(_CHUNK_CACHE_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except (json.JSONDecodeError, OSError):
+        return build_chunk_index(pages_dir)
+
+
+def chunk_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
+    """BM25 search over heading-aware chunks."""
+    chunks = _load_chunk_index(pages_dir)
+    query_terms = [_stem(t) for t in _tokenize(query)]
+    if not chunks or not query_terms:
+        return []
+
+    docs = []
+    for chunk in chunks:
+        tokens = [_stem(t) for t in _tokenize(chunk.get("text", ""))]
+        if tokens:
+            docs.append((chunk, tokens, Counter(tokens)))
+    if not docs:
+        return []
+
+    num_docs = len(docs)
+    avg_dl = sum(len(tokens) for _, tokens, _ in docs) / num_docs
+    doc_freq: Counter = Counter()
+    for _, _, freqs in docs:
+        doc_freq.update(set(freqs.keys()))
+
+    scored: list[tuple[dict, float]] = []
+    k1, b = 1.5, 0.75
+    for chunk, tokens, freqs in docs:
+        dl = len(tokens)
+        score = 0.0
+        for term in query_terms:
+            f = freqs.get(term, 0)
+            if f == 0:
+                continue
+            df = doc_freq.get(term, 0)
+            idf = math.log((num_docs - df + 0.5) / (df + 0.5) + 1.0)
+            score += idf * (f * (k1 + 1)) / (f + k1 * (1 - b + b * dl / avg_dl))
+        if score > 0:
+            scored.append((chunk, score))
+
+    scored.sort(key=lambda x: -x[1])
+    return [
+        {
+            "file": chunk["page_id"],
+            "path": chunk["path"],
+            "score": round(score, 3),
+            "stream": "chunk",
+            "chunk_id": chunk["chunk_id"],
+            "heading_path": chunk.get("heading_path", []),
+            "text": chunk.get("text", "")[:1000],
+        }
+        for chunk, score in scored[:limit]
+    ]
+
+
+def _as_list(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(v) for v in value if str(v).strip()]
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    return [str(value)]
+
+
+def build_metadata_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
+    """Build a page metadata index from frontmatter search fields."""
+    items: list[dict] = []
+    for path in _known_page_paths(pages_dir):
+        fm, body = _read_page_parts(str(path))
+        title_match = re.search(r"^#\s+(.+)$", body, flags=re.MULTILINE)
+        title = title_match.group(1).strip() if title_match else fm.get("name", path.stem)
+        fields = {
+            "id": fm.get("id", path.stem),
+            "name": fm.get("name", title),
+            "type": fm.get("type", ""),
+            "summary": fm.get("summary", ""),
+            "aliases": _as_list(fm.get("aliases")),
+            "keywords": _as_list(fm.get("keywords")),
+            "questions": _as_list(fm.get("questions")),
+        }
+        searchable = " ".join([
+            str(fields["id"]),
+            str(fields["name"]),
+            str(fields["type"]),
+            str(fields["summary"]),
+            " ".join(fields["aliases"]),
+            " ".join(fields["keywords"]),
+            " ".join(fields["questions"]),
+            title,
+        ])
+        items.append({
+            "page_id": path.stem,
+            "path": str(path),
+            "title": title,
+            "searchable": searchable,
+            **fields,
+        })
+    return items
+
+
+def _load_metadata_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
+    """Load or rebuild the disk-backed metadata index."""
+    if _pages_changed() or not _METADATA_CACHE_FILE.exists():
+        items = build_metadata_index(pages_dir)
+        try:
+            _METADATA_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _METADATA_CACHE_FILE.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
+        except OSError:
+            pass
+        return items
+    try:
+        data = json.loads(_METADATA_CACHE_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except (json.JSONDecodeError, OSError):
+        return build_metadata_index(pages_dir)
+
+
+def metadata_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
+    """Search page frontmatter metadata: aliases, keywords, summary, questions."""
+    items = _load_metadata_index(pages_dir)
+    query_terms = [_stem(t) for t in _tokenize(query)]
+    if not items or not query_terms:
+        return []
+
+    scored: list[tuple[dict, float]] = []
+    for item in items:
+        searchable = item.get("searchable", "")
+        tokens = [_stem(t) for t in _tokenize(searchable)]
+        if not tokens:
+            continue
+        freqs = Counter(tokens)
+        exact_bonus = 0.0
+        query_lower = query.lower()
+        for field in ("id", "name", "summary"):
+            if query_lower and query_lower in str(item.get(field, "")).lower():
+                exact_bonus += 2.0
+        if any(query_lower == alias.lower() for alias in item.get("aliases", [])):
+            exact_bonus += 4.0
+        score = exact_bonus
+        for term in query_terms:
+            score += freqs.get(term, 0)
+        if score > 0:
+            scored.append((item, score))
+
+    scored.sort(key=lambda x: -x[1])
+    return [
+        {
+            "file": item["page_id"],
+            "path": item["path"],
+            "score": round(score, 3),
+            "stream": "metadata",
+            "text": item.get("summary") or item.get("searchable", "")[:800],
+            "aliases": item.get("aliases", []),
+            "keywords": item.get("keywords", []),
+        }
+        for item, score in scored[:limit]
+    ]
 
 
 def _stem(word: str) -> str:
@@ -255,36 +541,101 @@ def bm25_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
 
 
 def vector_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
-    """Semantic search using Ollama embeddings (qwen3-embedding:8b).
+    """Semantic search using the configured embedding provider.
 
     Falls back to Jaccard similarity if:
-    - Ollama is unreachable
+    - embedding provider is unreachable
     - No embeddings have been generated yet (graph/embeddings.json missing)
+    - embeddings are stale or incompatible with current config
     """
     embeddings_path = WIKI_DIR / "graph" / "embeddings.json"
 
-    if os.path.exists(embeddings_path):
-        embeddings_data = _load_json_safe(embeddings_path, {})
-    else:
-        embeddings_data = {}
+    try:
+        from generate_embeddings import (
+            embedding_index_status,
+            get_embedding,
+            load_embedding_index,
+        )
+    except Exception:
+        return _jaccard_fallback(query, pages_dir, limit)
 
-    if isinstance(embeddings_data, dict) and embeddings_data:
-        from _ollama import get_embedding
+    if not os.path.exists(embeddings_path):
+        return _jaccard_fallback(query, pages_dir, limit)
 
-        query_emb = get_embedding(query)
-        if query_emb is None:
-            return _jaccard_fallback(query, pages_dir, limit)
+    status = embedding_index_status(Path(embeddings_path))
+    if status.get("stale"):
+        return _jaccard_fallback(query, pages_dir, limit)
 
-        result_list: list[dict] = []
-        for page_id, emb in embeddings_data.items():
-            if isinstance(emb, list) and len(emb) > 0:
-                sim = _cosine_similarity(query_emb, emb)
-                if sim > 0:
-                    result_list.append({'file': page_id, 'score': round(sim, 4), 'stream': 'vector'})
-        result_list.sort(key=lambda x: -x['score'])
-        return result_list[:limit]
+    _, embeddings_data = load_embedding_index(Path(embeddings_path))
+    if not embeddings_data:
+        return _jaccard_fallback(query, pages_dir, limit)
 
-    return _jaccard_fallback(query, pages_dir, limit)
+    query_emb = get_embedding(query)
+    if query_emb is None:
+        return _jaccard_fallback(query, pages_dir, limit)
+
+    result_list: list[dict] = []
+    for page_id, emb in embeddings_data.items():
+        if isinstance(emb, list) and len(emb) > 0:
+            sim = _cosine_similarity(query_emb, emb)
+            if sim > 0:
+                result_list.append({
+                    'file': page_id,
+                    'path': _page_path_for_id(page_id, pages_dir),
+                    'score': round(sim, 4),
+                    'stream': 'vector',
+                })
+    result_list.sort(key=lambda x: -x['score'])
+    return result_list[:limit]
+
+
+def vector_chunk_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
+    """Semantic search over chunk-level embeddings."""
+    chunk_embeddings_path = WIKI_DIR / "graph" / "chunk_embeddings.json"
+    try:
+        from generate_embeddings import (
+            embedding_index_status,
+            get_embedding,
+            load_embedding_index,
+        )
+    except Exception:
+        return []
+
+    if not chunk_embeddings_path.exists():
+        return []
+
+    status = embedding_index_status(chunk_embeddings_path)
+    if status.get("stale"):
+        return []
+
+    _, items = load_embedding_index(chunk_embeddings_path)
+    if not items:
+        return []
+
+    query_emb = get_embedding(query)
+    if query_emb is None:
+        return []
+
+    result_list: list[dict] = []
+    for chunk_id, item in items.items():
+        if not isinstance(item, dict):
+            continue
+        emb = item.get("embedding")
+        if isinstance(emb, list) and emb:
+            sim = _cosine_similarity(query_emb, emb)
+            if sim > 0:
+                result_list.append({
+                    "file": item.get("page_id", ""),
+                    "path": item.get("path", ""),
+                    "score": round(sim, 4),
+                    "stream": "chunk_vector",
+                    "chunk_id": chunk_id,
+                    "heading_path": item.get("heading_path", []),
+                    "text": item.get("text", "")[:1000],
+                })
+    result_list.sort(key=lambda x: -x["score"])
+    return result_list[:limit]
+
 
 
 def _jaccard_fallback(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
@@ -315,13 +666,25 @@ def _jaccard_fallback(query: str, pages_dir: str, limit: int = 10) -> list[dict]
             scores.append((filename, jaccard))
 
     scores.sort(key=lambda x: -x[1])
-    return [{'file': f, 'score': round(s, 3), 'stream': 'vector'} for f, s in scores[:limit]]
+    return [
+        {
+            'file': os.path.splitext(f)[0],
+            'path': _page_path_for_id(os.path.splitext(f)[0], pages_dir),
+            'score': round(s, 3),
+            'stream': 'vector',
+        }
+        for f, s in scores[:limit]
+    ]
 
 
 def graph_search(query: str, graph_dir: str, limit: int = 10) -> list[dict]:
     """Entity-aware graph traversal search."""
-    entities_data = _load_entities()
-    all_edges = _load_edges()
+    graph_path = Path(graph_dir)
+    entities_data = _load_json_safe(str(graph_path / "entities.json"), {})
+    if not isinstance(entities_data, dict):
+        entities_data = {}
+    edges_data = _load_json_safe(str(graph_path / "edges.json"), {"edges": []})
+    all_edges = edges_data.get("edges", []) if isinstance(edges_data, dict) else []
 
     if not entities_data:
         return []
@@ -392,6 +755,123 @@ def reciprocal_rank_fusion(results: list[list[dict]], k: int = 60) -> list[dict]
         item['rrf_score'] = round(item['rrf_score'], 4)
 
     return sorted_results
+
+
+def search_doctor(wiki_dir: str | Path = WIKI_DIR) -> dict:
+    """Return retrieval index health diagnostics."""
+    wiki = Path(wiki_dir)
+    pages = []
+    for subdir in ('concepts', 'entities', 'models', 'techniques', 'frameworks',
+                   'benchmarks', 'papers', 'decisions', 'sessions', 'patterns'):
+        d = wiki / "pages" / subdir
+        if d.exists():
+            pages.extend(d.glob("*.md"))
+
+    try:
+        from generate_embeddings import embedding_index_status
+        embedding_status = embedding_index_status(wiki / "graph" / "embeddings.json")
+        chunk_embedding_status = embedding_index_status(wiki / "graph" / "chunk_embeddings.json")
+    except Exception as e:
+        embedding_status = {"exists": False, "stale": True, "reason": str(e)}
+        chunk_embedding_status = {"exists": False, "stale": True, "reason": str(e), "items": 0}
+
+    chunks = build_chunk_index(wiki / "pages")
+    metadata_items = build_metadata_index(wiki / "pages")
+    entities = _load_json_safe(str(wiki / "graph" / "entities.json"), {})
+    edges_data = _load_json_safe(str(wiki / "graph" / "edges.json"), {"edges": []})
+    edges = edges_data.get("edges", []) if isinstance(edges_data, dict) else []
+
+    page_ids = {p.stem for p in pages}
+    graph_ids = set(entities.keys()) if isinstance(entities, dict) else set()
+
+    issues = []
+    if not pages:
+        issues.append("no wiki pages found")
+    if embedding_status.get("stale"):
+        issues.append(f"embedding index stale: {embedding_status.get('reason', 'unknown')}")
+    embedding_items = int(embedding_status.get("items", 0) or 0)
+    chunk_embedding_items = int(chunk_embedding_status.get("items", 0) or 0)
+    if pages and embedding_items == 0:
+        issues.append("embedding index has no items")
+    if chunks and chunk_embedding_status.get("exists") and chunk_embedding_items == 0:
+        issues.append("chunk embedding index has no items")
+    if len(chunks) < len(pages):
+        issues.append("chunk index has fewer chunks than pages")
+    if len(metadata_items) < len(pages):
+        issues.append("metadata index has fewer items than pages")
+    orphan_graph_ids = sorted(graph_ids - page_ids)
+    if orphan_graph_ids:
+        issues.append(f"{len(orphan_graph_ids)} graph entities have no matching page")
+
+    return {
+        "pages": len(pages),
+        "chunks": len(chunks),
+        "metadata_items": len(metadata_items),
+        "entities": len(graph_ids),
+        "edges": len(edges),
+        "embedding": embedding_status,
+        "chunk_embedding": chunk_embedding_status,
+        "embedding_coverage_pct": round(embedding_items / max(len(pages), 1) * 100, 1),
+        "chunk_embedding_coverage_pct": round(chunk_embedding_items / max(len(chunks), 1) * 100, 1),
+        "orphan_graph_entities": orphan_graph_ids[:20],
+        "issues": issues,
+        "healthy": not issues,
+    }
+
+
+def eval_retrieval(eval_file: str | Path, limit: int = 5) -> dict:
+    """Evaluate search recall from a jsonl file."""
+    eval_path = Path(eval_file)
+    if not eval_path.exists():
+        return {"status": "error", "message": f"Eval file not found: {eval_path}"}
+
+    cases = []
+    for line in eval_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        cases.append(json.loads(line))
+
+    evaluated = []
+    hits = 0
+    reciprocal_ranks = []
+    for case in cases:
+        query = case.get("query", "")
+        expected = set(case.get("expected_pages", []))
+        results = reciprocal_rank_fusion([
+            metadata_search(query, str(PAGES_DIR), limit=limit * 2),
+            chunk_search(query, str(PAGES_DIR), limit=limit * 2),
+            vector_chunk_search(query, str(PAGES_DIR), limit=limit),
+            bm25_search(query, str(PAGES_DIR), limit=limit * 2),
+            vector_search(query, str(PAGES_DIR), limit=limit),
+            graph_search(query, str(GRAPH_DIR), limit=limit),
+        ])[:limit]
+        returned = [r.get("file") or r.get("entity_id", "") for r in results]
+        first_rank = None
+        for rank, rid in enumerate(returned, 1):
+            if rid in expected:
+                first_rank = rank
+                break
+        hit = first_rank is not None if expected else bool(returned)
+        if hit:
+            hits += 1
+            reciprocal_ranks.append(1.0 / first_rank if first_rank else 0.0)
+        evaluated.append({
+            "query": query,
+            "expected": sorted(expected),
+            "returned": returned,
+            "hit": hit,
+            "rank": first_rank,
+        })
+
+    total = len(cases)
+    return {
+        "status": "ok",
+        "cases": total,
+        "recall_at_k": round(hits / total, 4) if total else 0.0,
+        "mrr": round(sum(reciprocal_ranks) / total, 4) if total else 0.0,
+        "details": evaluated,
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -509,7 +989,7 @@ def table_vector_search(query: str, wiki_dir: str, limit: int = 10) -> list[dict
 
     # Get query embedding
     try:
-        from _ollama import get_embedding
+        from generate_embeddings import get_embedding
         query_emb = get_embedding(query)
     except (ImportError, Exception):
         conn.close()
@@ -558,7 +1038,17 @@ def _main() -> None:
     parser.add_argument('--limit', type=int, default=10, help='Max results per stream')
     parser.add_argument('--impact', help='Impact analysis (entity ID)')
     parser.add_argument('--related', help='Find entities related to this entity ID')
+    parser.add_argument('--doctor', action='store_true', help='Diagnose retrieval index health')
+    parser.add_argument('--eval', dest='eval_file', help='Evaluate retrieval with a jsonl file')
     args = parser.parse_args()
+
+    if args.doctor:
+        print(json.dumps(search_doctor(WIKI_DIR), indent=2, ensure_ascii=False, default=str))
+        return
+
+    if args.eval_file:
+        print(json.dumps(eval_retrieval(args.eval_file, limit=args.limit), indent=2, ensure_ascii=False, default=str))
+        return
 
     if args.impact:
         from graph import impact_analysis
@@ -581,8 +1071,14 @@ def _main() -> None:
 
     if 'bm25' in streams:
         all_results.append(bm25_search(args.query, PAGES_DIR, args.limit))
+    if 'metadata' in streams:
+        all_results.append(metadata_search(args.query, PAGES_DIR, args.limit))
+    if 'chunk' in streams:
+        all_results.append(chunk_search(args.query, PAGES_DIR, args.limit))
     if 'vector' in streams:
         all_results.append(vector_search(args.query, PAGES_DIR, args.limit))
+    if 'chunk_vector' in streams:
+        all_results.append(vector_chunk_search(args.query, PAGES_DIR, args.limit))
     if 'graph' in streams:
         all_results.append(graph_search(args.query, GRAPH_DIR, args.limit))
     if 'table' in streams:

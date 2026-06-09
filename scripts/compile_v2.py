@@ -15,6 +15,7 @@ from pathlib import Path
 import requests
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).parent))
 from config import (
     get_config,
@@ -177,18 +178,18 @@ def _ocr_image_with_config(image_path: Path) -> str:
     backend = ocr_config.get("backend", "mineru")
 
     if ocr_config.get("mode") == "api" or backend == "api":
-        from _ocr_api import OCRApiBackend
+        from ocr._ocr_api import OCRApiBackend
         return OCRApiBackend.from_config().ocr_image(str(image_path))
     if backend == "deepseek":
-        from _deepseek_ocr2 import DeepSeekOCR2
+        from ocr._deepseek_ocr2 import DeepSeekOCR2
         return DeepSeekOCR2.from_config().ocr_image(str(image_path))
     if backend == "logics":
-        from _logics_parsing import LogicsParsingOCR
+        from ocr._logics_parsing import LogicsParsingOCR
         return LogicsParsingOCR.from_config().ocr_image(str(image_path))
     if backend == "paddle":
-        from _paddle_ocr import PaddleOCRWrapper
+        from ocr._paddle_ocr import PaddleOCRWrapper
         return PaddleOCRWrapper.from_config().ocr_image(str(image_path))
-    from _mineru_ocr import MinerUOCR
+    from ocr._mineru_ocr import MinerUOCR
     return MinerUOCR.from_config().ocr_image(str(image_path))
 
 
@@ -200,7 +201,7 @@ def analyze_image_for_compile(image_path: Path) -> str:
 
     if image_config.get("enabled"):
         try:
-            from _ocr_api import create_vision_backend
+            from ocr._ocr_api import create_vision_backend
             backend = create_vision_backend(image_config, IMAGE_ANALYSIS_PROMPT)
             analysis = backend.ocr_image(str(image_path))
         except Exception as e:

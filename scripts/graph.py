@@ -20,6 +20,19 @@ ENTITIES_FILE = os.path.join(GRAPH_DIR, "entities.json")
 EDGES_FILE = os.path.join(GRAPH_DIR, "edges.json")
 
 
+def _paths() -> tuple[Path, Path, Path]:
+    """Resolve wiki graph paths at runtime for per-project wiki directories."""
+    wiki_dir = Path(os.environ["LLM_WIKI_DIR"]).expanduser().resolve() if "LLM_WIKI_DIR" in os.environ else get_wiki_dir()
+    graph_dir = wiki_dir / "graph"
+    return wiki_dir, graph_dir / "entities.json", graph_dir / "edges.json"
+
+
+def _graph_files_for_pages(pages_dir: str) -> tuple[str, str]:
+    """Resolve graph files from a pages directory."""
+    graph_dir = Path(pages_dir).parent / "graph"
+    return str(graph_dir / "entities.json"), str(graph_dir / "edges.json")
+
+
 def _parse_yaml_frontmatter(content: str) -> dict:
     """Extract YAML frontmatter between --- delimiters. Simple parser — no pyyaml needed."""
     match = re.match(r'^---\s*\n(.*?)\n---', content, re.DOTALL)
@@ -97,7 +110,8 @@ def build_entity_registry(pages_dir: str) -> dict:
             'page': f"pages/entities/{filename}",
         }
 
-    _save_json(ENTITIES_FILE, registry)
+    entities_file, _ = _graph_files_for_pages(pages_dir)
+    _save_json(entities_file, registry)
     return registry
 
 
@@ -145,14 +159,16 @@ def build_edges(pages_dir: str) -> list[dict]:
                         })
                         edge_id_counter += 1
 
-    _save_json(EDGES_FILE, {'edges': edges})
+    _, edges_file = _graph_files_for_pages(pages_dir)
+    _save_json(edges_file, {'edges': edges})
     return edges
 
 
 def traverse(entity_id: str, depth: int = 2, edge_types: list[str] | None = None) -> dict:
     """BFS walk from an entity, filtering by edge type and depth."""
-    entities_data = _load_json(ENTITIES_FILE)
-    edges_data = _load_json(EDGES_FILE)
+    _, entities_file, edges_file = _paths()
+    entities_data = _load_json(str(entities_file))
+    edges_data = _load_json(str(edges_file))
     all_edges = edges_data.get('edges', []) if isinstance(edges_data, dict) else []
 
     subgraph: dict = {}
@@ -185,7 +201,8 @@ def traverse(entity_id: str, depth: int = 2, edge_types: list[str] | None = None
 
 def find_path(source: str, target: str) -> list[dict] | None:
     """BFS shortest typed path between two entities."""
-    edges_data = _load_json(EDGES_FILE)
+    _, _, edges_file = _paths()
+    edges_data = _load_json(str(edges_file))
     all_edges = edges_data.get('edges', []) if isinstance(edges_data, dict) else []
 
     adj: dict[str, list[dict]] = {}
@@ -209,8 +226,9 @@ def find_path(source: str, target: str) -> list[dict] | None:
 
 def impact_analysis(entity_id: str) -> dict:
     """Find everything downstream — entities that depend ON this entity."""
-    edges_data = _load_json(EDGES_FILE)
-    entities_data = _load_json(ENTITIES_FILE)
+    _, entities_file, edges_file = _paths()
+    edges_data = _load_json(str(edges_file))
+    entities_data = _load_json(str(entities_file))
     all_edges = edges_data.get('edges', []) if isinstance(edges_data, dict) else []
 
     # Build reverse adjacency (target → sources)
@@ -240,8 +258,9 @@ def impact_analysis(entity_id: str) -> dict:
 
 def graph_stats() -> dict:
     """Compute graph statistics."""
-    entities_data = _load_json(ENTITIES_FILE)
-    edges_data = _load_json(EDGES_FILE)
+    _, entities_file, edges_file = _paths()
+    entities_data = _load_json(str(entities_file))
+    edges_data = _load_json(str(edges_file))
     all_edges = edges_data.get('edges', []) if isinstance(edges_data, dict) else []
 
     entity_count = len(entities_data) if isinstance(entities_data, dict) else 0

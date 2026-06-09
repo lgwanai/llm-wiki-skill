@@ -43,7 +43,7 @@ def test_image_source_uses_analysis_and_keeps_source_path(tmp_path, monkeypatch)
             assert image_path == str(image)
             return "- Root\n  - Child\n"
 
-    import _ocr_api as ocr_api
+    import ocr._ocr_api as ocr_api
 
     monkeypatch.setattr(
         compile_v2,

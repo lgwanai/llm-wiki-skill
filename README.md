@@ -193,6 +193,10 @@ pip install --no-index --find-links offline/wheels/linux-x86_64/ .
 | `wiki config --init` | 创建默认配置文件 |
 | `wiki compile <file-or-dir>` | 编译源文件或目录 → Wiki 页面 |
 | `wiki query <question>` | 查询 Wiki → 生成答案 |
+| `wiki query <question> --debug-search` | 查询 + 输出完整检索调试 trace |
+| `wiki search doctor` | 检索索引健康诊断（embedding/chunk/图谱） |
+| `wiki search eval <file>` | 使用 jsonl 评测集评估检索质量（Recall@K, MRR） |
+| `wiki embed --chunks` | 生成 chunk 级语义向量 |
 | `wiki lint --auto-heal` | 健康检查 + 自动修复 |
 | `wiki status` | Wiki 统计信息 |
 | `wiki embed` | 生成向量嵌入 |
@@ -492,11 +496,57 @@ wiki lint --auto-heal
 
 | 模式 | 命令 | 耗时 | 输出 |
 |------|------|------|------|
-| 快速搜索 | `--no-synthesis` | 0.5s | 排名列表 + 相关片段（BM25 + Graph + RRF 融合） |
 | LLM 合成 | 默认 | 2.7s | 结构化答案 + 引用 + 关联推荐 |
+| 快速搜索 | `--no-synthesis` | 0.5s | 排名列表 + 相关片段（7 路融合） |
+| 调试 trace | `--debug-search` | 2.8s | 答案 + 完整检索链路 trace（JSON） |
 | 全局关闭 | `query.llm_synthesis: false` | 永久快速 | 配置文件中设置 |
 
+**7 路混合检索架构：**
+
+```
+用户查询
+  ↓
+Query Planner → 意图分类（事实/台账/关系/对比）
+  ↓
+Query Rewriter → 词汇变体生成（空格/连字符/领域词）
+  ↓
+┌─────────────── 并行检索 ───────────────┐
+│ Metadata（别名/关键词/问题）              │
+│ Chunk BM25（标题感知分块）                │
+│ Chunk Vector（语义块向量）               │
+│ Page BM25（全文关键词）                  │
+│ Page Vector（页面语义向量）              │
+│ Graph（实体关系遍历）                     │
+│ Ledger（台账表格匹配）                    │
+└──────────────────────────────────────────┘
+  ↓
+Reciprocal Rank Fusion (RRF) → 多路融合
+  ↓
+Light Reranker → 流偏好 + 词汇重叠二次排序
+  ↓
+LLM Synthesis → 结构化答案 + 引用
+```
+
 中文检索通过 jieba 分词支持，英文检索使用 BM25 + Porter 词干提取，双引擎自动切换。搜索索引缓存至磁盘（`.wiki/graph/.bm25_index.json`），页面变化时自动重建。
+
+检索质量优化能力：
+
+```bash
+wiki query "什么情况下需要总监审批？" --debug-search
+wiki search doctor
+wiki search eval .wiki/evals/retrieval.jsonl
+wiki embed --chunks --force
+```
+
+- `debug-search` 输出 query plan、各路召回、RRF 融合和轻量 rerank 结果。
+- `doctor` 检查 embedding 配置是否过期、chunk index 覆盖、图谱孤儿节点等。
+- `eval` 使用 jsonl 测试集计算 Recall@K 和 MRR。
+- 向量索引现在记录 embedding 模型元信息，查询侧和索引侧使用同一套配置，避免向量空间不一致。
+- 检索先做 chunk-level 召回，再合并页面、向量、图谱和台账结果。
+- `aliases`、`keywords`、`questions`、`summary` 会进入 metadata 索引，支持别名和假设问题召回。
+- query planner 会生成轻量 query variants，例如空格/连字符变体和台账字段提示。
+- `wiki embed --chunks` 会为 heading-aware chunks 生成语义向量，`chunk_vector` 会进入混合检索。
+- `doctor` 会同时报告 page embedding 与 chunk embedding 覆盖率。
 
 ### 两个核心文件
 
@@ -559,30 +609,41 @@ llm-wiki-skill/
 │   ├── logics-parsing-v2/model # Logics-Parsing Qwen3VL (~8.4GB)
 │   └── README.md               # 模型目录说明
 │
-├── scripts/                     # 所有自动化脚本（28 个）
+├── ocr/                         # OCR 引擎包（Python package）
+│   ├── __init__.py              # 包入口 + 文档
+│   ├── cli.py                   # OCR CLI 统一入口
+│   ├── mineru.json              # MinerU 配置
+│   ├── _mineru_ocr.py           # MinerU 引擎（CPU）★
+│   ├── _deepseek_ocr.py         # DeepSeek-OCR-1 引擎（GPU/MPS）
+│   ├── _deepseek_ocr2.py        # DeepSeek-OCR-2 引擎（GPU/MPS）
+│   ├── _logics_parsing.py       # Logics-Parsing 引擎（GPU/MPS）
+│   ├── _paddle_ocr.py           # PaddleOCR 引擎（CPU）
+│   └── _ocr_api.py              # 通用 API OCR（OpenAI 兼容视觉 API）
+│
+├── scripts/                     # 所有自动化脚本（~30 个）
 │   ├── wiki.py                  # 统一 CLI ★
 │   ├── config.py                # 统一配置加载 ★
 │   ├── compile_v2.py            # 主编译：源 → Wiki ★
 │   ├── query.py                 # 查询：搜索 + 合成 + 回填 ★
 │   ├── lint.py                  # 检查：健康扫描 + 自愈 ★
-│   ├── search.py                # 混合搜索：BM25 + 向量 + 图
+│   ├── search.py                # 混合搜索：BM25 + 向量 + 图 + chunk
 │   ├── graph.py                 # 知识图谱：实体 + 关系 + 遍历
 │   ├── consolidate.py           # 内存整合：层级提升 + 衰减
 │   ├── crystallize.py           # 结晶化：Session → Digest
 │   ├── bulk.py                  # 批量操作：删除/导出/合并
-│   ├── generate_embeddings.py   # 向量嵌入生成（支持 API）
+│   ├── generate_embeddings.py   # 向量嵌入生成（page + chunk，支持 API）
 │   ├── download_models.py       # 模型下载/链接工具
-│   ├── ledger.py                 # 台账管理（DuckDB 后端）★
-│   ├── table_query.py             # 自然语言 → SQL 查询引擎 ★
-│   ├── offline_download.py        # 离线部署 wheel 下载
-│   ├── ocr.py                   # OCR 接口（5 模式: 4 本地 + API）
-│   ├── _ocr_api.py              # 通用 API OCR（OpenAI 兼容视觉 API）
+│   ├── ledger.py                # 台账管理（DuckDB 后端）★
+│   ├── table_query.py           # 自然语言 → SQL 查询引擎 ★
+│   ├── offline_download.py      # 离线部署 wheel 下载
 │   ├── _hook_utils.py           # 跨平台钩子工具
-│   ├── _mineru_ocr.py           # MinerU 引擎（CPU）★
-│   ├── _paddle_ocr.py           # PaddleOCR 引擎（CPU）
-│   ├── _deepseek_ocr2.py        # DeepSeek-OCR-2 引擎（GPU/MPS）
-│   ├── _logics_parsing.py      # Logics-Parsing 引擎（GPU/MPS）
 │   ├── _ollama.py               # Ollama 嵌入生成
+│   └── ...
+│
+├── tests/                       # 测试套件
+│   ├── test_search.py           # 检索功能测试（chunk/metadata/doctor/eval）
+│   ├── test_query.py            # 查询规划/重写/重排序测试
+│   ├── test_embeddings.py       # Embedding 索引元数据测试
 │   └── ...
 │
 ├── .wiki/                       # Wiki 数据（LLM 生成）
@@ -593,7 +654,11 @@ llm-wiki-skill/
 │   ├── graph/
 │   │   ├── entities.json        # 实体注册表
 │   │   ├── edges.json           # 关系边
-│   │   └── embeddings.json      # 向量嵌入
+│   │   ├── embeddings.json      # 向量嵌入（page-level）
+│   │   ├── chunk_embeddings.json # 向量嵌入（chunk-level）
+│   │   ├── .bm25_index.json     # BM25 索引缓存
+│   │   ├── .chunk_index.json    # Chunk 索引缓存
+│   │   └── .metadata_index.json # 元数据索引缓存
 │   ├── source/                  # 原始源文档
 │   ├── memory/                  # 内存层级
 │   ├── audit.json               # 审计日志
@@ -610,6 +675,7 @@ llm-wiki-skill/
 │       └── maintenance_weekly.py
 │
 ├── references/                  # 深度参考文档
+│   └── retrieval-quality-optimization.md  # 检索质量优化方案
 ├── templates/                   # 页面模板
 └── .planning/                   # GSD 开发规划
 ```
@@ -1111,6 +1177,41 @@ embeddings:
 ---
 
 ## 更新日志
+
+### v2.2.0 (2026-06-09)
+
+**检索质量大幅提升：**
+
+- **Chunk 级检索**：内容按标题拆分为语义块，命中更精准。chunk index 缓存至磁盘。
+- **元数据检索**：索引 frontmatter 的 `aliases`、`keywords`、`questions`、`summary` 字段，支持别名和假设问题召回。
+- **Chunk 向量搜索**：`wiki embed --chunks` 生成 chunk 级语义向量，参与混合检索。
+- **Query Planner**：根据查询意图（台账/关系/对比/事实）自动路由到最优检索流。
+- **Query Rewriting**：自动生成空格/连字符变体、台账字段提示等轻量变体，提升召回率。
+- **轻量 Reranker**：RRF 融合后基于流偏好和词汇重叠二次排序。
+- **Embedding 索引元数据**：记录 schema 版本、模型信息，避免向量空间不一致。`--verify` 输出 stale/config 不匹配诊断。
+
+**新增诊断与评测命令：**
+
+- `wiki search doctor` — 检索索引健康诊断（embedding 覆盖率、chunk 索引、图谱孤儿节点）
+- `wiki search eval <file>` — 使用 jsonl 评测集测量 Recall@K 和 MRR
+- `wiki query --debug-search` — 输出完整检索 trace（query plan、各路召回、RRF 融合、rerank）
+- `wiki embed --chunks` — 生成 chunk 级语义向量
+
+**OCR 代码重构：**
+
+- 所有 OCR 引擎统一移至 `ocr/` Python 包，含 `__init__.py` 和 `cli.py`
+- `scripts/ocr.py` 删除，移至 `ocr/cli.py`
+- `compile_v2.py`、`search.py` 等模块的 OCR 导入路径统一更新
+
+**新增测试：**
+
+- `tests/test_search.py` — 317 行，覆盖 chunk 检索、元数据检索、search doctor、eval
+- `tests/test_query.py` — query planner、rewriting、reranker
+- `tests/test_embeddings.py` — embedding index 元数据、chunk embedding 生成
+
+**新增参考文档：**
+
+- `references/retrieval-quality-optimization.md` — 检索质量优化方案（三层：数据清洗 → 索引结构 → 查询推理）
 
 ### v2.1.0 (2025-05-27)
 

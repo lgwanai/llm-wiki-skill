@@ -22,7 +22,10 @@ import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+_project_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_project_root))
+_scripts_dir = _project_root / "scripts"
+sys.path.insert(0, str(_scripts_dir))
 from config import get_ocr_config
 
 
@@ -48,19 +51,19 @@ def main():
 
     # Lazy import based on backend
     if args.backend == "api":
-        from _ocr_api import OCRApiBackend
+        from ocr._ocr_api import OCRApiBackend
         ocr = OCRApiBackend.from_config()
     elif args.backend == "mineru":
-        from _mineru_ocr import MinerUOCR
+        from ocr._mineru_ocr import MinerUOCR
         ocr = MinerUOCR.from_config()
     elif args.backend == "deepseek":
-        from _deepseek_ocr2 import DeepSeekOCR2
+        from ocr._deepseek_ocr2 import DeepSeekOCR2
         ocr = DeepSeekOCR2.from_config()
     elif args.backend == "logics":
-        from _logics_parsing import LogicsParsingOCR
+        from ocr._logics_parsing import LogicsParsingOCR
         ocr = LogicsParsingOCR.from_config()
     else:  # paddle
-        from _paddle_ocr import PaddleOCRWrapper
+        from ocr._paddle_ocr import PaddleOCRWrapper
         ocr = PaddleOCRWrapper.from_config()
 
     if args.batch:

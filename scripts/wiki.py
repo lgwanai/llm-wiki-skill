@@ -79,13 +79,18 @@ def cmd_compile(
 
 
 def cmd_query(question: str, file_back: bool = False, fmt: str = "markdown",
-              synthesis: bool = True) -> dict:
+              synthesis: bool = True, debug_search: bool = False) -> dict:
     # Direct import for speed — avoids subprocess overhead (~0.3s)
     try:
         import query as qm
         result = qm.query_wiki(question, file_back=file_back, fmt=fmt,
-                               synthesis=synthesis)
-        return {"success": True, "answer": result.get("answer", "")}
+                               synthesis=synthesis,
+                               debug_search=debug_search)
+        answer = result.get("answer", "")
+        if debug_search:
+            answer += "\n\n--- SEARCH DEBUG ---\n"
+            answer += json.dumps(result.get("debug_search", {}), indent=2, ensure_ascii=False, default=str)
+        return {"success": True, "answer": answer}
     except Exception as e:
         # Fallback to subprocess on import failure
         args = [question]
@@ -95,6 +100,8 @@ def cmd_query(question: str, file_back: bool = False, fmt: str = "markdown",
             args.extend(["--format", fmt])
         if not synthesis:
             args.append("--no-synthesis")
+        if debug_search:
+            args.append("--debug-search")
         code, output = run_script("query.py", args)
         if code == 0:
             return {"success": True, "answer": output}
@@ -244,7 +251,8 @@ Examples:
   wiki config --init           Create default config file
   wiki config                  Show current configuration
   wiki compile paper.md        Compile document to wiki pages
-  wiki query "What is X?"      Query wiki and get answer
+    wiki query "What is X?"      Query wiki and get answer
+    wiki search doctor           Diagnose retrieval indexes
   wiki lint --auto-heal        Health check with auto-repair
 
 Environment:
@@ -275,12 +283,22 @@ Environment:
                                default="markdown", help="Output format")
     query_parser.add_argument("--no-synthesis", action="store_true",
                                help="Skip LLM — return raw search results (fast)")
+    query_parser.add_argument("--debug-search", action="store_true",
+                               help="Print search trace for retrieval debugging")
+
+    search_parser = subparsers.add_parser("search", help="Search diagnostics and evaluation")
+    search_sub = search_parser.add_subparsers(dest="search_cmd", required=True)
+    search_sub.add_parser("doctor", help="Diagnose retrieval index health")
+    search_eval = search_sub.add_parser("eval", help="Evaluate retrieval from a jsonl file")
+    search_eval.add_argument("file", help="Retrieval eval jsonl file")
+    search_eval.add_argument("--limit", type=int, default=5, help="Top-k results to evaluate")
 
     lint_parser = subparsers.add_parser("lint", help="Health check wiki")
     lint_parser.add_argument("--auto-heal", action="store_true", help="Auto-fix issues")
 
     embed_parser = subparsers.add_parser("embed", help="Generate vector embeddings")
     embed_parser.add_argument("--force", action="store_true", help="Regenerate all embeddings")
+    embed_parser.add_argument("--chunks", action="store_true", help="Generate chunk-level embeddings")
 
     bulk_parser = subparsers.add_parser("bulk", help="Bulk operations")
     bulk_sub = bulk_parser.add_subparsers(dest="bulk_cmd", required=True)
@@ -411,19 +429,31 @@ Environment:
 
     elif args.command == "query":
         result = cmd_query(args.question, file_back=args.file_back, fmt=args.format,
-                           synthesis=not args.no_synthesis)
+                           synthesis=not args.no_synthesis,
+                           debug_search=args.debug_search)
         if result.get("success"):
             print(result["answer"])
         else:
             print(f"Error: {result.get('error', 'Unknown error')}")
+
+    elif args.command == "search":
+        search_args = ["--doctor"] if args.search_cmd == "doctor" else ["--eval", args.file, "--limit", str(args.limit)]
+        code, output = run_script("search.py", search_args)
+        print(output)
+        if code != 0:
+            sys.exit(code)
 
     elif args.command == "lint":
         result = cmd_lint(auto_heal=args.auto_heal)
         print(result["output"])
 
     elif args.command == "embed":
-        code, output = run_script("generate_embeddings.py",
-                                   ["--force"] if args.force else [])
+        embed_args = []
+        if args.force:
+            embed_args.append("--force")
+        if args.chunks:
+            embed_args.append("--chunks")
+        code, output = run_script("generate_embeddings.py", embed_args)
         print(output)
     
     elif args.command == "consolidate":

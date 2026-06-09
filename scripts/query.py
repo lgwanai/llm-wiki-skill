@@ -110,32 +110,77 @@ def call_llm(system_prompt: str, user_content: str, config: dict) -> str:
         raise RuntimeError(f"Unexpected LLM API response: {e}")
 
 
-def search_wiki(query: str, limit: int = 5) -> list[dict]:
+def search_wiki(query: str, limit: int = 5, debug: bool = False) -> list[dict] | tuple[list[dict], dict]:
     """Hybrid search: BM25 + Vector + Graph + entities.json fallback, fused by RRF."""
     all_streams: list[list[dict]] = []
+    plan = plan_query(query)
+    query_variants = rewrite_query(query, plan)
+    trace: dict = {"query": query, "plan": plan, "query_variants": query_variants, "streams": {}}
 
-    # 1. BM25 keyword search (now supports Chinese via jieba)
+    # 0. Metadata search over aliases/keywords/questions/summary.
+    try:
+        from search import metadata_search
+        metadata_results = []
+        for variant in query_variants:
+            metadata_results.extend(metadata_search(variant, str(PAGES_DIR), limit=limit * 2))
+        metadata_results = reciprocal_rank_merge(metadata_results, limit=limit * 2)
+        trace["streams"]["metadata"] = metadata_results
+        if metadata_results:
+            all_streams.append(metadata_results)
+    except Exception as e:
+        trace["streams"]["metadata_error"] = str(e)
+
+    # 1. Chunk-level BM25 search for precise page-local matches
+    try:
+        from search import chunk_search
+        chunk_results = []
+        for variant in query_variants:
+            chunk_results.extend(chunk_search(variant, str(PAGES_DIR), limit=limit * 2))
+        chunk_results = reciprocal_rank_merge(chunk_results, limit=limit * 2)
+        trace["streams"]["chunk"] = chunk_results
+        if chunk_results:
+            all_streams.append(chunk_results)
+    except Exception as e:
+        trace["streams"]["chunk_error"] = str(e)
+
+    # 2. BM25 keyword search (now supports Chinese via jieba)
     try:
         from search import bm25_search
-        bm25_results = bm25_search(query, str(PAGES_DIR), limit=limit * 2)
+        bm25_results = []
+        for variant in query_variants:
+            bm25_results.extend(bm25_search(variant, str(PAGES_DIR), limit=limit * 2))
+        bm25_results = reciprocal_rank_merge(bm25_results, limit=limit * 2)
+        trace["streams"]["bm25"] = bm25_results
         if bm25_results:
             all_streams.append(bm25_results)
-    except Exception:
-        pass
+    except Exception as e:
+        trace["streams"]["bm25_error"] = str(e)
 
     # 2. Vector semantic search (via Ollama)
     try:
+        from search import vector_chunk_search
+        chunk_vector_results = vector_chunk_search(query, str(PAGES_DIR), limit=limit)
+        trace["streams"]["chunk_vector"] = chunk_vector_results
+        if chunk_vector_results:
+            all_streams.append(chunk_vector_results)
+    except Exception as e:
+        trace["streams"]["chunk_vector_error"] = str(e)
+
+    # 3. Page-level vector semantic search
+    try:
         from search import vector_search
         vector_results = vector_search(query, str(PAGES_DIR), limit=limit)
+        trace["streams"]["vector"] = vector_results
         if vector_results:
             all_streams.append(vector_results)
-    except Exception:
-        pass
+    except Exception as e:
+        trace["streams"]["vector_error"] = str(e)
 
-    # 3. Graph entity search
+    # 4. Graph entity search
     try:
         from search import graph_search
         graph_results = graph_search(query, str(WIKI_DIR / "graph"), limit=limit)
+        trace["streams"]["graph_raw"] = graph_results
         if graph_results:
             # Convert graph results to BM25-compatible format
             converted = []
@@ -151,14 +196,16 @@ def search_wiki(query: str, limit: int = 5) -> list[dict]:
                         "stream": "graph",
                     })
             if converted:
+                trace["streams"]["graph"] = converted
                 all_streams.append(converted)
-    except Exception:
-        pass
+    except Exception as e:
+        trace["streams"]["graph_error"] = str(e)
 
-    # 4. Ledger search (structured tables)
+    # 5. Ledger search (structured tables)
     try:
         from ledger import search_ledgers as ledger_search
         ledger_results = ledger_search(query, limit=limit)
+        trace["streams"]["ledger_raw"] = ledger_results
         if ledger_results:
             converted = []
             for lr in ledger_results:
@@ -172,14 +219,16 @@ def search_wiki(query: str, limit: int = 5) -> list[dict]:
                     "ledger_preview": lr.get("preview", []),
                 })
             all_streams.append(converted)
-    except Exception:
-        pass
+            trace["streams"]["ledger"] = converted
+    except Exception as e:
+        trace["streams"]["ledger_error"] = str(e)
 
     # Fuse results with RRF if multiple streams
     if len(all_streams) >= 2:
         try:
             from search import reciprocal_rank_fusion
             fused = reciprocal_rank_fusion(all_streams)
+            trace["fused"] = fused
             results = []
             seen = set()
             for f in fused[:limit]:
@@ -192,11 +241,17 @@ def search_wiki(query: str, limit: int = 5) -> list[dict]:
                         "score": f.get("rrf_score", 0),
                         "id": eid,
                         "type": _infer_type(eid),
+                        "stream": ",".join(f.get("streams", [])),
+                        "chunk_id": f.get("chunk_id", ""),
+                        "heading_path": f.get("heading_path", []),
+                        "text": f.get("text", ""),
                     })
             if results:
-                return results
-        except Exception:
-            pass
+                results = rerank_results(query, results, plan)
+                trace["reranked"] = results
+                return (results[:limit], trace) if debug else results[:limit]
+        except Exception as e:
+            trace["fusion_error"] = str(e)
     elif all_streams:
         # Single stream — convert directly
         results = []
@@ -211,9 +266,15 @@ def search_wiki(query: str, limit: int = 5) -> list[dict]:
                     "score": r.get("score", 0),
                     "id": eid,
                     "type": _infer_type(eid),
+                    "stream": r.get("stream", ""),
+                    "chunk_id": r.get("chunk_id", ""),
+                    "heading_path": r.get("heading_path", []),
+                    "text": r.get("text", ""),
                 })
         if results:
-            return results[:limit]
+            results = rerank_results(query, results, plan)
+            trace["reranked"] = results
+            return (results[:limit], trace) if debug else results[:limit]
 
     # 4. Entity name fallback (substring match against entities.json)
     entities = _get_entities()
@@ -240,7 +301,9 @@ def search_wiki(query: str, limit: int = 5) -> list[dict]:
                         "type": etype,
                     })
 
-    return results[:limit]
+    results = rerank_results(query, results, plan)
+    trace["reranked"] = results
+    return (results[:limit], trace) if debug else results[:limit]
 
 
 _entities_cache: Optional[dict] = None
@@ -268,6 +331,100 @@ def _infer_type(eid: str) -> str:
     if eid in entities:
         return entities[eid].get("type", "concept")
     return "concept"
+
+
+def reciprocal_rank_merge(results: list[dict], limit: int = 10) -> list[dict]:
+    """Deduplicate one stream while preserving rank evidence across query variants."""
+    merged: dict[str, dict] = {}
+    for rank, item in enumerate(results, 1):
+        key = item.get("path") or item.get("file") or str(rank)
+        if key not in merged:
+            merged[key] = dict(item)
+            merged[key]["variant_score"] = 0.0
+        merged[key]["variant_score"] += 1.0 / (60 + rank)
+        merged[key]["score"] = max(float(merged[key].get("score", 0)), float(item.get("score", 0)))
+    sorted_items = sorted(
+        merged.values(),
+        key=lambda item: (float(item.get("score", 0)), item.get("variant_score", 0)),
+        reverse=True,
+    )
+    return sorted_items[:limit]
+
+
+def plan_query(query: str) -> dict:
+    """Simple query planner for retrieval routing."""
+    q = query.lower()
+    ledger_terms = ("表", "台账", "预算", "金额", "状态", "字段", "行", "row", "table", "ledger", "sql")
+    graph_terms = ("影响", "依赖", "关系", "路径", "关联", "impact", "depends", "relationship")
+    compare_terms = ("比较", "对比", "区别", "compare", "difference")
+
+    preferred = ["metadata", "chunk", "chunk_vector", "bm25", "vector", "graph", "ledger"]
+    intent = "fact"
+    if any(term in q for term in ledger_terms):
+        intent = "ledger_filter"
+        preferred = ["ledger", "metadata", "chunk", "chunk_vector", "bm25", "vector", "graph"]
+    elif any(term in q for term in graph_terms):
+        intent = "relationship"
+        preferred = ["graph", "metadata", "chunk", "chunk_vector", "bm25", "vector", "ledger"]
+    elif any(term in q for term in compare_terms):
+        intent = "comparison"
+
+    return {
+        "intent": intent,
+        "preferred_streams": preferred,
+        "keywords": [t for t in re.split(r"\s+", query.strip()) if t],
+    }
+
+
+def rewrite_query(query: str, plan: dict) -> list[str]:
+    """Generate lightweight lexical variants for recall."""
+    variants = [query]
+    normalized = re.sub(r"[\s_]+", " ", query).strip()
+    if normalized and normalized not in variants:
+        variants.append(normalized)
+    if "-" in query:
+        variants.append(query.replace("-", " "))
+    if " " in query:
+        variants.append(query.replace(" ", "-"))
+    if plan.get("intent") == "ledger_filter":
+        for token in ("台账", "表格", "字段"):
+            if token not in query:
+                variants.append(f"{query} {token}")
+
+    deduped = []
+    seen = set()
+    for variant in variants:
+        variant = variant.strip()
+        if variant and variant not in seen:
+            seen.add(variant)
+            deduped.append(variant)
+    return deduped[:6]
+
+
+def rerank_results(query: str, results: list[dict], plan: dict) -> list[dict]:
+    """Lightweight reranker using stream preference and lexical overlap."""
+    query_terms = {t.lower() for t in re.findall(r"[\w\u4e00-\u9fff]+", query) if len(t) >= 2}
+    preferred = plan.get("preferred_streams", [])
+    stream_weight = {stream: len(preferred) - i for i, stream in enumerate(preferred)}
+
+    def score(result: dict) -> float:
+        text = " ".join([
+            result.get("id", ""),
+            result.get("type", ""),
+            result.get("stream", ""),
+            result.get("text", ""),
+            " ".join(result.get("heading_path", [])),
+        ]).lower()
+        overlap = sum(1 for term in query_terms if term in text)
+        streams = result.get("stream", "").split(",") if result.get("stream") else []
+        stream_bonus = max((stream_weight.get(s, 0) for s in streams), default=0)
+        return float(result.get("score", 0)) + overlap * 0.05 + stream_bonus * 0.01
+
+    ranked = [dict(r) for r in results]
+    for item in ranked:
+        item["rerank_score"] = round(score(item), 4)
+    ranked.sort(key=lambda r: -r["rerank_score"])
+    return ranked
 
 
 def read_page_content(page_path: str) -> str:
@@ -308,10 +465,15 @@ def synthesize_answer(query: str, pages: list[dict], config: dict, fmt: str = "m
                 )
             continue
 
-        # Wiki page (unstructured markdown)
-        content = read_page_content(page.get("path", ""))
+        # Wiki page/chunk (unstructured markdown)
+        content = page.get("text") or read_page_content(page.get("path", ""))
         if content:
-            contexts.append(f"--- PAGE {i+1}: {page.get('id', 'unknown')} ---\n{content[:2000]}")
+            heading = " > ".join(page.get("heading_path", []))
+            heading_line = f"\nHeading: {heading}" if heading else ""
+            contexts.append(
+                f"--- PAGE {i+1}: {page.get('id', 'unknown')} ---"
+                f"{heading_line}\n{content[:2000]}"
+            )
 
     if not contexts:
         return "Wiki pages found but content could not be read."
@@ -456,7 +618,7 @@ created: {now}
 
 
 def query_wiki(query: str, file_back: bool = False, fmt: str = "markdown",
-               synthesis: bool = True) -> dict:
+               synthesis: bool = True, debug_search: bool = False) -> dict:
     config = load_config()
     query_cfg = get_query_config()
     
@@ -465,7 +627,11 @@ def query_wiki(query: str, file_back: bool = False, fmt: str = "markdown",
     elif "llm_synthesis" in query_cfg:
         synthesis = query_cfg.get("llm_synthesis", True)
 
-    pages = search_wiki(query)
+    if debug_search:
+        pages, trace = search_wiki(query, debug=True)
+    else:
+        pages = search_wiki(query)
+        trace = {}
 
     if pages and not synthesis:
         # Fast path: return raw search results without LLM call
@@ -482,6 +648,7 @@ def query_wiki(query: str, file_back: bool = False, fmt: str = "markdown",
             "answer": "\n".join(lines),
             "pages_searched": len(pages),
             "sources": [p.get("id", "unknown") for p in pages],
+            "debug_search": trace if debug_search else {},
         }
 
     answer = synthesize_answer(query, pages, config, fmt=fmt) if pages else "No relevant wiki pages found."
@@ -493,6 +660,8 @@ def query_wiki(query: str, file_back: bool = False, fmt: str = "markdown",
         "pages_searched": len(pages),
         "sources": [p.get("id", "unknown") for p in pages],
     }
+    if debug_search:
+        result["debug_search"] = trace
 
     if file_back and pages:
         filed_path = file_answer_back(query, answer, pages)
@@ -533,6 +702,8 @@ def main():
                         default="markdown", help="Output format (default: markdown)")
     parser.add_argument("--no-synthesis", action="store_true",
                         help="Skip LLM synthesis — return raw search results (fast)")
+    parser.add_argument("--debug-search", action="store_true",
+                        help="Print search trace as JSON after the answer")
     args = parser.parse_args()
 
     if args.format == "graph":
@@ -546,8 +717,12 @@ def main():
         return
 
     result = query_wiki(args.query, file_back=args.file_back, fmt=args.format,
-                        synthesis=not args.no_synthesis)
+                        synthesis=not args.no_synthesis,
+                        debug_search=args.debug_search)
     print(result["answer"])
+    if args.debug_search:
+        print("\n--- SEARCH DEBUG ---")
+        print(json.dumps(result.get("debug_search", {}), indent=2, ensure_ascii=False, default=str))
 
     if args.file_back and result.get("filed"):
         print(f"\n---\nFiled to: {result['filed']}", file=sys.stderr)
