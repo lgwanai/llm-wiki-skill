@@ -75,6 +75,7 @@ wiki query "What is X?" --debug-search
 wiki search doctor
 wiki search eval .wiki/evals/retrieval.jsonl
 wiki embed --chunks --force
+wiki benchmark evals/rag_benchmark_smoke.jsonl --method both -k 5
 
 # Fast mode — skip LLM synthesis (0.5s)
 wiki query "专家评审组" --no-synthesis
@@ -107,6 +108,7 @@ Retrieval quality features:
 - Embedding index metadata prevents page/query embedding model mismatch.
 - `wiki search doctor` reports stale embeddings, chunk coverage, and graph health.
 - `wiki search eval` measures Recall@K and MRR from jsonl eval cases.
+- `wiki benchmark` runs BEIR/MTEB-style retrieval metrics and RAGAS-lite end-to-end metrics.
 
 ### `/wiki-lint` — Health Check
 

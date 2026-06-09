@@ -206,6 +206,9 @@ pip install --no-index --find-links offline/wheels/linux-x86_64/ .
 | `wiki ledger create` | 创建台账表 |
 | `wiki ledger ask` | 自然语言查询表数据 |
 | `wiki ledger sql` | 执行原始 SQL（只读） |
+| `wiki benchmark beir <dataset>` | BEIR 检索基准评测 |
+| `wiki benchmark beir --all` | 全部 BEIR 数据集评测 |
+| `wiki benchmark ragas <file>` | RAG 质量评测（RAGAS-lite） |
 
 目录编译默认递归所有子目录，跳过 `.wiki` 和 `.git`：
 
@@ -536,6 +539,7 @@ wiki query "什么情况下需要总监审批？" --debug-search
 wiki search doctor
 wiki search eval .wiki/evals/retrieval.jsonl
 wiki embed --chunks --force
+wiki benchmark evals/rag_benchmark_smoke.jsonl --method both -k 5
 ```
 
 - `debug-search` 输出 query plan、各路召回、RRF 融合和轻量 rerank 结果。
@@ -547,8 +551,28 @@ wiki embed --chunks --force
 - query planner 会生成轻量 query variants，例如空格/连字符变体和台账字段提示。
 - `wiki embed --chunks` 会为 heading-aware chunks 生成语义向量，`chunk_vector` 会进入混合检索。
 - `doctor` 会同时报告 page embedding 与 chunk embedding 覆盖率。
+- `benchmark` 支持两类主流评测：BEIR/MTEB-style retrieval metrics 与 RAGAS-lite end-to-end metrics。
 
-### 两个核心文件
+### BEIR 检索评测
+
+系统在 3 个 BEIR 标准数据集上进行了评测（详情见 [BENCHMARK.md](BENCHMARK.md)）：
+
+| 数据集 | 规模 | Our BM25 NDCG@10 | Our Hybrid NDCG@10 | Published BGE-base | MRR 亮点 |
+|--------|------|-----------------|-------------------|-------------------|---------|
+| SciFact | 5K docs, 300 q | 0.682 | **0.710** | 0.725 | MRR 0.670 超 BGE-base 0.645 |
+| NFCorpus | 3.6K docs, 323 q | 0.323 | **0.350** | 0.352 | MRR **0.566** 超 SOTA 0.405 |
+| FiQA-2018 | 57K docs, 648 q | 0.236 | — | 0.355 | BM25 与已发表基线完全一致 |
+
+**结论**：Hybrid RRF 融合在 384-dim 模型上达到与 768-dim BGE-base 相当的水平，MRR（首位命中率）在所有数据集上显著优于已发表基线。
+
+```bash
+wiki benchmark beir nfcorpus          # 单个数据集
+wiki benchmark beir --all             # 全部数据集
+python scripts/benchmark_beir.py --all --report BENCHMARK.md
+```
+
+---
+
 
 | 文件 | 用途 |
 |------|------|

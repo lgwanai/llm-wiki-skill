@@ -293,6 +293,13 @@ Environment:
     search_eval.add_argument("file", help="Retrieval eval jsonl file")
     search_eval.add_argument("--limit", type=int, default=5, help="Top-k results to evaluate")
 
+    benchmark_parser = subparsers.add_parser("benchmark", help="Run RAG benchmark")
+    benchmark_parser.add_argument("file", help="Benchmark eval jsonl file")
+    benchmark_parser.add_argument("--method", choices=["retrieval", "ragas-lite", "both"],
+                                  default="both", help="Benchmark method")
+    benchmark_parser.add_argument("-k", "--top-k", type=int, default=5, help="Top-k retrieval cutoff")
+    benchmark_parser.add_argument("-o", "--output", help="Write result JSON")
+
     lint_parser = subparsers.add_parser("lint", help="Health check wiki")
     lint_parser.add_argument("--auto-heal", action="store_true", help="Auto-fix issues")
 
@@ -439,6 +446,15 @@ Environment:
     elif args.command == "search":
         search_args = ["--doctor"] if args.search_cmd == "doctor" else ["--eval", args.file, "--limit", str(args.limit)]
         code, output = run_script("search.py", search_args)
+        print(output)
+        if code != 0:
+            sys.exit(code)
+
+    elif args.command == "benchmark":
+        benchmark_args = [args.file, "--method", args.method, "--top-k", str(args.top_k)]
+        if args.output:
+            benchmark_args.extend(["--output", args.output])
+        code, output = run_script("benchmark.py", benchmark_args)
         print(output)
         if code != 0:
             sys.exit(code)
