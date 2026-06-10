@@ -1,0 +1,207 @@
+{
+  "description": "llm-wiki black-box RAGAS evaluation test cases — tests the complete pipeline (compile → search → synthesize)",
+  "version": "1.0",
+  "created": "2026-06-10",
+  "domains": {
+    "tech": {
+      "description": "AI/ML engineering documents",
+      "documents": [
+        "transformer-architecture.md",
+        "rag-systems.md",
+        "vector-databases.md",
+        "deepseek-v4.md",
+        "llm-evaluation.md"
+      ]
+    },
+    "business": {
+      "description": "Business operations documents — pricing, incidents, compliance",
+      "documents": [
+        "enterprise-pricing-2026.md",
+        "incident-postmortem-q4.md",
+        "api-rate-limits.md",
+        "soc2-compliance.md"
+      ]
+    },
+    "chinese": {
+      "description": "中文技术文档 — 部署、流程、RAG实践",
+      "documents": [
+        "da-mo-xing-bu-shu.md",
+        "hui-du-fa-bu-liu-cheng.md",
+        "rag-chinese-practice.md"
+      ]
+    }
+  },
+  "test_cases": [
+    {
+      "id": "tech-01",
+      "domain": "tech",
+      "type": "factual",
+      "difficulty": "easy",
+      "query": "What is Multi-head Latent Attention (MLA) and how does DeepSeek-V4 use it?",
+      "ground_truth": "MLA compresses key-value pairs into a low-rank latent space before attention computation, reducing KV-cache size by approximately 8x. DeepSeek-V4 uses MLA to reduce KV-cache from ~256GB to ~32GB for a 128K context window. It works by projecting KV through a low-rank bottleneck: c = W_d * h, then k = W_uk * c, v = W_uv * c.",
+      "relevant_docs": ["deepseek-v4.md"]
+    },
+    {
+      "id": "tech-02",
+      "domain": "tech",
+      "type": "factual",
+      "difficulty": "easy",
+      "query": "How many active parameters does DeepSeek-V4 have per token?",
+      "ground_truth": "DeepSeek-V4 has 685B total parameters but only 37B active parameters per token due to its Mixture-of-Experts architecture with 256 experts where 8 are activated per token plus 2 shared experts.",
+      "relevant_docs": ["deepseek-v4.md"]
+    },
+    {
+      "id": "tech-03",
+      "domain": "tech",
+      "type": "factual",
+      "difficulty": "easy",
+      "query": "What are the key innovations in Transformer architecture since 2017?",
+      "ground_truth": "Five key innovations: Rotary Position Embedding (RoPE) for better length generalization, Flash Attention for O(N) memory usage instead of O(N^2), Grouped Query Attention for reducing KV-cache memory, Mixture of Experts (MoE) for larger models without proportional compute increase, and Multi-head Latent Attention (MLA) for compressing KV-cache into a low-rank latent space.",
+      "relevant_docs": ["transformer-architecture.md"]
+    },
+    {
+      "id": "tech-04",
+      "domain": "tech",
+      "type": "synthesis",
+      "difficulty": "medium",
+      "query": "Compare the memory efficiency approaches in Flash Attention and Multi-head Latent Attention. Which one does DeepSeek-V4 use?",
+      "ground_truth": "Flash Attention reduces memory from O(N^2) to O(N) by tiling the attention computation, making it IO-aware. It doesn't compress the attention output — it just computes it more efficiently. Multi-head Latent Attention compresses the KV-cache into a low-rank latent space, reducing memory by ~8x through a different mechanism: down-projecting then up-projecting keys and values. DeepSeek-V4 uses MLA for its KV-cache compression.",
+      "relevant_docs": ["transformer-architecture.md", "deepseek-v4.md"]
+    },
+    {
+      "id": "tech-05",
+      "domain": "tech",
+      "type": "factual",
+      "difficulty": "medium",
+      "query": "What are the common failure modes of RAG systems?",
+      "ground_truth": "The common failure modes are: (1) Hallucination despite context — the LLM generates information not in the retrieved context, (2) Retrieval failure — correct chunks not found due to lexical gap, poor chunking, or embedding mismatch, (3) Context pollution — too many irrelevant chunks dilute attention (the 'lost in the middle' problem), (4) Citation errors — citations point to wrong sources or miss factual claims.",
+      "relevant_docs": ["rag-systems.md"]
+    },
+    {
+      "id": "tech-06",
+      "domain": "tech",
+      "type": "synthesis",
+      "difficulty": "medium",
+      "query": "What is the RAGAS framework and what dimensions does it evaluate?",
+      "ground_truth": "RAGAS is a framework for evaluating RAG systems. It evaluates four dimensions: Faithfulness (is the answer grounded in context?), Answer Relevance (does the answer address the question?), Context Precision (are retrieved documents relevant?), and Context Recall (are all relevant documents retrieved?).",
+      "relevant_docs": ["rag-systems.md", "llm-evaluation.md"]
+    },
+    {
+      "id": "tech-07",
+      "domain": "tech",
+      "type": "comparison",
+      "difficulty": "hard",
+      "query": "Compare HNSW and IVF algorithms for vector search. Which vector databases use which algorithm?",
+      "ground_truth": "HNSW builds a multi-layer navigation graph for logarithmic search time with 95%+ recall. IVF partitions vectors into k-means clusters, searching only nearest clusters for reduced scope. FAISS supports both HNSW and IVF. HNSW is generally preferred for recall-critical applications.",
+      "relevant_docs": ["vector-databases.md"]
+    },
+    {
+      "id": "business-01",
+      "domain": "business",
+      "type": "factual",
+      "difficulty": "easy",
+      "query": "What is the audit log retention period for APAC enterprise customers?",
+      "ground_truth": "APAC enterprise customers must maintain audit logs for a minimum of 730 days (2 years) per regional financial regulations. The Enterprise plan supports configurable retention up to 7 years.",
+      "relevant_docs": ["enterprise-pricing-2026.md"]
+    },
+    {
+      "id": "business-02",
+      "domain": "business",
+      "type": "factual",
+      "difficulty": "medium",
+      "query": "What was the root cause of the Q4 2025 payment service outage and what remediation actions were taken?",
+      "ground_truth": "The root cause was the bulk-payment-processor service opening database connections without closing them in a finally block, leaking 1-3 connections per request. Under peak load of 200 req/s, the connection pool exhausted within 30 minutes. Remediation included: connection leak detection middleware, circuit breaker for DB connections, reducing p99 alert threshold to 500ms, mandatory canary deployment, weekly connection pool audit, and planning the outbox pattern for async payment processing.",
+      "relevant_docs": ["incident-postmortem-q4.md"]
+    },
+    {
+      "id": "business-03",
+      "domain": "business",
+      "type": "factual",
+      "difficulty": "medium",
+      "query": "What are the current (2026) rate limits for Premium Partners?",
+      "ground_truth": "Premium Partners have a rate limit of 1200 requests per minute with 200 burst allowance, enforced using a sliding window algorithm. The 2024 limits were half of current values (600 req/min for Premium). Limits are enforced per API key with Redis-based distributed rate limiter.",
+      "relevant_docs": ["api-rate-limits.md"]
+    },
+    {
+      "id": "business-04",
+      "domain": "business",
+      "type": "temporal",
+      "difficulty": "medium",
+      "query": "What were the Partner API rate limits in 2024 compared to 2026?",
+      "ground_truth": "In 2024: Standard Partner was 300 req/min, Premium Partner 600 req/min, Enterprise Partner 1500 req/min. In 2026, all limits were doubled: Standard 600, Premium 1200, Enterprise 3000. The increase was enabled by migration to Kubernetes autoscaling, Redis-based distributed rate limiting, and multi-region API gateway deployment.",
+      "relevant_docs": ["api-rate-limits.md"]
+    },
+    {
+      "id": "business-05",
+      "domain": "business",
+      "type": "factual",
+      "difficulty": "easy",
+      "query": "What is the SOC 2 evidence retention policy for incident response reports?",
+      "ground_truth": "Incident response reports must be retained for 2555 days (7 years) per the SOC 2 evidence retention policy documented in policy-handbook.md#S3. They are stored in S3 under compliance-reports/incidents/.",
+      "relevant_docs": ["soc2-compliance.md"]
+    },
+    {
+      "id": "business-06",
+      "domain": "business",
+      "type": "synthesis",
+      "difficulty": "hard",
+      "query": "Compare the Enterprise pricing plan features with the Professional plan. What additional benefits does Enterprise provide?",
+      "ground_truth": "Enterprise plan provides: unlimited users (vs 25), 2TB storage (vs 250GB), 1M+ API calls (vs 100K), custom fine-tuned models, dedicated account manager with 24/7 phone/chat support, audit log retention of 730 days configurable up to 7 years (vs 365 days), 99.99% SLA (vs 99.9%), SSO/SAML, on-premise deployment option, private VPC, custom data retention policies, and advanced RBAC. Starting price is $2,000/month vs Professional's $199/month.",
+      "relevant_docs": ["enterprise-pricing-2026.md"]
+    },
+    {
+      "id": "chinese-01",
+      "domain": "chinese",
+      "type": "factual",
+      "difficulty": "easy",
+      "query": "vLLM 推理引擎的核心优势是什么？",
+      "ground_truth": "vLLM 的核心优势是 PagedAttention 技术，它将 KV-cache 分页管理，避免了显存碎片化，将显存利用率从 40% 提升到 90% 以上。",
+      "relevant_docs": ["da-mo-xing-bu-shu.md"]
+    },
+    {
+      "id": "chinese-02",
+      "domain": "chinese",
+      "type": "factual",
+      "difficulty": "easy",
+      "query": "灰度发布中金丝雀阶段的回滚审批人是谁？",
+      "ground_truth": "金丝雀发布阶段（1%流量）的回滚审批人是值班发布经理（当天轮值），可以通过平台一键回滚，无需上报。",
+      "relevant_docs": ["hui-du-fa-bu-liu-cheng.md"]
+    },
+    {
+      "id": "chinese-03",
+      "domain": "chinese",
+      "type": "factual",
+      "difficulty": "medium",
+      "query": "中文 RAG 的分块策略与英文有什么不同？应该如何处理？",
+      "ground_truth": "中文分块与英文的主要区别是中文没有天然的空格分隔。推荐使用中文感知的分句器（如 jieba 或 pkuseg）进行语义分句，文本块大小以字符数为单位建议 512-1024 字符/块，保留标题层级信息作为元数据，使用 re.split(r'[。！？\\n]+', text) 在中文标点处切分避免截断。",
+      "relevant_docs": ["rag-chinese-practice.md"]
+    },
+    {
+      "id": "chinese-04",
+      "domain": "chinese",
+      "type": "synthesis",
+      "difficulty": "medium",
+      "query": "在大模型部署中，7B 和 70B 参数模型的 GPU 配置有什么不同？有哪些量化策略可以降低部署成本？",
+      "ground_truth": "7B 参数模型需要 1x A100-80GB，40GB 显存(FP16)，支持 32K tokens 上下文。70B 参数模型需要 4x A100-80GB，140GB 显存(INT8)，支持 16K tokens 上下文。量化策略包括：FP8 量化用于生产环境（性能损失 < 0.5%），INT8 量化用于开发测试（性能损失 < 1%），INT4 量化用于本地调试（性能损失 ~3%，可在消费级 GPU 上运行）。",
+      "relevant_docs": ["da-mo-xing-bu-shu.md"]
+    },
+    {
+      "id": "chinese-05",
+      "domain": "chinese",
+      "type": "comparison",
+      "difficulty": "hard",
+      "query": "对比 BGE-M3 和 Qwen3-Embedding-8B 在中文场景下的表现，各自适合什么场景？",
+      "ground_truth": "BGE-M3 维度为 1024，中文 MTEB 平均分 68.5，推理速度快，适合通用多语言场景和轻量应用。Qwen3-Embedding-8B 维度为 4096，中文 MTEB 平均分 72.1，推理速度中等，适合高精度知识库需求。选择建议：轻量应用选 BGE-M3，高精度知识库选 Qwen3-Embedding-8B。",
+      "relevant_docs": ["rag-chinese-practice.md"]
+    },
+    {
+      "id": "cross-01",
+      "domain": "cross",
+      "type": "synthesis",
+      "difficulty": "hard",
+      "query": "How does the outbox pattern mentioned in the incident postmortem relate to RAG architecture patterns?",
+      "ground_truth": "The outbox pattern (outbox_retry_watermark) from the incident postmortem decouples requests from database transactions by writing events to an outbox table atomically, then processing asynchronously. This pattern is conceptually similar to how RAG systems decouple document ingestion (write chunks to vector DB) from retrieval (async similarity search). Both use event-driven architectures to separate write and read paths for reliability.",
+      "relevant_docs": ["incident-postmortem-q4.md", "rag-systems.md"]
+    }
+  ]
+}
