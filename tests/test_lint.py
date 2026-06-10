@@ -9,10 +9,7 @@ import pytest
 import lint
 
 
-SKIP_MSG = "WIKI_DIR is module-level, set before LLM_WIKI_DIR env var. Needs lazy init."
-
 class TestFindOrphans:
-    @pytest.mark.skip(reason=SKIP_MSG)
     def test_detects_pages_without_edges(self, wiki_dir):
         old = os.getcwd()
         os.chdir(wiki_dir)
@@ -35,7 +32,6 @@ class TestFindOrphans:
 
 
 class TestFindBrokenLinks:
-    @pytest.mark.skip(reason=SKIP_MSG)
     def test_detects_broken_wikilinks(self, wiki_dir):
         old = os.getcwd()
         os.chdir(wiki_dir)
@@ -59,7 +55,6 @@ class TestFindBrokenLinks:
 
 
 class TestFindStaleClaims:
-    @pytest.mark.skip(reason=SKIP_MSG)
     def test_detects_old_content(self, wiki_dir):
         old = os.getcwd()
         os.chdir(wiki_dir)
@@ -82,7 +77,6 @@ class TestFindStaleClaims:
 
 
 class TestFindContradictions:
-    @pytest.mark.skip(reason=SKIP_MSG)
     def test_detects_confidence_mismatch(self, wiki_dir):
         old = os.getcwd()
         os.chdir(wiki_dir)

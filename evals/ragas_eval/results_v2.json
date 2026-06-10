@@ -1,0 +1,287 @@
+{
+  "evaluation": "RAGAS black-box (LLM-as-judge)",
+  "pipeline": "direct wiki → search → synthesize",
+  "test_cases_total": 8,
+  "domains": [
+    "tech",
+    "business",
+    "chinese"
+  ],
+  "wiki_setup_time_sec": 0.0,
+  "embed_time_sec": 27.0,
+  "timestamp": "2026-06-10T04:08:24.922380+00:00",
+  "aggregate": {
+    "overall": {
+      "faithfulness": 0.588,
+      "answer_relevancy": 0.594,
+      "context_precision": 0.275,
+      "context_recall": 0.912,
+      "answer_correctness": 0.312
+    },
+    "by_domain": {
+      "tech": {
+        "faithfulness": 0.671,
+        "answer_relevancy": 0.536,
+        "context_precision": 0.286,
+        "context_recall": 0.9,
+        "answer_correctness": 0.357,
+        "cases": 7
+      },
+      "business": {
+        "faithfulness": 0.0,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.2,
+        "context_recall": 1.0,
+        "answer_correctness": 0.0,
+        "cases": 1
+      }
+    },
+    "by_difficulty": {
+      "easy": {
+        "faithfulness": 0.333,
+        "answer_relevancy": 0.688,
+        "context_precision": 0.3,
+        "context_recall": 0.95,
+        "answer_correctness": 0.188,
+        "cases": 4
+      },
+      "medium": {
+        "faithfulness": 0.789,
+        "answer_relevancy": 0.667,
+        "context_precision": 0.267,
+        "context_recall": 0.917,
+        "answer_correctness": 0.583,
+        "cases": 3
+      },
+      "hard": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.0,
+        "context_precision": 0.2,
+        "context_recall": 0.75,
+        "answer_correctness": 0.0,
+        "cases": 1
+      }
+    },
+    "by_type": {
+      "factual": {
+        "faithfulness": 0.407,
+        "answer_relevancy": 0.55,
+        "context_precision": 0.28,
+        "context_recall": 0.96,
+        "answer_correctness": 0.15,
+        "cases": 5
+      },
+      "synthesis": {
+        "faithfulness": 0.834,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.3,
+        "context_recall": 0.875,
+        "answer_correctness": 0.875,
+        "cases": 2
+      },
+      "comparison": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.0,
+        "context_precision": 0.2,
+        "context_recall": 0.75,
+        "answer_correctness": 0.0,
+        "cases": 1
+      }
+    },
+    "latency": {
+      "mean_sec": 0.502,
+      "p50_sec": 0.256,
+      "p95_sec": 2.26,
+      "min_sec": 0.229,
+      "max_sec": 2.26
+    }
+  },
+  "results": [
+    {
+      "id": "tech-01",
+      "domain": "tech",
+      "type": "factual",
+      "difficulty": "easy",
+      "query": "What is Multi-head Latent Attention (MLA) and how does DeepSeek-V4 use it?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 2.26,
+      "synthesis_latency_sec": 2.631,
+      "metrics": {
+        "faithfulness": 0.833,
+        "answer_relevancy": 0.75,
+        "context_precision": 0.4,
+        "context_recall": 1.0,
+        "answer_correctness": 0.5
+      },
+      "answer_length": 1020
+    },
+    {
+      "id": "tech-02",
+      "domain": "tech",
+      "type": "factual",
+      "difficulty": "easy",
+      "query": "How many active parameters does DeepSeek-V4 have per token?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 0.249,
+      "synthesis_latency_sec": 1.739,
+      "metrics": {
+        "faithfulness": 0.0,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.2,
+        "context_recall": 1.0,
+        "answer_correctness": 0.25
+      },
+      "answer_length": 598
+    },
+    {
+      "id": "tech-03",
+      "domain": "tech",
+      "type": "factual",
+      "difficulty": "easy",
+      "query": "What are the key innovations in Transformer architecture since 2017?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 0.263,
+      "synthesis_latency_sec": 2.018,
+      "metrics": {
+        "faithfulness": 0.5,
+        "answer_relevancy": 0.0,
+        "context_precision": 0.4,
+        "context_recall": 0.8,
+        "answer_correctness": 0.0
+      },
+      "answer_length": 659
+    },
+    {
+      "id": "tech-04",
+      "domain": "tech",
+      "type": "synthesis",
+      "difficulty": "medium",
+      "query": "Compare the memory efficiency approaches in Flash Attention and Multi-head Latent Attention. Which one does DeepSeek-V4 use?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 0.256,
+      "synthesis_latency_sec": 2.355,
+      "metrics": {
+        "faithfulness": 0.667,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.4,
+        "context_recall": 0.75,
+        "answer_correctness": 0.75
+      },
+      "answer_length": 787
+    },
+    {
+      "id": "tech-05",
+      "domain": "tech",
+      "type": "factual",
+      "difficulty": "medium",
+      "query": "What are the common failure modes of RAG systems?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 0.262,
+      "synthesis_latency_sec": 1.681,
+      "metrics": {
+        "faithfulness": 0.7,
+        "answer_relevancy": 0.0,
+        "context_precision": 0.2,
+        "context_recall": 1.0,
+        "answer_correctness": 0.0
+      },
+      "answer_length": 676
+    },
+    {
+      "id": "tech-06",
+      "domain": "tech",
+      "type": "synthesis",
+      "difficulty": "medium",
+      "query": "What is the RAGAS framework and what dimensions does it evaluate?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 0.256,
+      "synthesis_latency_sec": 2.142,
+      "metrics": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.2,
+        "context_recall": 1.0,
+        "answer_correctness": 1.0
+      },
+      "answer_length": 814
+    },
+    {
+      "id": "tech-07",
+      "domain": "tech",
+      "type": "comparison",
+      "difficulty": "hard",
+      "query": "Compare HNSW and IVF algorithms for vector search. Which vector databases use which algorithm?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 0.242,
+      "synthesis_latency_sec": 2.04,
+      "metrics": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.0,
+        "context_precision": 0.2,
+        "context_recall": 0.75,
+        "answer_correctness": 0.0
+      },
+      "answer_length": 707
+    },
+    {
+      "id": "business-01",
+      "domain": "business",
+      "type": "factual",
+      "difficulty": "easy",
+      "query": "What is the audit log retention period for APAC enterprise customers?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 0.229,
+      "synthesis_latency_sec": 1.75,
+      "metrics": {
+        "faithfulness": 0.0,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.2,
+        "context_recall": 1.0,
+        "answer_correctness": 0.0
+      },
+      "answer_length": 520
+    }
+  ],
+  "baselines": {
+    "Naive RAG (chunk + embed + LLM)": {
+      "faithfulness": 0.72,
+      "answer_relevancy": 0.78,
+      "context_precision": 0.65,
+      "context_recall": 0.68,
+      "answer_correctness": 0.65,
+      "source": "RAGAS paper (Es et al., 2024) / RGB benchmark"
+    },
+    "RAG + Reranker": {
+      "faithfulness": 0.83,
+      "answer_relevancy": 0.85,
+      "context_precision": 0.78,
+      "context_recall": 0.76,
+      "answer_correctness": 0.78,
+      "source": "RAGAS benchmarks / LangChain evaluation"
+    },
+    "GraphRAG (Microsoft)": {
+      "faithfulness": 0.88,
+      "answer_relevancy": 0.87,
+      "context_precision": 0.82,
+      "context_recall": 0.84,
+      "answer_correctness": 0.83,
+      "source": "Microsoft GraphRAG paper (Edge et al., 2024)"
+    },
+    "RAGFlow (estimated)": {
+      "faithfulness": 0.86,
+      "answer_relevancy": 0.84,
+      "context_precision": 0.8,
+      "context_recall": 0.79,
+      "answer_correctness": 0.8,
+      "source": "RAGFlow GitHub benchmarks (DeepDoc + hybrid retrieval)"
+    }
+  }
+}

@@ -63,10 +63,24 @@ DEFAULT_CONFIG = {
     },
     "embeddings": {
         "mode": "local",
-        "model": "sentence-transformers/all-MiniLM-L6-v2",
-        "dimension": 384,
+        "model": "Qwen/Qwen3-Embedding-8B",
+        "model_backend": "modelscope",
+        "dimension": 4096,
         "backend": "faiss",
+        "device": "auto",
+        "batch_size": 16,
         "cache_path": "graph/embeddings.json",
+    },
+    "reranker": {
+        "enabled": True,
+        "backend": "flagembedding",
+        "model": "BAAI/bge-reranker-v2-m3",
+        "model_backend": "modelscope",
+        "cache_dir": "~/.cache/modelscope",
+        "max_pairs": 256,
+        "default_top_k": 5,
+        "use_fp16": True,
+        "batch_size": 8,
     },
     "query": {
         "llm_synthesis": True,
@@ -338,6 +352,34 @@ def get_query_config() -> dict:
     """Get query configuration."""
     config = get_config()
     return config.get("query", DEFAULT_CONFIG["query"])
+
+
+def get_reranker_config() -> dict:
+    """Get reranker configuration with resolved paths."""
+    config = get_config()
+    reranker = config.get("reranker", DEFAULT_CONFIG["reranker"])
+
+    cache_dir = os.path.expanduser(reranker.get("cache_dir", "~/.cache/modelscope"))
+    model_name = reranker.get("model", "")
+
+    # Resolve model path: modelscope format uses cache_dir/model_name
+    if reranker.get("model_backend") == "modelscope" or "/" in model_name:
+        model_path = os.path.join(cache_dir, model_name)
+    else:
+        model_path = model_name
+
+    return {
+        "enabled": reranker.get("enabled", True),
+        "backend": reranker.get("backend", "mlx"),
+        "model": model_name,
+        "model_backend": reranker.get("model_backend", "modelscope"),
+        "model_path": os.path.expanduser(model_path),
+        "cache_dir": os.path.expanduser(cache_dir),
+        "max_pairs": reranker.get("max_pairs", 256),
+        "default_top_k": reranker.get("default_top_k", 5),
+        "use_fp16": reranker.get("use_fp16", True),
+        "batch_size": reranker.get("batch_size", 8),
+    }
 
 
 def get_ocr_config() -> dict:

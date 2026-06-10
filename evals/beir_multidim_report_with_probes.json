@@ -1,0 +1,534 @@
+{
+  "verdict": "Qwen 8B page-vector retrieval is currently the strongest tested path. Hybrid bm25,vector underperforms pure vector on the compiled subset, so fusion weighting should be treated as an optimization target. Coverage is materially better than the earlier 4-query run but remains a subset evaluation.",
+  "coverage": {
+    "dataset": "scifact",
+    "corpus_docs": 5183,
+    "queries_total": 1109,
+    "qrels_queries_total": 300,
+    "qrels_relevances_total": 339,
+    "unique_relevant_docs": 283,
+    "compiled_mapped_pages": 1779,
+    "compiled_unique_docs": 146,
+    "compiled_doc_coverage_pct": 2.82,
+    "covered_qrels_queries": 61,
+    "covered_qrels_query_pct": 20.33,
+    "covered_relevances": 74,
+    "covered_relevant_doc_pct": 19.43
+  },
+  "compiled_wiki_quality": {
+    "page_files": 1830,
+    "page_types": {
+      "concept": 991,
+      "entity": 637,
+      "technique": 152,
+      "process": 14,
+      "model": 8,
+      "protein": 5,
+      "event": 4,
+      "tool": 3,
+      "signaling-pathway": 3,
+      "biological-process": 2,
+      "instrument": 2,
+      "role": 2,
+      "framework": 1,
+      "protein-complex": 1,
+      "molecule-class": 1,
+      "disease": 1,
+      "study": 1,
+      "cell-type": 1
+    },
+    "page_dirs": {
+      "concepts": 1152,
+      "entities": 677
+    },
+    "pages_with_source": 1829,
+    "pages_with_source_pct": 100.0,
+    "frontmatter_parse_failures": 0,
+    "page_length_chars": {
+      "mean": 1305.6,
+      "p50": 1282,
+      "p95": 1744
+    },
+    "sources_total": 152,
+    "pages_per_mapped_doc": {
+      "mean": 12.18,
+      "p50": 12,
+      "p95": 16,
+      "max": 22
+    },
+    "audit_entries": 146,
+    "audit_entries_with_contradictions": 9,
+    "contradictions_total": 20
+  },
+  "index_health": {
+    "page_files": 1829,
+    "page_embedding": {
+      "exists": true,
+      "items": 1797,
+      "model": "Qwen/Qwen3-Embedding-8B",
+      "dimension": 4096,
+      "mode": "local",
+      "coverage_pct": 98.25
+    },
+    "chunk_embedding": {
+      "exists": false,
+      "items": 0
+    },
+    "bm25_cache_exists": true,
+    "chunk_bm25_cache_exists": true,
+    "metadata_cache_exists": true
+  },
+  "retrieval_effectiveness": {
+    "llm_wiki_vector": {
+      "queries": 61,
+      "NDCG@10": 0.955,
+      "Recall@10": 1.0,
+      "MRR@10": 0.9399,
+      "Precision@10": 0.1213,
+      "eval_time_sec": 196.2,
+      "mapped_docs": 146,
+      "wiki_pages": 1779,
+      "coverage_mode": "compiled-docs-only"
+    },
+    "llm_wiki_bm25": {
+      "queries": 61,
+      "NDCG@10": 0.8866,
+      "Recall@10": 0.932,
+      "MRR@10": 0.8844,
+      "Precision@10": 0.1082,
+      "eval_time_sec": 2.3,
+      "mapped_docs": 146,
+      "wiki_pages": 1779,
+      "coverage_mode": "compiled-docs-only"
+    },
+    "llm_wiki_bm25_vector": {
+      "queries": 61,
+      "NDCG@10": 0.8834,
+      "Recall@10": 0.9279,
+      "MRR@10": 0.8844,
+      "Precision@10": 0.1066,
+      "eval_time_sec": 199.0,
+      "mapped_docs": 146,
+      "wiki_pages": 1779,
+      "coverage_mode": "compiled-docs-only"
+    },
+    "original_bm25_subset": {
+      "queries": 61,
+      "NDCG@10": 0.9139,
+      "Recall@10": 0.9672,
+      "MRR@10": 0.8972,
+      "Precision@10": 0.118,
+      "eval_time_sec": 0.0
+    },
+    "original_bm25_compiled_subset_recomputed": {
+      "queries": 61,
+      "NDCG@10": 0.9139,
+      "Recall@10": 0.9672,
+      "MRR@10": 0.8972,
+      "Precision@10": 0.118,
+      "eval_time_sec": 0.0098
+    }
+  },
+  "probes": {
+    "vector": {
+      "streams": "vector",
+      "sample": 20,
+      "latency": {
+        "count": 20,
+        "mean_sec": 3.3421,
+        "p50_sec": 3.1448,
+        "p95_sec": 3.2646,
+        "max_sec": 6.8967
+      },
+      "effectiveness_sample": {
+        "NDCG@10": 0.9281,
+        "Recall@10": 1.0,
+        "MRR@10": 0.9042
+      },
+      "details": [
+        {
+          "qid": "1",
+          "latency_sec": 6.8967,
+          "NDCG@10": 0.5,
+          "Recall@10": 1.0,
+          "MRR@10": 0.3333,
+          "top_doc": "6076903"
+        },
+        {
+          "qid": "3",
+          "latency_sec": 3.1611,
+          "NDCG@10": 0.6309,
+          "Recall@10": 1.0,
+          "MRR@10": 0.5,
+          "top_doc": "4414547"
+        },
+        {
+          "qid": "5",
+          "latency_sec": 3.1684,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "13734012"
+        },
+        {
+          "qid": "13",
+          "latency_sec": 3.1324,
+          "NDCG@10": 0.4307,
+          "Recall@10": 1.0,
+          "MRR@10": 0.25,
+          "top_doc": "23557241"
+        },
+        {
+          "qid": "36",
+          "latency_sec": 3.2393,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "11705328"
+        },
+        {
+          "qid": "42",
+          "latency_sec": 3.2646,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "18174210"
+        },
+        {
+          "qid": "48",
+          "latency_sec": 3.1617,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "13734012"
+        },
+        {
+          "qid": "49",
+          "latency_sec": 3.143,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "5953485"
+        },
+        {
+          "qid": "50",
+          "latency_sec": 3.1321,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "12580014"
+        },
+        {
+          "qid": "51",
+          "latency_sec": 3.1343,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "45638119"
+        },
+        {
+          "qid": "53",
+          "latency_sec": 3.1328,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "45638119"
+        },
+        {
+          "qid": "54",
+          "latency_sec": 3.1435,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "49556906"
+        },
+        {
+          "qid": "56",
+          "latency_sec": 3.145,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "4709641"
+        },
+        {
+          "qid": "57",
+          "latency_sec": 3.1567,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "4709641"
+        },
+        {
+          "qid": "70",
+          "latency_sec": 3.1283,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "4414547"
+        },
+        {
+          "qid": "72",
+          "latency_sec": 3.1409,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "6076903"
+        },
+        {
+          "qid": "75",
+          "latency_sec": 3.1391,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "4387784"
+        },
+        {
+          "qid": "94",
+          "latency_sec": 3.1448,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "1215116"
+        },
+        {
+          "qid": "99",
+          "latency_sec": 3.1316,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "18810195"
+        },
+        {
+          "qid": "100",
+          "latency_sec": 3.1467,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "4381486"
+        }
+      ],
+      "robustness": {
+        "original": {
+          "Recall@10": 1.0,
+          "MRR@10": 0.9042,
+          "top1_stability": 1.0
+        },
+        "lowercase": {
+          "Recall@10": 1.0,
+          "MRR@10": 0.9042,
+          "top1_stability": 1.0
+        },
+        "no_punctuation": {
+          "Recall@10": 1.0,
+          "MRR@10": 0.9042,
+          "top1_stability": 0.95
+        },
+        "truncated_65pct": {
+          "Recall@10": 0.9,
+          "MRR@10": 0.6392,
+          "top1_stability": 0.65
+        }
+      }
+    },
+    "bm25": {
+      "streams": "bm25",
+      "sample": 20,
+      "latency": {
+        "count": 20,
+        "mean_sec": 0.0535,
+        "p50_sec": 0.0254,
+        "p95_sec": 0.0398,
+        "max_sec": 0.5214
+      },
+      "effectiveness_sample": {
+        "NDCG@10": 0.8775,
+        "Recall@10": 0.9,
+        "MRR@10": 0.875
+      },
+      "details": [
+        {
+          "qid": "1",
+          "latency_sec": 0.5214,
+          "NDCG@10": 0.0,
+          "Recall@10": 0.0,
+          "MRR@10": 0.0,
+          "top_doc": "4983"
+        },
+        {
+          "qid": "3",
+          "latency_sec": 0.0273,
+          "NDCG@10": 0.6309,
+          "Recall@10": 1.0,
+          "MRR@10": 0.5,
+          "top_doc": "4414547"
+        },
+        {
+          "qid": "5",
+          "latency_sec": 0.0235,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "13734012"
+        },
+        {
+          "qid": "13",
+          "latency_sec": 0.0249,
+          "NDCG@10": 0.0,
+          "Recall@10": 0.0,
+          "MRR@10": 0.0,
+          "top_doc": "456304"
+        },
+        {
+          "qid": "36",
+          "latency_sec": 0.0249,
+          "NDCG@10": 0.9197,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "11705328"
+        },
+        {
+          "qid": "42",
+          "latency_sec": 0.0378,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "18174210"
+        },
+        {
+          "qid": "48",
+          "latency_sec": 0.0268,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "13734012"
+        },
+        {
+          "qid": "49",
+          "latency_sec": 0.0357,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "5953485"
+        },
+        {
+          "qid": "50",
+          "latency_sec": 0.0246,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "12580014"
+        },
+        {
+          "qid": "51",
+          "latency_sec": 0.0242,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "45638119"
+        },
+        {
+          "qid": "53",
+          "latency_sec": 0.0248,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "45638119"
+        },
+        {
+          "qid": "54",
+          "latency_sec": 0.0384,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "49556906"
+        },
+        {
+          "qid": "56",
+          "latency_sec": 0.0398,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "4709641"
+        },
+        {
+          "qid": "57",
+          "latency_sec": 0.0386,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "4709641"
+        },
+        {
+          "qid": "70",
+          "latency_sec": 0.0236,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "5956380"
+        },
+        {
+          "qid": "72",
+          "latency_sec": 0.0351,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "6076903"
+        },
+        {
+          "qid": "75",
+          "latency_sec": 0.0254,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "4387784"
+        },
+        {
+          "qid": "94",
+          "latency_sec": 0.0236,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "1215116"
+        },
+        {
+          "qid": "99",
+          "latency_sec": 0.0242,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "18810195"
+        },
+        {
+          "qid": "100",
+          "latency_sec": 0.0254,
+          "NDCG@10": 1.0,
+          "Recall@10": 1.0,
+          "MRR@10": 1.0,
+          "top_doc": "4381486"
+        }
+      ],
+      "robustness": {
+        "original": {
+          "Recall@10": 0.9,
+          "MRR@10": 0.875,
+          "top1_stability": 1.0
+        },
+        "lowercase": {
+          "Recall@10": 0.9,
+          "MRR@10": 0.875,
+          "top1_stability": 1.0
+        },
+        "no_punctuation": {
+          "Recall@10": 0.9,
+          "MRR@10": 0.875,
+          "top1_stability": 1.0
+        },
+        "truncated_65pct": {
+          "Recall@10": 0.7,
+          "MRR@10": 0.5392,
+          "top1_stability": 0.55
+        }
+      }
+    }
+  }
+}

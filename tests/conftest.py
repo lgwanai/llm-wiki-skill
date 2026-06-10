@@ -14,6 +14,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
 @pytest.fixture
 def wiki_dir():
+    import config
+    config.reset_config()
     tmp = tempfile.mkdtemp()
     wiki = Path(tmp) / ".wiki"
     wiki.mkdir()

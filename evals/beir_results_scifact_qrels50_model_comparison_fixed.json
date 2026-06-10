@@ -1,0 +1,102 @@
+{
+  "dataset": "SciFact compiled subset qrels50",
+  "coverage": "61/300 qrels queries, 146 mapped BEIR docs",
+  "rows": [
+    {
+      "model": "Qwen3-8B",
+      "streams": "vector",
+      "queries": 61,
+      "NDCG@10": 0.955,
+      "Recall@10": 1.0,
+      "MRR@10": 0.9399,
+      "eval_time_sec": 196.2,
+      "embedding_model": "Qwen/Qwen3-Embedding-8B",
+      "index_time_sec": 3.9,
+      "result_file": "evals/beir_results_compiled_cache_scifact_qwen8b_qrels50_vectorstream.json"
+    },
+    {
+      "model": "Qwen3-8B",
+      "streams": "bm25,vector fixed",
+      "queries": 61,
+      "NDCG@10": 0.9543,
+      "Recall@10": 1.0,
+      "MRR@10": 0.9391,
+      "eval_time_sec": 176.2,
+      "embedding_model": "Qwen/Qwen3-Embedding-8B",
+      "index_time_sec": 3.9,
+      "result_file": "evals/beir_results_scifact_qrels50_qwen3_8b_bm25_vector_hybrid_fixed.json"
+    },
+    {
+      "model": "Qwen3-0.6B",
+      "streams": "vector",
+      "queries": 61,
+      "NDCG@10": 0.9243,
+      "Recall@10": 0.9803,
+      "MRR@10": 0.9071,
+      "eval_time_sec": 43.1,
+      "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+      "index_time_sec": 1.0,
+      "result_file": "evals/beir_results_scifact_qrels50_qwen3_0.6b_vector.json"
+    },
+    {
+      "model": "Qwen3-0.6B",
+      "streams": "bm25,vector fixed",
+      "queries": 61,
+      "NDCG@10": 0.933,
+      "Recall@10": 0.9803,
+      "MRR@10": 0.9186,
+      "eval_time_sec": 51.4,
+      "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+      "index_time_sec": 1.0,
+      "result_file": "evals/beir_results_scifact_qrels50_qwen3_0.6b_bm25_vector_hybrid_fixed.json"
+    },
+    {
+      "model": "Jina-v5-small-MLX",
+      "streams": "vector",
+      "queries": 61,
+      "NDCG@10": 0.942,
+      "Recall@10": 0.9934,
+      "MRR@10": 0.929,
+      "eval_time_sec": 27.6,
+      "embedding_model": "jinaai/jina-embeddings-v5-text-small-retrieval-mlx",
+      "index_time_sec": 0.7,
+      "result_file": "evals/beir_results_scifact_qrels50_jina_v5_small_mlx_vector.json"
+    },
+    {
+      "model": "Jina-v5-small-MLX",
+      "streams": "bm25,vector fixed",
+      "queries": 61,
+      "NDCG@10": 0.9504,
+      "Recall@10": 0.9934,
+      "MRR@10": 0.9399,
+      "eval_time_sec": 31.4,
+      "embedding_model": "jinaai/jina-embeddings-v5-text-small-retrieval-mlx",
+      "index_time_sec": 0.7,
+      "result_file": "evals/beir_results_scifact_qrels50_jina_v5_small_mlx_bm25_vector_hybrid_fixed.json"
+    },
+    {
+      "model": "llm-wiki BM25",
+      "streams": "bm25",
+      "queries": 61,
+      "NDCG@10": 0.8866,
+      "Recall@10": 0.932,
+      "MRR@10": 0.8844,
+      "eval_time_sec": 2.3,
+      "embedding_model": "Qwen/Qwen3-Embedding-8B",
+      "index_time_sec": null,
+      "result_file": "evals/beir_results_compiled_cache_scifact_qwen8b_qrels50_bm25stream.json"
+    },
+    {
+      "model": "Original docs BM25",
+      "streams": "bm25",
+      "queries": 61,
+      "NDCG@10": 0.9139,
+      "Recall@10": 0.9672,
+      "MRR@10": 0.8972,
+      "eval_time_sec": 0.0,
+      "embedding_model": "n/a",
+      "index_time_sec": null,
+      "result_file": "evals/beir_results_scifact_qrels50_bm25_subset.json"
+    }
+  ]
+}

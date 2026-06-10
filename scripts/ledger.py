@@ -986,9 +986,9 @@ def cmd_embed(table: str | None = None) -> dict:
     conn = _get_conn()
 
     try:
-        from _ollama import get_embedding
+        from generate_embeddings import get_embedding
     except ImportError:
-        return {"success": False, "error": "Ollama embedding module not available."}
+        return {"success": False, "error": "Embedding module not available. Install sentence-transformers."}
 
     if table:
         actual = _resolve_table(table, conn)

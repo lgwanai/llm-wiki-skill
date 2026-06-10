@@ -1,0 +1,79 @@
+[
+  {
+    "dataset": "SciFact",
+    "dataset_key": "scifact",
+    "corpus_size": 100,
+    "queries_total": 1109,
+    "queries_evaluated": 4,
+    "qrels_total": 4,
+    "load_time_sec": 0.0,
+    "pipeline_mode": "compile_v2 → embed → search",
+    "methods": [
+      {
+        "method": "llm-wiki",
+        "queries_evaluated": 4,
+        "NDCG@1": 0.75,
+        "Recall@1": 0.75,
+        "MRR@1": 0.75,
+        "Precision@1": 0.75,
+        "NDCG@5": 0.9077,
+        "Recall@5": 1.0,
+        "MRR@5": 0.875,
+        "Precision@5": 0.2,
+        "NDCG@10": 0.9077,
+        "Recall@10": 1.0,
+        "MRR@10": 0.875,
+        "Precision@10": 0.1,
+        "eval_time_sec": 8.3
+      }
+    ],
+    "baselines": {
+      "BM25 (BEIR)": {
+        "NDCG@10": 0.665,
+        "Recall@10": 0.907,
+        "MRR@10": 0.587
+      },
+      "Dense-BGE-base": {
+        "NDCG@10": 0.725,
+        "Recall@10": 0.94,
+        "MRR@10": 0.645
+      },
+      "Dense-BGE-large": {
+        "NDCG@10": 0.74,
+        "Recall@10": 0.948,
+        "MRR@10": 0.66
+      },
+      "Hybrid (BM25+BGE)": {
+        "NDCG@10": 0.74,
+        "Recall@10": 0.95,
+        "MRR@10": 0.665
+      },
+      "SOTA (MTEB best)": {
+        "NDCG@10": 0.77,
+        "Recall@10": 0.958,
+        "MRR@10": 0.698
+      }
+    },
+    "llm_wiki_dir": "/Users/wuliang/workspace/llm-wiki-skill/evals/beir_wiki/scifact/.wiki",
+    "llm_wiki_compile": {
+      "mode": "compile_v2",
+      "corpus_docs": 100,
+      "wiki_pages": 1170,
+      "streams": "metadata,chunk,bm25,vector,graph",
+      "embedding_mode": "local",
+      "embedding_model": "Qwen/Qwen3-Embedding-8B",
+      "compile_time_sec": 3230.7
+    },
+    "llm_wiki_vector_indexes": {
+      "pages": {
+        "status": "ok",
+        "total_pages": 1197,
+        "generated": 1197,
+        "skipped": 0,
+        "failed": 0,
+        "total_embeddings": 1186,
+        "time_sec": 738.3
+      }
+    }
+  }
+]

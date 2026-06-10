@@ -1,0 +1,209 @@
+{
+  "benchmark": "private_kb_retrieval",
+  "pipeline_mode": "materialized-wiki -> search",
+  "wiki_dir": "evals/private_kb/.wiki",
+  "streams": "metadata,chunk,bm25",
+  "k": 5,
+  "cases": 6,
+  "summary": {
+    "hit_at_k": 1.0,
+    "recall_at_k": 1.0,
+    "mrr_at_k": 1.0,
+    "must_contain_coverage": 1.0,
+    "permission_leak_rate": 0.0,
+    "forbidden_hit_rate": 0.0
+  },
+  "by_scenario": {
+    "long_document": {
+      "cases": 1,
+      "hit_at_k": 1.0,
+      "recall_at_k": 1.0,
+      "mrr_at_k": 1.0,
+      "must_contain_coverage": 1.0,
+      "permission_leak_rate": 0.0,
+      "forbidden_hit_rate": 0.0
+    },
+    "table": {
+      "cases": 1,
+      "hit_at_k": 1.0,
+      "recall_at_k": 1.0,
+      "mrr_at_k": 1.0,
+      "must_contain_coverage": 1.0,
+      "permission_leak_rate": 0.0,
+      "forbidden_hit_rate": 0.0
+    },
+    "chinese": {
+      "cases": 1,
+      "hit_at_k": 1.0,
+      "recall_at_k": 1.0,
+      "mrr_at_k": 1.0,
+      "must_contain_coverage": 1.0,
+      "permission_leak_rate": 0.0,
+      "forbidden_hit_rate": 0.0
+    },
+    "permission_filter": {
+      "cases": 1,
+      "hit_at_k": 1.0,
+      "recall_at_k": 1.0,
+      "mrr_at_k": 1.0,
+      "must_contain_coverage": 1.0,
+      "permission_leak_rate": 0.0,
+      "forbidden_hit_rate": 0.0
+    },
+    "temporal": {
+      "cases": 1,
+      "hit_at_k": 1.0,
+      "recall_at_k": 1.0,
+      "mrr_at_k": 1.0,
+      "must_contain_coverage": 1.0,
+      "permission_leak_rate": 0.0,
+      "forbidden_hit_rate": 0.0
+    },
+    "qa_citation": {
+      "cases": 1,
+      "hit_at_k": 1.0,
+      "recall_at_k": 1.0,
+      "mrr_at_k": 1.0,
+      "must_contain_coverage": 1.0,
+      "permission_leak_rate": 0.0,
+      "forbidden_hit_rate": 0.0
+    }
+  },
+  "details": [
+    {
+      "case_id": "long-document-section",
+      "scenario": "long_document",
+      "query": "Which recovery marker controls retry backoff in the Q4 incident runbook?",
+      "expected_pages": [
+        "q4-incident-runbook"
+      ],
+      "forbidden_pages": [],
+      "retrieved": [
+        "q4-incident-runbook",
+        "mercury-public-status",
+        "mercury-confidential-budget",
+        "soc2-evidence-retention",
+        "partner-api-rate-limit-2024"
+      ],
+      "hit_at_k": 1.0,
+      "recall_at_k": 1.0,
+      "mrr_at_k": 1.0,
+      "must_contain_coverage": 1.0,
+      "forbidden_hits": [],
+      "unauthorized_hits": [],
+      "latency_sec": 0.2667
+    },
+    {
+      "case_id": "table-plan-retention",
+      "scenario": "table",
+      "query": "APAC enterprise plan audit log retention days",
+      "expected_pages": [
+        "enterprise-pricing-2026"
+      ],
+      "forbidden_pages": [],
+      "retrieved": [
+        "enterprise-pricing-2026",
+        "soc2-evidence-retention"
+      ],
+      "hit_at_k": 1.0,
+      "recall_at_k": 1.0,
+      "mrr_at_k": 1.0,
+      "must_contain_coverage": 1.0,
+      "forbidden_hits": [],
+      "unauthorized_hits": [],
+      "latency_sec": 0.0013
+    },
+    {
+      "case_id": "chinese-release-owner",
+      "scenario": "chinese",
+      "query": "中文灰度发布谁负责回滚审批",
+      "expected_pages": [
+        "zh-release-policy"
+      ],
+      "forbidden_pages": [],
+      "retrieved": [
+        "zh-release-policy"
+      ],
+      "hit_at_k": 1.0,
+      "recall_at_k": 1.0,
+      "mrr_at_k": 1.0,
+      "must_contain_coverage": 1.0,
+      "forbidden_hits": [],
+      "unauthorized_hits": [],
+      "latency_sec": 0.0007
+    },
+    {
+      "case_id": "permission-public-user",
+      "scenario": "permission_filter",
+      "query": "Mercury launch budget approval",
+      "expected_pages": [
+        "mercury-public-status"
+      ],
+      "forbidden_pages": [
+        "mercury-confidential-budget"
+      ],
+      "retrieved": [
+        "mercury-public-status"
+      ],
+      "hit_at_k": 1.0,
+      "recall_at_k": 1.0,
+      "mrr_at_k": 1.0,
+      "must_contain_coverage": 1.0,
+      "forbidden_hits": [],
+      "unauthorized_hits": [],
+      "latency_sec": 0.0013
+    },
+    {
+      "case_id": "temporal-current-limit",
+      "scenario": "temporal",
+      "query": "current API rate limit as of 2026 for partner ingestion",
+      "expected_pages": [
+        "partner-api-rate-limit-2026"
+      ],
+      "forbidden_pages": [
+        "partner-api-rate-limit-2024"
+      ],
+      "retrieved": [
+        "partner-api-rate-limit-2026",
+        "enterprise-pricing-2026",
+        "mercury-public-status"
+      ],
+      "hit_at_k": 1.0,
+      "recall_at_k": 1.0,
+      "mrr_at_k": 1.0,
+      "must_contain_coverage": 1.0,
+      "forbidden_hits": [],
+      "unauthorized_hits": [],
+      "latency_sec": 0.0014
+    },
+    {
+      "case_id": "qa-citation-source",
+      "scenario": "qa_citation",
+      "query": "What citation supports the SOC2 evidence retention rule?",
+      "expected_pages": [
+        "soc2-evidence-retention"
+      ],
+      "forbidden_pages": [],
+      "retrieved": [
+        "soc2-evidence-retention",
+        "enterprise-pricing-2026",
+        "mercury-public-status",
+        "mercury-confidential-budget",
+        "partner-api-rate-limit-2026"
+      ],
+      "hit_at_k": 1.0,
+      "recall_at_k": 1.0,
+      "mrr_at_k": 1.0,
+      "must_contain_coverage": 1.0,
+      "forbidden_hits": [],
+      "unauthorized_hits": [],
+      "latency_sec": 0.0013
+    }
+  ],
+  "build": {
+    "wiki_dir": "evals/private_kb/.wiki",
+    "pages": 8,
+    "cases": 6,
+    "cases_file": "evals/private_kb/private_kb_eval_cases.jsonl"
+  }
+}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import importlib
 import sys
 from pathlib import Path
 
@@ -96,3 +97,15 @@ def test_write_embedding_index_detects_dict_embedding_dimension(tmp_path, monkey
 
     assert meta["dimension"] == 4
     assert items["chunk-a"]["embedding"] == [1.0, 2.0, 3.0, 4.0]
+
+
+def test_embeddings_file_env_override_is_used(tmp_path, monkeypatch):
+    custom = tmp_path / "custom_embeddings.json"
+    monkeypatch.setenv("EMBEDDINGS_FILE", str(custom))
+
+    reloaded = importlib.reload(generate_embeddings)
+    try:
+        assert reloaded.EMBEDDINGS_FILE == custom
+    finally:
+        monkeypatch.delenv("EMBEDDINGS_FILE", raising=False)
+        importlib.reload(generate_embeddings)

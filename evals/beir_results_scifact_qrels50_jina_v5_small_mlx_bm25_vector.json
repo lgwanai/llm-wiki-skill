@@ -1,0 +1,92 @@
+[
+  {
+    "dataset": "SciFact",
+    "dataset_key": "scifact",
+    "corpus_size": 5183,
+    "queries_total": 1109,
+    "queries_evaluated": 300,
+    "qrels_total": 300,
+    "load_time_sec": 0.0,
+    "pipeline_mode": "compiled-cache → search",
+    "methods": [
+      {
+        "method": "llm-wiki",
+        "queries_evaluated": 61,
+        "qrels_queries_total": 300,
+        "qrels_queries_covered": 61,
+        "coverage_mode": "compiled-docs-only",
+        "NDCG@1": 0.8361,
+        "Recall@1": 0.7738,
+        "MRR@1": 0.8361,
+        "Precision@1": 0.8361,
+        "NDCG@5": 0.8834,
+        "Recall@5": 0.9279,
+        "MRR@5": 0.8844,
+        "Precision@5": 0.2131,
+        "NDCG@10": 0.8834,
+        "Recall@10": 0.9279,
+        "MRR@10": 0.8844,
+        "Precision@10": 0.1066,
+        "eval_time_sec": 29.9
+      }
+    ],
+    "baselines": {
+      "BM25 (BEIR)": {
+        "NDCG@10": 0.665,
+        "Recall@10": 0.907,
+        "MRR@10": 0.587
+      },
+      "Dense-BGE-base": {
+        "NDCG@10": 0.725,
+        "Recall@10": 0.94,
+        "MRR@10": 0.645
+      },
+      "Dense-BGE-large": {
+        "NDCG@10": 0.74,
+        "Recall@10": 0.948,
+        "MRR@10": 0.66
+      },
+      "Hybrid (BM25+BGE)": {
+        "NDCG@10": 0.74,
+        "Recall@10": 0.95,
+        "MRR@10": 0.665
+      },
+      "SOTA (MTEB best)": {
+        "NDCG@10": 0.77,
+        "Recall@10": 0.958,
+        "MRR@10": 0.698
+      }
+    },
+    "llm_wiki_dir": "evals/beir_wiki/scifact/.wiki",
+    "llm_wiki_compile": {
+      "mode": "compiled_cache",
+      "corpus_docs": 5183,
+      "wiki_pages": 1779,
+      "mapped_beir_docs": 146,
+      "qrels_queries_total": 300,
+      "qrels_queries_covered": 61,
+      "qrels_coverage": 0.2033,
+      "streams": "bm25,vector",
+      "embedding_mode": "local",
+      "embedding_model": "jinaai/jina-embeddings-v5-text-small-retrieval-mlx",
+      "compile_time_sec": 0.0,
+      "manifest": {
+        "dataset_key": "scifact",
+        "corpus_size": 100,
+        "corpus_hash": "0145aa556bf83c14",
+        "format": "llm-wiki-beir-v2-compiled"
+      }
+    },
+    "llm_wiki_vector_indexes": {
+      "pages": {
+        "status": "ok",
+        "total_pages": 1829,
+        "generated": 0,
+        "skipped": 1829,
+        "failed": 0,
+        "total_embeddings": 1797,
+        "time_sec": 0.7
+      }
+    }
+  }
+]

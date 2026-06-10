@@ -1,0 +1,186 @@
+{
+  "beir": {
+    "scifact": {
+      "dataset": "scifact",
+      "name": "SciFact",
+      "corpus_docs": 5183,
+      "queries": 1109,
+      "qrels_queries": 300,
+      "qrels_relevances": 339,
+      "cached": true,
+      "compiled_wiki_exists": true,
+      "compiled_manifest": {
+        "dataset_key": "scifact",
+        "corpus_size": 100,
+        "corpus_hash": "0145aa556bf83c14",
+        "format": "llm-wiki-beir-v2-compiled"
+      },
+      "mapped_pages": 1779,
+      "mapped_docs": 146,
+      "covered_qrels_queries": 61,
+      "covered_qrels_query_pct": 20.33,
+      "fair_metric_ready": true
+    },
+    "nfcorpus": {
+      "dataset": "nfcorpus",
+      "name": "NFCorpus",
+      "corpus_docs": 3633,
+      "queries": 3237,
+      "qrels_queries": 323,
+      "qrels_relevances": 12334,
+      "cached": true,
+      "compiled_wiki_exists": false,
+      "compiled_manifest": {},
+      "mapped_pages": 0,
+      "mapped_docs": 0,
+      "covered_qrels_queries": 0,
+      "covered_qrels_query_pct": 0.0,
+      "fair_metric_ready": false
+    },
+    "fiqa": {
+      "dataset": "fiqa",
+      "name": "FiQA-2018",
+      "corpus_docs": 57638,
+      "queries": 6648,
+      "qrels_queries": 648,
+      "qrels_relevances": 1706,
+      "cached": true,
+      "compiled_wiki_exists": false,
+      "compiled_manifest": {},
+      "mapped_pages": 0,
+      "mapped_docs": 0,
+      "covered_qrels_queries": 0,
+      "covered_qrels_query_pct": 0.0,
+      "fair_metric_ready": false
+    }
+  },
+  "beir_subsets": {
+    "scifact": [],
+    "nfcorpus": [
+      {
+        "dataset": "nfcorpus",
+        "subset": "nfcorpus_qrels25",
+        "format": "beir-qrels-centered-direct-wiki",
+        "mapped_pages": 592,
+        "mapped_docs": 592,
+        "covered_qrels_queries": 205,
+        "qrels_queries_total": 323,
+        "covered_qrels_query_pct": 63.47,
+        "ready": true,
+        "path": "/Users/wuliang/workspace/llm-wiki-skill/evals/beir_wiki/nfcorpus_qrels25/.wiki"
+      }
+    ],
+    "fiqa": [
+      {
+        "dataset": "fiqa",
+        "subset": "fiqa_qrels100",
+        "format": "beir-qrels-centered-direct-wiki",
+        "mapped_pages": 226,
+        "mapped_docs": 226,
+        "covered_qrels_queries": 100,
+        "qrels_queries_total": 648,
+        "covered_qrels_query_pct": 15.43,
+        "ready": true,
+        "path": "/Users/wuliang/workspace/llm-wiki-skill/evals/beir_wiki/fiqa_qrels100/.wiki"
+      }
+    ]
+  },
+  "private_scenarios": {
+    "long_document": {
+      "description": "Long document retrieval and section-local recall",
+      "files": [
+        "/Users/wuliang/workspace/llm-wiki-skill/evals/private_kb_benchmark.json"
+      ],
+      "metrics": {
+        "cases": 1,
+        "hit_at_k": 1.0,
+        "recall_at_k": 1.0,
+        "mrr_at_k": 1.0,
+        "must_contain_coverage": 1.0,
+        "permission_leak_rate": 0.0,
+        "forbidden_hit_rate": 0.0
+      },
+      "ready": true
+    },
+    "table": {
+      "description": "Structured table/ledger retrieval",
+      "files": [
+        "/Users/wuliang/workspace/llm-wiki-skill/evals/private_kb_benchmark.json"
+      ],
+      "metrics": {
+        "cases": 1,
+        "hit_at_k": 1.0,
+        "recall_at_k": 1.0,
+        "mrr_at_k": 1.0,
+        "must_contain_coverage": 1.0,
+        "permission_leak_rate": 0.0,
+        "forbidden_hit_rate": 0.0
+      },
+      "ready": true
+    },
+    "chinese": {
+      "description": "Chinese tokenization and semantic retrieval",
+      "files": [
+        "/Users/wuliang/workspace/llm-wiki-skill/evals/private_kb_benchmark.json"
+      ],
+      "metrics": {
+        "cases": 1,
+        "hit_at_k": 1.0,
+        "recall_at_k": 1.0,
+        "mrr_at_k": 1.0,
+        "must_contain_coverage": 1.0,
+        "permission_leak_rate": 0.0,
+        "forbidden_hit_rate": 0.0
+      },
+      "ready": true
+    },
+    "permission_filter": {
+      "description": "Access-control filtered retrieval",
+      "files": [
+        "/Users/wuliang/workspace/llm-wiki-skill/evals/private_kb_benchmark.json"
+      ],
+      "metrics": {
+        "cases": 1,
+        "hit_at_k": 1.0,
+        "recall_at_k": 1.0,
+        "mrr_at_k": 1.0,
+        "must_contain_coverage": 1.0,
+        "permission_leak_rate": 0.0,
+        "forbidden_hit_rate": 0.0
+      },
+      "ready": true
+    },
+    "temporal": {
+      "description": "Time-sensitive knowledge and stale claim handling",
+      "files": [
+        "/Users/wuliang/workspace/llm-wiki-skill/evals/private_kb_benchmark.json"
+      ],
+      "metrics": {
+        "cases": 1,
+        "hit_at_k": 1.0,
+        "recall_at_k": 1.0,
+        "mrr_at_k": 1.0,
+        "must_contain_coverage": 1.0,
+        "permission_leak_rate": 0.0,
+        "forbidden_hit_rate": 0.0
+      },
+      "ready": true
+    },
+    "qa_citation": {
+      "description": "Answer citation accuracy and faithfulness",
+      "files": [
+        "/Users/wuliang/workspace/llm-wiki-skill/evals/private_kb_benchmark.json"
+      ],
+      "metrics": {
+        "cases": 1,
+        "hit_at_k": 1.0,
+        "recall_at_k": 1.0,
+        "mrr_at_k": 1.0,
+        "must_contain_coverage": 1.0,
+        "permission_leak_rate": 0.0,
+        "forbidden_hit_rate": 0.0
+      },
+      "ready": true
+    }
+  }
+}

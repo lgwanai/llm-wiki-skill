@@ -74,16 +74,11 @@ The auth service depends on Redis for token storage.
                 result = ingest.compile_source(str(src))
             assert result["pages_created"] > 0
 
-            with patch("lint.WIKI_DIR", str(Path(wiki_dir) / ".wiki")), \
-                 patch("lint.PAGES_DIR", str(Path(wiki_dir) / ".wiki" / "pages")), \
-                 patch("lint.GRAPH_DIR", str(Path(wiki_dir) / ".wiki" / "graph")), \
-                 patch("lint.ENTITIES_FILE", str(Path(wiki_dir) / ".wiki" / "graph" / "entities.json")), \
-                 patch("lint.EDGES_FILE", str(Path(wiki_dir) / ".wiki" / "graph" / "edges.json")):
-
-                lint_module.find_orphans()
-                lint_module.find_stale_claims()
-                lint_module.find_broken_links()
-                lint_module.find_contradictions()
+            # Lazy path resolution in lint picks up LLM_WIKI_DIR + reset_config from fixture.
+            lint_module.find_orphans()
+            lint_module.find_stale_claims()
+            lint_module.find_broken_links()
+            lint_module.find_contradictions()
         finally:
             os.chdir(old_cwd)
 
@@ -147,8 +142,8 @@ class TestConsolidationAfterIngest:
 
                 ingest.compile_source(str(src))
 
-            with patch("consolidate.WIKI_DIR", str(Path(wiki_dir) / ".wiki")):
-                consolidate.promote_working_to_episodic()
-                consolidate.apply_retention_decay()
+            # Lazy path resolution in consolidate picks up LLM_WIKI_DIR + reset_config from fixture.
+            consolidate.promote_working_to_episodic()
+            consolidate.apply_retention_decay()
         finally:
             os.chdir(old)

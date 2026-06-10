@@ -25,6 +25,18 @@ model:
   # api_url: http://localhost:8000/v1/chat/completions
   # api_key: ${LLM_API_KEY}
 
+# Reranker for precise relevance scoring in search results.
+# backend:
+#   flagembedding  — Cross-encoder via FlagEmbedding (BGE/Qwen3-Reranker, PyTorch)
+#   mlx            — Apple Silicon embedding model (bi-encoder, lower accuracy)
+#                     NOTE: MLX models are missing lm_head; they work as bi-encoders
+#                     and are NOT recommended as the primary reranker.
+#   auto           — Auto-detect
+reranker:
+  enabled: false                          # enable when model is available
+  backend: flagembedding                  # flagembedding | mlx | auto
+  model: Qwen/Qwen3-Reranker-0.6B        # 0.6B cross-encoder (or 8B for MLX)
+
 query:
   llm_synthesis: true
   default_format: markdown
@@ -66,10 +78,17 @@ image_analysis:
 
 embeddings:
   mode: local
-  model: sentence-transformers/all-MiniLM-L6-v2
-  dimension: 384
+  model: Qwen/Qwen3-Embedding-8B
+  model_backend: modelscope       # modelscope | huggingface
+  dimension: 4096                  # auto-detected from model
   backend: faiss
+  device: auto                     # auto | mps | cuda | cpu
+  batch_size: 16
   cache_path: graph/embeddings.json
+  # API mode (set mode: api):
+  # api_url: http://localhost:12345/v1/embeddings
+  # api_key: ""
+  # api_model: text-embedding-3-small
 
 quality:
   auto_heal: true

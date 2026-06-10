@@ -13,12 +13,22 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from config import get_wiki_dir
 
-WIKI_DIR = get_wiki_dir()
-MEMORY_DIR = WIKI_DIR / "memory"
 
-WORKING_FILE = os.path.join(MEMORY_DIR, "working.json")
-EPISODIC_FILE = os.path.join(MEMORY_DIR, "episodic.json")
-SEMANTIC_FILE = os.path.join(MEMORY_DIR, "semantic.json")
+def _get_memory_path(filename: str) -> str:
+    """Resolve a memory file path lazily — at call time, not import time."""
+    return os.path.join(get_wiki_dir() / "memory", filename)
+
+
+def _get_working_file() -> str:
+    return _get_memory_path("working.json")
+
+
+def _get_episodic_file() -> str:
+    return _get_memory_path("episodic.json")
+
+
+def _get_semantic_file() -> str:
+    return _get_memory_path("semantic.json")
 
 DECAY_S_VALUES = {
     "architecture": 260,
@@ -87,7 +97,7 @@ def on_memory_write(fact: dict) -> list[dict]:
 
 def promote_working_to_episodic() -> int:
     """Group >= 5 working memory observations into episode summaries."""
-    observations = _load_json(WORKING_FILE)
+    observations = _load_json(_get_working_file())
     if len(observations) < 5:
         return 0
 
@@ -99,7 +109,7 @@ def promote_working_to_episodic() -> int:
         groups.setdefault(date_key, []).append(obs)
 
     promoted = 0
-    episodes = _load_json(EPISODIC_FILE)
+    episodes = _load_json(_get_episodic_file())
     remaining: list = []
 
     for date_key, group in groups.items():
@@ -119,14 +129,14 @@ def promote_working_to_episodic() -> int:
         else:
             remaining.extend(group)
 
-    _save_json(WORKING_FILE, remaining)
-    _save_json(EPISODIC_FILE, episodes)
+    _save_json(_get_working_file(), remaining)
+    _save_json(_get_episodic_file(), episodes)
     return promoted
 
 
 def promote_episodic_to_semantic() -> int:
     """Cross-reference episodes, promote facts appearing in >= 2 episodes."""
-    episodes = _load_json(EPISODIC_FILE)
+    episodes = _load_json(_get_episodic_file())
     if len(episodes) < 2:
         return 0
 
@@ -152,7 +162,7 @@ def promote_episodic_to_semantic() -> int:
             fact_map[key]['confidence'] = min(1.0, 0.5 + fact_map[key]['reinforcements'] * 0.1)
 
     # Promote facts appearing in >= 2 episodes
-    semantic = _load_json(SEMANTIC_FILE)
+    semantic = _load_json(_get_semantic_file())
     promoted = 0
     new_episodes: list = []
 
@@ -174,14 +184,14 @@ def promote_episodic_to_semantic() -> int:
                 promoted += 1
                 on_memory_write(fact)
 
-    _save_json(EPISODIC_FILE, new_episodes)
-    _save_json(SEMANTIC_FILE, semantic)
+    _save_json(_get_episodic_file(), new_episodes)
+    _save_json(_get_semantic_file(), semantic)
     return promoted
 
 
 def detect_procedural_patterns() -> list[dict]:
     """Cluster semantic facts to find patterns recurring >= 5 times."""
-    semantic = _load_json(SEMANTIC_FILE)
+    semantic = _load_json(_get_semantic_file())
     if len(semantic) < 5:
         return []
 
@@ -212,7 +222,7 @@ def detect_procedural_patterns() -> list[dict]:
 
 def apply_retention_decay() -> dict:
     """Apply Ebbinghaus decay to semantic facts. Archive deeply decayed ones."""
-    semantic = _load_json(SEMANTIC_FILE)
+    semantic = _load_json(_get_semantic_file())
     if not semantic:
         return {'decayed': 0, 'archived': 0, 'deprioritized': 0}
 
@@ -259,11 +269,11 @@ def apply_retention_decay() -> dict:
         active.append(fact)
         decayed_count += 1
 
-    existing_archived = _load_json(SEMANTIC_FILE + '.archived')
+    existing_archived = _load_json(_get_semantic_file() + '.archived')
     if isinstance(existing_archived, dict):
         existing_archived = []
-    _save_json(SEMANTIC_FILE, active)
-    _save_json(SEMANTIC_FILE + '.archived', existing_archived + archived)
+    _save_json(_get_semantic_file(), active)
+    _save_json(_get_semantic_file() + '.archived', existing_archived + archived)
     return {'decayed': decayed_count, 'archived': archived_count, 'deprioritized': deprioritized_count}
 
 

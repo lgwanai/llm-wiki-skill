@@ -14,11 +14,18 @@ from datetime import datetime, timezone
 sys.path.insert(0, str(Path(__file__).parent))
 from config import get_wiki_dir
 
-WIKI_DIR = get_wiki_dir()
-PAGES_DIR = WIKI_DIR / "pages"
-GRAPH_DIR = WIKI_DIR / "graph"
-ENTITIES_FILE = os.path.join(GRAPH_DIR, "entities.json")
-EDGES_FILE = os.path.join(GRAPH_DIR, "edges.json")
+
+def _get_pages_dir() -> Path:
+    """Resolve pages directory lazily — at call time, not import time."""
+    return get_wiki_dir() / "pages"
+
+
+def _get_entities_file() -> str:
+    return os.path.join(get_wiki_dir() / "graph", "entities.json")
+
+
+def _get_edges_file() -> str:
+    return os.path.join(get_wiki_dir() / "graph", "edges.json")
 
 
 def _load_json(path: str) -> dict | list:
@@ -58,8 +65,8 @@ def _days_since(iso_str: str) -> int:
 
 def find_orphans() -> list[dict]:
     """Find entity pages with no incoming edges in the graph."""
-    entities_data = _load_json(ENTITIES_FILE)
-    edges_data = _load_json(EDGES_FILE)
+    entities_data = _load_json(_get_entities_file())
+    edges_data = _load_json(_get_edges_file())
     all_edges = edges_data.get('edges', []) if isinstance(edges_data, dict) else []
 
     if not isinstance(entities_data, dict):
@@ -84,7 +91,7 @@ def find_orphans() -> list[dict]:
 
 def find_stale_claims() -> list[dict]:
     """Find claims past their retention threshold based on last_confirmed."""
-    entities_data = _load_json(ENTITIES_FILE)
+    entities_data = _load_json(_get_entities_file())
     if not isinstance(entities_data, dict):
         return []
 
@@ -115,12 +122,12 @@ def find_stale_claims() -> list[dict]:
 
 def find_broken_links() -> list[dict]:
     """Find wikilinks pointing to nonexistent pages or entities."""
-    entities_data = _load_json(ENTITIES_FILE)
+    entities_data = _load_json(_get_entities_file())
     valid_ids = set(entities_data.keys()) if isinstance(entities_data, dict) else set()
 
     broken = []
     for subdir in ('entities', 'decisions', 'sessions', 'patterns'):
-        scan_dir = os.path.join(PAGES_DIR, subdir)
+        scan_dir = os.path.join(_get_pages_dir(), subdir)
         if not os.path.isdir(scan_dir):
             continue
         for filename in os.listdir(scan_dir):
@@ -146,7 +153,7 @@ def find_broken_links() -> list[dict]:
 
 def find_contradictions() -> list[dict]:
     """Detect contradictory claims — two entities with same name but different confidence."""
-    entities_data = _load_json(ENTITIES_FILE)
+    entities_data = _load_json(_get_entities_file())
     if not isinstance(entities_data, dict):
         return []
 
@@ -173,7 +180,7 @@ def find_contradictions() -> list[dict]:
 
 def rescore_content() -> list[dict]:
     """Re-score quality for all entity pages."""
-    entities_data = _load_json(ENTITIES_FILE)
+    entities_data = _load_json(_get_entities_file())
     if not isinstance(entities_data, dict):
         return []
 
@@ -193,14 +200,14 @@ def rescore_content() -> list[dict]:
         entity['last_scored'] = _now()
         scored.append({'entity_id': eid, 'quality_score': round(quality, 2)})
 
-    _save_json(ENTITIES_FILE, entities_data)
+    _save_json(_get_entities_file(), entities_data)
     return scored
 
 
 def auto_heal(issues: dict) -> list[dict]:
     """Auto-resolve fixable issues. Returns list of healed items."""
     healed = []
-    entities_data = _load_json(ENTITIES_FILE)
+    entities_data = _load_json(_get_entities_file())
 
     for orphan in issues.get('orphans', []):
         eid = orphan.get('entity_id', '')
@@ -214,7 +221,7 @@ def auto_heal(issues: dict) -> list[dict]:
             entities_data[eid]['status'] = 'stale'
             healed.append({'type': 'stale_marked', 'entity': eid})
 
-    _save_json(ENTITIES_FILE, entities_data)
+    _save_json(_get_entities_file(), entities_data)
     return healed
 
 

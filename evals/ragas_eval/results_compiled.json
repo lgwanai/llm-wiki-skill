@@ -1,0 +1,225 @@
+{
+  "evaluation": "RAGAS black-box (LLM-as-judge)",
+  "pipeline": "compile_v2 → embed → search → synthesize",
+  "test_cases_total": 6,
+  "domains": [
+    "tech",
+    "business",
+    "chinese"
+  ],
+  "wiki_setup_time_sec": 406.0,
+  "embed_time_sec": 92.7,
+  "timestamp": "2026-06-10T04:19:37.256860+00:00",
+  "aggregate": {
+    "overall": {
+      "faithfulness": 0.893,
+      "answer_relevancy": 1.0,
+      "context_precision": 0.633,
+      "context_recall": 0.742,
+      "answer_correctness": 0.625
+    },
+    "by_domain": {
+      "tech": {
+        "faithfulness": 0.893,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.633,
+        "context_recall": 0.742,
+        "answer_correctness": 0.625,
+        "cases": 6
+      }
+    },
+    "by_difficulty": {
+      "easy": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.533,
+        "context_recall": 0.733,
+        "answer_correctness": 0.583,
+        "cases": 3
+      },
+      "medium": {
+        "faithfulness": 0.786,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.733,
+        "context_recall": 0.75,
+        "answer_correctness": 0.667,
+        "cases": 3
+      }
+    },
+    "by_type": {
+      "factual": {
+        "faithfulness": 0.875,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.6,
+        "context_recall": 0.675,
+        "answer_correctness": 0.688,
+        "cases": 4
+      },
+      "synthesis": {
+        "faithfulness": 0.928,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.7,
+        "context_recall": 0.875,
+        "answer_correctness": 0.5,
+        "cases": 2
+      }
+    },
+    "latency": {
+      "mean_sec": 0.511,
+      "p50_sec": 0.428,
+      "p95_sec": 0.967,
+      "min_sec": 0.405,
+      "max_sec": 0.967
+    }
+  },
+  "results": [
+    {
+      "id": "tech-01",
+      "domain": "tech",
+      "type": "factual",
+      "difficulty": "easy",
+      "query": "What is Multi-head Latent Attention (MLA) and how does DeepSeek-V4 use it?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 0.967,
+      "synthesis_latency_sec": 2.502,
+      "metrics": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.6,
+        "context_recall": 1.0,
+        "answer_correctness": 0.5
+      },
+      "answer_length": 888
+    },
+    {
+      "id": "tech-02",
+      "domain": "tech",
+      "type": "factual",
+      "difficulty": "easy",
+      "query": "How many active parameters does DeepSeek-V4 have per token?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 0.412,
+      "synthesis_latency_sec": 1.588,
+      "metrics": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.8,
+        "context_recall": 1.0,
+        "answer_correctness": 0.75
+      },
+      "answer_length": 365
+    },
+    {
+      "id": "tech-03",
+      "domain": "tech",
+      "type": "factual",
+      "difficulty": "easy",
+      "query": "What are the key innovations in Transformer architecture since 2017?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 0.426,
+      "synthesis_latency_sec": 2.744,
+      "metrics": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.2,
+        "context_recall": 0.2,
+        "answer_correctness": 0.5
+      },
+      "answer_length": 971
+    },
+    {
+      "id": "tech-04",
+      "domain": "tech",
+      "type": "synthesis",
+      "difficulty": "medium",
+      "query": "Compare the memory efficiency approaches in Flash Attention and Multi-head Latent Attention. Which one does DeepSeek-V4 use?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 0.428,
+      "synthesis_latency_sec": 1.925,
+      "metrics": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 1.0,
+        "context_precision": 1.0,
+        "context_recall": 0.75,
+        "answer_correctness": 0.75
+      },
+      "answer_length": 670
+    },
+    {
+      "id": "tech-05",
+      "domain": "tech",
+      "type": "factual",
+      "difficulty": "medium",
+      "query": "What are the common failure modes of RAG systems?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 0.405,
+      "synthesis_latency_sec": 2.05,
+      "metrics": {
+        "faithfulness": 0.5,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.8,
+        "context_recall": 0.5,
+        "answer_correctness": 1.0
+      },
+      "answer_length": 930
+    },
+    {
+      "id": "tech-06",
+      "domain": "tech",
+      "type": "synthesis",
+      "difficulty": "medium",
+      "query": "What is the RAGAS framework and what dimensions does it evaluate?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 0.43,
+      "synthesis_latency_sec": 2.738,
+      "metrics": {
+        "faithfulness": 0.857,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.4,
+        "context_recall": 1.0,
+        "answer_correctness": 0.25
+      },
+      "answer_length": 1046
+    }
+  ],
+  "baselines": {
+    "Naive RAG (chunk + embed + LLM)": {
+      "faithfulness": 0.72,
+      "answer_relevancy": 0.78,
+      "context_precision": 0.65,
+      "context_recall": 0.68,
+      "answer_correctness": 0.65,
+      "source": "RAGAS paper (Es et al., 2024) / RGB benchmark"
+    },
+    "RAG + Reranker": {
+      "faithfulness": 0.83,
+      "answer_relevancy": 0.85,
+      "context_precision": 0.78,
+      "context_recall": 0.76,
+      "answer_correctness": 0.78,
+      "source": "RAGAS benchmarks / LangChain evaluation"
+    },
+    "GraphRAG (Microsoft)": {
+      "faithfulness": 0.88,
+      "answer_relevancy": 0.87,
+      "context_precision": 0.82,
+      "context_recall": 0.84,
+      "answer_correctness": 0.83,
+      "source": "Microsoft GraphRAG paper (Edge et al., 2024)"
+    },
+    "RAGFlow (estimated)": {
+      "faithfulness": 0.86,
+      "answer_relevancy": 0.84,
+      "context_precision": 0.8,
+      "context_recall": 0.79,
+      "answer_correctness": 0.8,
+      "source": "RAGFlow GitHub benchmarks (DeepDoc + hybrid retrieval)"
+    }
+  }
+}

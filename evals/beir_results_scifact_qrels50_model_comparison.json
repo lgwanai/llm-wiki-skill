@@ -1,0 +1,97 @@
+{
+  "qwen3_8b_vector": {
+    "model": "Qwen/Qwen3-Embedding-8B",
+    "streams": "vector",
+    "queries": 61,
+    "NDCG@10": 0.955,
+    "Recall@10": 1.0,
+    "MRR@10": 0.9399,
+    "eval_time_sec": 196.2,
+    "index_time_sec": 3.9,
+    "embeddings": 1797
+  },
+  "qwen3_8b_bm25_vector": {
+    "model": "Qwen/Qwen3-Embedding-8B",
+    "streams": "bm25,vector",
+    "queries": 61,
+    "NDCG@10": 0.8834,
+    "Recall@10": 0.9279,
+    "MRR@10": 0.8844,
+    "eval_time_sec": 199.0,
+    "index_time_sec": 3.9,
+    "embeddings": 1797
+  },
+  "qwen3_0.6b_vector": {
+    "model": "Qwen/Qwen3-Embedding-0.6B",
+    "streams": "vector",
+    "queries": 61,
+    "NDCG@10": 0.9243,
+    "Recall@10": 0.9803,
+    "MRR@10": 0.9071,
+    "eval_time_sec": 43.1,
+    "index_time_sec": 1.0,
+    "embeddings": 1797
+  },
+  "qwen3_0.6b_bm25_vector": {
+    "model": "Qwen/Qwen3-Embedding-0.6B",
+    "streams": "bm25,vector",
+    "queries": 61,
+    "NDCG@10": 0.8834,
+    "Recall@10": 0.9279,
+    "MRR@10": 0.8844,
+    "eval_time_sec": 45.2,
+    "index_time_sec": 1.0,
+    "embeddings": 1797
+  },
+  "jina_v5_small_mlx_vector": {
+    "model": "jinaai/jina-embeddings-v5-text-small-retrieval-mlx",
+    "streams": "vector",
+    "queries": 61,
+    "NDCG@10": 0.942,
+    "Recall@10": 0.9934,
+    "MRR@10": 0.929,
+    "eval_time_sec": 27.6,
+    "index_time_sec": 0.7,
+    "embeddings": 1797
+  },
+  "jina_v5_small_mlx_bm25_vector": {
+    "model": "jinaai/jina-embeddings-v5-text-small-retrieval-mlx",
+    "streams": "bm25,vector",
+    "queries": 61,
+    "NDCG@10": 0.8834,
+    "Recall@10": 0.9279,
+    "MRR@10": 0.8844,
+    "eval_time_sec": 29.9,
+    "index_time_sec": 0.7,
+    "embeddings": 1797
+  },
+  "bm25": {
+    "model": "Qwen/Qwen3-Embedding-8B",
+    "streams": "bm25",
+    "queries": 61,
+    "NDCG@10": 0.8866,
+    "Recall@10": 0.932,
+    "MRR@10": 0.8844,
+    "eval_time_sec": 2.3,
+    "index_time_sec": null,
+    "embeddings": null
+  },
+  "original_bm25": {
+    "method": "bm25-original-docs-subset",
+    "queries_evaluated": 61,
+    "qrels_queries_total": 61,
+    "NDCG@1": 0.8525,
+    "Recall@1": 0.7984,
+    "MRR@1": 0.8525,
+    "Precision@1": 0.8525,
+    "NDCG@5": 0.9046,
+    "Recall@5": 0.9443,
+    "MRR@5": 0.8948,
+    "Precision@5": 0.2262,
+    "NDCG@10": 0.9139,
+    "Recall@10": 0.9672,
+    "MRR@10": 0.8972,
+    "Precision@10": 0.118,
+    "eval_time_sec": 0.0
+  }
+}

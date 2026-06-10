@@ -1,0 +1,520 @@
+{
+  "evaluation": "RAGAS black-box (LLM-as-judge)",
+  "pipeline": "compile_v2 → embed → search → synthesize",
+  "test_cases_total": 19,
+  "domains": [
+    "tech",
+    "business",
+    "chinese"
+  ],
+  "wiki_setup_time_sec": 493.5,
+  "embed_time_sec": 127.6,
+  "timestamp": "2026-06-10T09:01:53.064534+00:00",
+  "aggregate": {
+    "overall": {
+      "faithfulness": 0.332,
+      "answer_relevancy": 0.434,
+      "context_precision": 0.442,
+      "context_recall": 0.772,
+      "answer_correctness": 0.132
+    },
+    "by_domain": {
+      "tech": {
+        "faithfulness": 0.349,
+        "answer_relevancy": 0.357,
+        "context_precision": 0.343,
+        "context_recall": 0.571,
+        "answer_correctness": 0.179,
+        "cases": 7
+      },
+      "business": {
+        "faithfulness": 0.323,
+        "answer_relevancy": 0.542,
+        "context_precision": 0.567,
+        "context_recall": 0.889,
+        "answer_correctness": 0.208,
+        "cases": 6
+      },
+      "chinese": {
+        "faithfulness": 0.224,
+        "answer_relevancy": 0.3,
+        "context_precision": 0.48,
+        "context_recall": 1.0,
+        "answer_correctness": 0.0,
+        "cases": 5
+      },
+      "cross": {
+        "faithfulness": 0.8,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.2,
+        "context_recall": 0.333,
+        "answer_correctness": 0.0,
+        "cases": 1
+      }
+    },
+    "by_difficulty": {
+      "easy": {
+        "faithfulness": 0.261,
+        "answer_relevancy": 0.429,
+        "context_precision": 0.343,
+        "context_recall": 0.779,
+        "answer_correctness": 0.143,
+        "cases": 7
+      },
+      "medium": {
+        "faithfulness": 0.298,
+        "answer_relevancy": 0.438,
+        "context_precision": 0.525,
+        "context_recall": 0.798,
+        "answer_correctness": 0.125,
+        "cases": 8
+      },
+      "hard": {
+        "faithfulness": 0.525,
+        "answer_relevancy": 0.438,
+        "context_precision": 0.45,
+        "context_recall": 0.708,
+        "answer_correctness": 0.125,
+        "cases": 4
+      }
+    },
+    "by_type": {
+      "factual": {
+        "faithfulness": 0.254,
+        "answer_relevancy": 0.341,
+        "context_precision": 0.382,
+        "context_recall": 0.73,
+        "answer_correctness": 0.091,
+        "cases": 11
+      },
+      "synthesis": {
+        "faithfulness": 0.437,
+        "answer_relevancy": 0.6,
+        "context_precision": 0.48,
+        "context_recall": 0.827,
+        "answer_correctness": 0.25,
+        "cases": 5
+      },
+      "comparison": {
+        "faithfulness": 0.539,
+        "answer_relevancy": 0.25,
+        "context_precision": 0.6,
+        "context_recall": 0.75,
+        "answer_correctness": 0.125,
+        "cases": 2
+      },
+      "temporal": {
+        "faithfulness": 0.25,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.6,
+        "context_recall": 1.0,
+        "answer_correctness": 0.0,
+        "cases": 1
+      }
+    },
+    "latency": {
+      "mean_sec": 2.627,
+      "p50_sec": 2.316,
+      "p95_sec": 5.962,
+      "min_sec": 1.149,
+      "max_sec": 5.962
+    }
+  },
+  "results": [
+    {
+      "id": "tech-01",
+      "domain": "tech",
+      "type": "factual",
+      "difficulty": "easy",
+      "query": "What is Multi-head Latent Attention (MLA) and how does DeepSeek-V4 use it?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 3.33,
+      "synthesis_latency_sec": 3.36,
+      "metrics": {
+        "faithfulness": 0.0,
+        "answer_relevancy": 0.0,
+        "context_precision": 0.2,
+        "context_recall": 0.25,
+        "answer_correctness": 0.0
+      },
+      "answer_length": 837
+    },
+    {
+      "id": "tech-02",
+      "domain": "tech",
+      "type": "factual",
+      "difficulty": "easy",
+      "query": "How many active parameters does DeepSeek-V4 have per token?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 2.018,
+      "synthesis_latency_sec": 3.093,
+      "metrics": {
+        "faithfulness": 0.333,
+        "answer_relevancy": 0.5,
+        "context_precision": 0.4,
+        "context_recall": 1.0,
+        "answer_correctness": 0.0
+      },
+      "answer_length": 808
+    },
+    {
+      "id": "tech-03",
+      "domain": "tech",
+      "type": "factual",
+      "difficulty": "easy",
+      "query": "What are the key innovations in Transformer architecture since 2017?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 2.23,
+      "synthesis_latency_sec": 3.539,
+      "metrics": {
+        "faithfulness": 0.091,
+        "answer_relevancy": 0.0,
+        "context_precision": 0.0,
+        "context_recall": 0.2,
+        "answer_correctness": 0.0
+      },
+      "answer_length": 1230
+    },
+    {
+      "id": "tech-04",
+      "domain": "tech",
+      "type": "synthesis",
+      "difficulty": "medium",
+      "query": "Compare the memory efficiency approaches in Flash Attention and Multi-head Latent Attention. Which one does DeepSeek-V4 use?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 2.096,
+      "synthesis_latency_sec": 3.494,
+      "metrics": {
+        "faithfulness": 0.308,
+        "answer_relevancy": 0.75,
+        "context_precision": 0.8,
+        "context_recall": 0.8,
+        "answer_correctness": 0.25
+      },
+      "answer_length": 1212
+    },
+    {
+      "id": "tech-05",
+      "domain": "tech",
+      "type": "factual",
+      "difficulty": "medium",
+      "query": "What are the common failure modes of RAG systems?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 2.693,
+      "synthesis_latency_sec": 2.733,
+      "metrics": {
+        "faithfulness": 0.0,
+        "answer_relevancy": 0.0,
+        "context_precision": 0.2,
+        "context_recall": 0.25,
+        "answer_correctness": 0.0
+      },
+      "answer_length": 1001
+    },
+    {
+      "id": "tech-06",
+      "domain": "tech",
+      "type": "synthesis",
+      "difficulty": "medium",
+      "query": "What is the RAGAS framework and what dimensions does it evaluate?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 2.285,
+      "synthesis_latency_sec": 3.047,
+      "metrics": {
+        "faithfulness": 0.857,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.4,
+        "context_recall": 1.0,
+        "answer_correctness": 0.75
+      },
+      "answer_length": 954
+    },
+    {
+      "id": "tech-07",
+      "domain": "tech",
+      "type": "comparison",
+      "difficulty": "hard",
+      "query": "Compare HNSW and IVF algorithms for vector search. Which vector databases use which algorithm?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 2.078,
+      "synthesis_latency_sec": 2.966,
+      "metrics": {
+        "faithfulness": 0.857,
+        "answer_relevancy": 0.25,
+        "context_precision": 0.4,
+        "context_recall": 0.5,
+        "answer_correctness": 0.25
+      },
+      "answer_length": 933
+    },
+    {
+      "id": "business-01",
+      "domain": "business",
+      "type": "factual",
+      "difficulty": "easy",
+      "query": "What is the audit log retention period for APAC enterprise customers?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 2.116,
+      "synthesis_latency_sec": 2.603,
+      "metrics": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.6,
+        "context_recall": 1.0,
+        "answer_correctness": 1.0
+      },
+      "answer_length": 861
+    },
+    {
+      "id": "business-02",
+      "domain": "business",
+      "type": "factual",
+      "difficulty": "medium",
+      "query": "What was the root cause of the Q4 2025 payment service outage and what remediation actions were taken?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 2.204,
+      "synthesis_latency_sec": 4.149,
+      "metrics": {
+        "faithfulness": 0.286,
+        "answer_relevancy": 0.25,
+        "context_precision": 0.4,
+        "context_recall": 0.333,
+        "answer_correctness": 0.0
+      },
+      "answer_length": 1297
+    },
+    {
+      "id": "business-03",
+      "domain": "business",
+      "type": "factual",
+      "difficulty": "medium",
+      "query": "What are the current (2026) rate limits for Premium Partners?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 2.818,
+      "synthesis_latency_sec": 4.106,
+      "metrics": {
+        "faithfulness": 0.182,
+        "answer_relevancy": 0.25,
+        "context_precision": 0.8,
+        "context_recall": 1.0,
+        "answer_correctness": 0.0
+      },
+      "answer_length": 1360
+    },
+    {
+      "id": "business-04",
+      "domain": "business",
+      "type": "temporal",
+      "difficulty": "medium",
+      "query": "What were the Partner API rate limits in 2024 compared to 2026?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 2.84,
+      "synthesis_latency_sec": 3.609,
+      "metrics": {
+        "faithfulness": 0.25,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.6,
+        "context_recall": 1.0,
+        "answer_correctness": 0.0
+      },
+      "answer_length": 1015
+    },
+    {
+      "id": "business-05",
+      "domain": "business",
+      "type": "factual",
+      "difficulty": "easy",
+      "query": "What is the SOC 2 evidence retention policy for incident response reports?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 2.244,
+      "synthesis_latency_sec": 3.011,
+      "metrics": {
+        "faithfulness": 0.0,
+        "answer_relevancy": 0.5,
+        "context_precision": 0.6,
+        "context_recall": 1.0,
+        "answer_correctness": 0.0
+      },
+      "answer_length": 814
+    },
+    {
+      "id": "business-06",
+      "domain": "business",
+      "type": "synthesis",
+      "difficulty": "hard",
+      "query": "Compare the Enterprise pricing plan features with the Professional plan. What additional benefits does Enterprise provide?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 2.316,
+      "synthesis_latency_sec": 3.283,
+      "metrics": {
+        "faithfulness": 0.222,
+        "answer_relevancy": 0.25,
+        "context_precision": 0.4,
+        "context_recall": 1.0,
+        "answer_correctness": 0.25
+      },
+      "answer_length": 971
+    },
+    {
+      "id": "chinese-01",
+      "domain": "chinese",
+      "type": "factual",
+      "difficulty": "easy",
+      "query": "vLLM 推理引擎的核心优势是什么？",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 2.796,
+      "synthesis_latency_sec": 2.618,
+      "metrics": {
+        "faithfulness": 0.0,
+        "answer_relevancy": 0.0,
+        "context_precision": 0.4,
+        "context_recall": 1.0,
+        "answer_correctness": 0.0
+      },
+      "answer_length": 323
+    },
+    {
+      "id": "chinese-02",
+      "domain": "chinese",
+      "type": "factual",
+      "difficulty": "easy",
+      "query": "灰度发布中金丝雀阶段的回滚审批人是谁？",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 2.777,
+      "synthesis_latency_sec": 4.034,
+      "metrics": {
+        "faithfulness": 0.4,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.2,
+        "context_recall": 1.0,
+        "answer_correctness": 0.0
+      },
+      "answer_length": 559
+    },
+    {
+      "id": "chinese-03",
+      "domain": "chinese",
+      "type": "factual",
+      "difficulty": "medium",
+      "query": "中文 RAG 的分块策略与英文有什么不同？应该如何处理？",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 2.86,
+      "synthesis_latency_sec": 3.702,
+      "metrics": {
+        "faithfulness": 0.5,
+        "answer_relevancy": 0.25,
+        "context_precision": 0.4,
+        "context_recall": 1.0,
+        "answer_correctness": 0.0
+      },
+      "answer_length": 506
+    },
+    {
+      "id": "chinese-04",
+      "domain": "chinese",
+      "type": "synthesis",
+      "difficulty": "medium",
+      "query": "在大模型部署中，7B 和 70B 参数模型的 GPU 配置有什么不同？有哪些量化策略可以降低部署成本？",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 3.094,
+      "synthesis_latency_sec": 3.353,
+      "metrics": {
+        "faithfulness": 0.0,
+        "answer_relevancy": 0.0,
+        "context_precision": 0.6,
+        "context_recall": 1.0,
+        "answer_correctness": 0.0
+      },
+      "answer_length": 475
+    },
+    {
+      "id": "chinese-05",
+      "domain": "chinese",
+      "type": "comparison",
+      "difficulty": "hard",
+      "query": "对比 BGE-M3 和 Qwen3-Embedding-8B 在中文场景下的表现，各自适合什么场景？",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 1.149,
+      "synthesis_latency_sec": 3.667,
+      "metrics": {
+        "faithfulness": 0.222,
+        "answer_relevancy": 0.25,
+        "context_precision": 0.8,
+        "context_recall": 1.0,
+        "answer_correctness": 0.0
+      },
+      "answer_length": 653
+    },
+    {
+      "id": "cross-01",
+      "domain": "cross",
+      "type": "synthesis",
+      "difficulty": "hard",
+      "query": "How does the outbox pattern mentioned in the incident postmortem relate to RAG architecture patterns?",
+      "pages_retrieved": 5,
+      "contexts_count": 5,
+      "search_latency_sec": 5.962,
+      "synthesis_latency_sec": 3.92,
+      "metrics": {
+        "faithfulness": 0.8,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.2,
+        "context_recall": 0.333,
+        "answer_correctness": 0.0
+      },
+      "answer_length": 1282
+    }
+  ],
+  "baselines": {
+    "Naive RAG (chunk + embed + LLM)": {
+      "faithfulness": 0.72,
+      "answer_relevancy": 0.78,
+      "context_precision": 0.65,
+      "context_recall": 0.68,
+      "answer_correctness": 0.65,
+      "source": "RAGAS paper (Es et al., 2024) / RGB benchmark"
+    },
+    "RAG + Reranker": {
+      "faithfulness": 0.83,
+      "answer_relevancy": 0.85,
+      "context_precision": 0.78,
+      "context_recall": 0.76,
+      "answer_correctness": 0.78,
+      "source": "RAGAS benchmarks / LangChain evaluation"
+    },
+    "GraphRAG (Microsoft)": {
+      "faithfulness": 0.88,
+      "answer_relevancy": 0.87,
+      "context_precision": 0.82,
+      "context_recall": 0.84,
+      "answer_correctness": 0.83,
+      "source": "Microsoft GraphRAG paper (Edge et al., 2024)"
+    },
+    "RAGFlow (estimated)": {
+      "faithfulness": 0.86,
+      "answer_relevancy": 0.84,
+      "context_precision": 0.8,
+      "context_recall": 0.79,
+      "answer_correctness": 0.8,
+      "source": "RAGFlow GitHub benchmarks (DeepDoc + hybrid retrieval)"
+    }
+  }
+}

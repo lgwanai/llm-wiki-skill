@@ -475,6 +475,28 @@ Find contradictions between existing and new content."""
         return []
 
 
+def auto_resolve_contradictions(page_id: str, contradictions: list[dict]) -> list[dict]:
+    """Return conservative contradiction resolutions without overwriting claims.
+
+    Compile should never abort because a reinforcement conflicts with an
+    existing page. The safe default is to flag each contradiction for review
+    and preserve both claims in the page history.
+    """
+    resolutions: list[dict] = []
+    for contradiction in contradictions:
+        suggestion = str(contradiction.get("resolution_suggestion", "")).strip()
+        severity = str(contradiction.get("severity", "medium")).lower()
+        confidence = 0.35 if severity == "high" else 0.5
+        resolutions.append({
+            "page_id": page_id,
+            "winner": "manual_review",
+            "confidence": confidence,
+            "reasoning": suggestion or "Contradiction detected during compile; preserved for manual review.",
+            "action": "flag",
+        })
+    return resolutions
+
+
 def detect_language(text: str) -> str:
     """Detect if text is predominantly Chinese or English.
 

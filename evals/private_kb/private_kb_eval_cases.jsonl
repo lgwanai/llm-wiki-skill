@@ -1,0 +1,6 @@
+{"id": "long-document-section", "scenario": "long_document", "query": "Which recovery marker controls retry backoff in the Q4 incident runbook?", "expected_pages": ["q4-incident-runbook"], "must_contain": ["outbox_retry_watermark"]}
+{"id": "table-plan-retention", "scenario": "table", "query": "APAC enterprise plan audit log retention days", "expected_pages": ["enterprise-pricing-2026"], "must_contain": ["730 days"]}
+{"id": "chinese-release-owner", "scenario": "chinese", "query": "中文灰度发布谁负责回滚审批", "expected_pages": ["zh-release-policy"], "must_contain": ["值班发布经理"]}
+{"id": "permission-public-user", "scenario": "permission_filter", "query": "Mercury launch budget approval", "expected_pages": ["mercury-public-status"], "forbidden_pages": ["mercury-confidential-budget"], "allowed_scopes": ["public"], "must_contain": ["public launch status"]}
+{"id": "temporal-current-limit", "scenario": "temporal", "query": "current API rate limit as of 2026 for partner ingestion", "expected_pages": ["partner-api-rate-limit-2026"], "forbidden_pages": ["partner-api-rate-limit-2024"], "exclude_statuses": ["superseded"], "must_contain": ["1200 requests per minute"]}
+{"id": "qa-citation-source", "scenario": "qa_citation", "query": "What citation supports the SOC2 evidence retention rule?", "expected_pages": ["soc2-evidence-retention"], "must_contain": ["policy-handbook.md#S3"]}

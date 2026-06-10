@@ -1,0 +1,133 @@
+{
+  "verdict": "Qwen 8B page-vector retrieval is currently the strongest tested path. Hybrid bm25,vector underperforms pure vector on the compiled subset, so fusion weighting should be treated as an optimization target. Coverage is materially better than the earlier 4-query run but remains a subset evaluation.",
+  "coverage": {
+    "dataset": "scifact",
+    "corpus_docs": 5183,
+    "queries_total": 1109,
+    "qrels_queries_total": 300,
+    "qrels_relevances_total": 339,
+    "unique_relevant_docs": 283,
+    "compiled_mapped_pages": 1779,
+    "compiled_unique_docs": 146,
+    "compiled_doc_coverage_pct": 2.82,
+    "covered_qrels_queries": 61,
+    "covered_qrels_query_pct": 20.33,
+    "covered_relevances": 74,
+    "covered_relevant_doc_pct": 19.43
+  },
+  "compiled_wiki_quality": {
+    "page_files": 1830,
+    "page_types": {
+      "concept": 991,
+      "entity": 637,
+      "technique": 152,
+      "process": 14,
+      "model": 8,
+      "protein": 5,
+      "event": 4,
+      "tool": 3,
+      "signaling-pathway": 3,
+      "biological-process": 2,
+      "instrument": 2,
+      "role": 2,
+      "framework": 1,
+      "protein-complex": 1,
+      "molecule-class": 1,
+      "disease": 1,
+      "study": 1,
+      "cell-type": 1
+    },
+    "page_dirs": {
+      "concepts": 1152,
+      "entities": 677
+    },
+    "pages_with_source": 1829,
+    "pages_with_source_pct": 100.0,
+    "frontmatter_parse_failures": 0,
+    "page_length_chars": {
+      "mean": 1305.6,
+      "p50": 1282,
+      "p95": 1744
+    },
+    "sources_total": 152,
+    "pages_per_mapped_doc": {
+      "mean": 12.18,
+      "p50": 12,
+      "p95": 16,
+      "max": 22
+    },
+    "audit_entries": 146,
+    "audit_entries_with_contradictions": 9,
+    "contradictions_total": 20
+  },
+  "index_health": {
+    "page_files": 1829,
+    "page_embedding": {
+      "exists": true,
+      "items": 1797,
+      "model": "Qwen/Qwen3-Embedding-8B",
+      "dimension": 4096,
+      "mode": "local",
+      "coverage_pct": 98.25
+    },
+    "chunk_embedding": {
+      "exists": false,
+      "items": 0
+    },
+    "bm25_cache_exists": true,
+    "chunk_bm25_cache_exists": true,
+    "metadata_cache_exists": true
+  },
+  "retrieval_effectiveness": {
+    "llm_wiki_vector": {
+      "queries": 61,
+      "NDCG@10": 0.955,
+      "Recall@10": 1.0,
+      "MRR@10": 0.9399,
+      "Precision@10": 0.1213,
+      "eval_time_sec": 196.2,
+      "mapped_docs": 146,
+      "wiki_pages": 1779,
+      "coverage_mode": "compiled-docs-only"
+    },
+    "llm_wiki_bm25": {
+      "queries": 61,
+      "NDCG@10": 0.8866,
+      "Recall@10": 0.932,
+      "MRR@10": 0.8844,
+      "Precision@10": 0.1082,
+      "eval_time_sec": 2.3,
+      "mapped_docs": 146,
+      "wiki_pages": 1779,
+      "coverage_mode": "compiled-docs-only"
+    },
+    "llm_wiki_bm25_vector": {
+      "queries": 61,
+      "NDCG@10": 0.8834,
+      "Recall@10": 0.9279,
+      "MRR@10": 0.8844,
+      "Precision@10": 0.1066,
+      "eval_time_sec": 199.0,
+      "mapped_docs": 146,
+      "wiki_pages": 1779,
+      "coverage_mode": "compiled-docs-only"
+    },
+    "original_bm25_subset": {
+      "queries": 61,
+      "NDCG@10": 0.9139,
+      "Recall@10": 0.9672,
+      "MRR@10": 0.8972,
+      "Precision@10": 0.118,
+      "eval_time_sec": 0.0
+    },
+    "original_bm25_compiled_subset_recomputed": {
+      "queries": 61,
+      "NDCG@10": 0.9139,
+      "Recall@10": 0.9672,
+      "MRR@10": 0.8972,
+      "Precision@10": 0.118,
+      "eval_time_sec": 0.0106
+    }
+  },
+  "probes": {}
+}

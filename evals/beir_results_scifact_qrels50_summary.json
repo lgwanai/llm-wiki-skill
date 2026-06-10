@@ -1,0 +1,57 @@
+{
+  "llm_wiki_vector": {
+    "queries": 61,
+    "NDCG@10": 0.955,
+    "Recall@10": 1.0,
+    "MRR@10": 0.9399,
+    "eval_time_sec": 196.2,
+    "mapped_docs": 146,
+    "wiki_pages": 1779
+  },
+  "llm_wiki_bm25": {
+    "queries": 61,
+    "NDCG@10": 0.8866,
+    "Recall@10": 0.932,
+    "MRR@10": 0.8844,
+    "eval_time_sec": 2.3,
+    "mapped_docs": 146,
+    "wiki_pages": 1779
+  },
+  "llm_wiki_bm25_vector": {
+    "queries": 61,
+    "NDCG@10": 0.8834,
+    "Recall@10": 0.9279,
+    "MRR@10": 0.8844,
+    "eval_time_sec": 199.0,
+    "mapped_docs": 146,
+    "wiki_pages": 1779
+  },
+  "original_bm25_subset": {
+    "method": "bm25-original-docs-subset",
+    "queries_evaluated": 61,
+    "qrels_queries_total": 61,
+    "NDCG@1": 0.8525,
+    "Recall@1": 0.7984,
+    "MRR@1": 0.8525,
+    "Precision@1": 0.8525,
+    "NDCG@5": 0.9046,
+    "Recall@5": 0.9443,
+    "MRR@5": 0.8948,
+    "Precision@5": 0.2262,
+    "NDCG@10": 0.9139,
+    "Recall@10": 0.9672,
+    "MRR@10": 0.8972,
+    "Precision@10": 0.118,
+    "eval_time_sec": 0.0
+  },
+  "coverage": {
+    "page_to_doc_entries": 1779,
+    "unique_beir_docs": 146,
+    "qrels_covered_queries": 61,
+    "qrels_total_queries": 300,
+    "qrels_coverage": 0.2033,
+    "selected_docs_compiled": 51,
+    "selected_docs_total": 51,
+    "selected_queries": 50
+  }
+}

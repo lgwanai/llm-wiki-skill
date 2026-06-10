@@ -11,7 +11,7 @@
   <img src="docs/benchmark_chart.png" alt="RAGAS Benchmark: llm-wiki vs Industry" width="100%">
 </p>
 
-> **Faithfulness 0.85** — on par with RAGFlow, approaching GraphRAG. In tech domains, faithfulness reaches **0.89**, surpassing GraphRAG's published 0.88. [Full benchmark →](docs/BENCHMARK.md)
+> **Faithfulness 0.78** · **Answer Relevance 0.67** · **Context Recall 0.66**. Full pipeline evaluation (compile → embed → search → synthesize). [Full benchmark →](docs/BENCHMARK.md)
 
 ---
 
@@ -64,13 +64,11 @@ We evaluate the **complete product pipeline** (compile → embed → search → 
 |--------|-------------|-----------------|----------------|
 | Naive RAG | 0.72 | 0.78 | 0.68 |
 | RAG + Reranker | 0.83 | 0.85 | 0.76 |
-| **llm-wiki** | **0.85** | **0.79** | **0.66** |
+| **llm-wiki** | **0.78** | **0.67** | **0.66** |
 | RAGFlow (est.) | 0.86 | 0.84 | 0.79 |
 | GraphRAG | 0.88 | 0.87 | 0.84 |
 
-**Tech domain**: Faithfulness **0.89** | Answer Relevance **0.89** — surpasses GraphRAG.
-
-**Chinese content**: Faithfulness 0.87 — strong grounding, retrieval precision being improved.
+> **All scores are LLM-as-judge (RAGAS framework)** over 19 test cases across tech, business, and Chinese domains. Industry baselines from published papers — not identical test sets. Full pipeline: compile_v2 → embed → search → synthesize.
 
 → [Full benchmark report with per-case breakdown](docs/BENCHMARK.md)
 
