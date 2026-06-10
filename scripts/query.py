@@ -42,10 +42,12 @@ def _get_reranker():
     """Lazy-load the cross-encoder reranker model."""
     global _reranker_model
     if _reranker_model is None:
+        if os.environ.get("LLM_WIKI_SKIP_CROSSENCODE", "").strip():
+            return None
         try:
             from FlagEmbedding import FlagReranker
             _reranker_model = FlagReranker(_RERANKER_NAME, use_fp16=True)
-        except ImportError:
+        except (ImportError, Exception):
             return None
     return _reranker_model
 
@@ -369,25 +371,6 @@ def search_wiki(
         except Exception as e:
             trace["streams"]["ledger_error"] = str(e)
 
-    # Graph-traversal recall (Phase 3): expand results via knowledge graph
-    if "graph" in enabled_streams and all_streams:
-        try:
-            top_entities = []
-            for stream_results in all_streams:
-                for r in stream_results[:5]:
-                    eid = r.get("file") or r.get("id") or r.get("entity_id", "")
-                    if eid:
-                        top_entities.append(eid)
-            if top_entities:
-                graph_expanded = _graph_traverse_recall(
-                    list(dict.fromkeys(top_entities)), depth=2, limit=10
-                )
-                if graph_expanded:
-                    all_streams.append(graph_expanded)
-                    trace["streams"]["graph_recall"] = graph_expanded
-        except Exception as e:
-            trace["streams"]["graph_recall_error"] = str(e)
-
     # Fuse results with RRF if multiple streams
     if len(all_streams) >= 2:
         try:
@@ -415,8 +398,6 @@ def search_wiki(
                     })
             if results:
                 results = rerank_results(query, results, plan)
-                # Graph boost (Phase 3): boost pages connected to top results
-                results = _graph_boost(results)
                 # Cross-encoder re-rank (Phase 2): re-scores top candidates
                 results = cross_encode_rerank(query, results, top_k=limit)
                 results = _filter_by_allowed_scopes(results, scope_filter)
@@ -571,7 +552,8 @@ def rewrite_query(query: str, plan: dict) -> list[str]:
                 variants.append(f"{query} {token}")
 
     # LLM-based semantic expansion for non-trivial queries (>10 chars, non-ledger)
-    if len(query) > 10 and plan.get("intent") != "ledger_filter":
+    skip_llm = os.environ.get("LLM_WIKI_SKIP_LLM_EXPAND", "").strip()
+    if len(query) > 10 and plan.get("intent") != "ledger_filter" and not skip_llm:
         try:
             llm_variants = _llm_expand_query(query, plan)
             variants.extend(llm_variants)
