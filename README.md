@@ -8,7 +8,7 @@
 **A Living Knowledge Base That Compounds.** Not RAG — don't re-derive, compile once. LLM reads your sources, builds a typed knowledge graph, and maintains it forever. Cross-references, contradiction detection, confidence decay — all automatic.
 
 <p align="center">
-  <img src="evals/ragas_eval/benchmark_chart.png" alt="RAGAS Benchmark: llm-wiki vs Industry" width="100%">
+  <img src="docs/benchmark_chart.png" alt="RAGAS Benchmark: llm-wiki vs Industry" width="100%">
 </p>
 
 > **Faithfulness 0.85** — on par with RAGFlow, approaching GraphRAG. In tech domains, faithfulness reaches **0.89**, surpassing GraphRAG's published 0.88. [Full benchmark →](docs/BENCHMARK.md)

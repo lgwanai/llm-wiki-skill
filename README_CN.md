@@ -8,7 +8,7 @@
 **会自己生长的知识库。** 不是 RAG —— 不重复推导，一次编译永久使用。LLM 读取你的资料，构建类型化知识图谱，自动维护。交叉引用、矛盾检测、置信度衰减——全部自动化。
 
 <p align="center">
-  <img src="evals/ragas_eval/benchmark_chart.png" alt="RAGAS 评测: llm-wiki vs 业界" width="100%">
+  <img src="docs/benchmark_chart.png" alt="RAGAS 评测: llm-wiki vs 业界" width="100%">
 </p>
 
 > **忠实度 0.85** — 与 RAGFlow 持平，接近 GraphRAG。技术领域忠实度达到 **0.89**，超越 GraphRAG 论文数据。中文场景忠实度 0.87。[完整评测报告 →](docs/BENCHMARK.md)
