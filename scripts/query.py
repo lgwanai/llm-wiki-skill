@@ -33,6 +33,59 @@ PAGES_DIR = WIKI_DIR / "pages"
 
 DEFAULT_SEARCH_STREAMS = ["metadata", "chunk", "bm25", "chunk_vector", "vector", "graph", "ledger"]
 
+# ── Cross-encoder reranker (lazy-loaded) ──
+_reranker_model = None
+_RERANKER_NAME = "BAAI/bge-reranker-base"
+
+
+def _get_reranker():
+    """Lazy-load the cross-encoder reranker model."""
+    global _reranker_model
+    if _reranker_model is None:
+        try:
+            from FlagEmbedding import FlagReranker
+            _reranker_model = FlagReranker(_RERANKER_NAME, use_fp16=True)
+        except ImportError:
+            return None
+    return _reranker_model
+
+
+def cross_encode_rerank(query: str, candidates: list[dict], top_k: int = 5) -> list[dict]:
+    """Re-rank candidates using a cross-encoder model for precise relevance scoring.
+
+    Operates on top-20 candidates from RRF fusion, re-ranks them with
+    BGE-reranker-base, and returns top_k results.
+    """
+    reranker = _get_reranker()
+    if reranker is None or len(candidates) <= top_k:
+        return candidates[:top_k]
+
+    # Build pairs: [query, page_text]
+    pairs = []
+    for c in candidates[:20]:
+        text = c.get("text", "")
+        if not text:
+            try:
+                text = Path(c.get("path", "")).read_text(encoding="utf-8")[:2000]
+            except Exception:
+                text = f"{c.get('id', '')} {c.get('type', '')}"
+        pairs.append([query, text[:2000]])
+
+    try:
+        scores = reranker.compute_score(pairs)
+        # normalize scores to 0-1 range
+        if isinstance(scores, list):
+            for c, s in zip(candidates[:20], scores):
+                c["cross_score"] = round(float(s), 4)
+            candidates_sorted = sorted(
+                candidates[:20], key=lambda x: -x.get("cross_score", 0)
+            )
+            return candidates_sorted[:top_k]
+    except Exception:
+        pass
+
+    return candidates[:top_k]
+
 
 def enabled_search_streams() -> set[str]:
     """Return enabled retrieval streams from env/config."""
@@ -343,6 +396,8 @@ def search_wiki(
                     })
             if results:
                 results = rerank_results(query, results, plan)
+                # Cross-encoder re-rank (Phase 2): re-scores top candidates
+                results = cross_encode_rerank(query, results, top_k=limit)
                 results = _filter_by_allowed_scopes(results, scope_filter)
                 results = _filter_by_excluded_statuses(results, status_filter)
                 trace["reranked"] = results
@@ -370,6 +425,7 @@ def search_wiki(
                 })
         if results:
             results = rerank_results(query, results, plan)
+            results = cross_encode_rerank(query, results, top_k=limit)
             results = _filter_by_allowed_scopes(results, scope_filter)
             results = _filter_by_excluded_statuses(results, status_filter)
             trace["reranked"] = results
@@ -478,7 +534,7 @@ def plan_query(query: str) -> dict:
 
 
 def rewrite_query(query: str, plan: dict) -> list[str]:
-    """Generate lightweight lexical variants for recall."""
+    """Generate lexical + LLM semantic variants for recall."""
     variants = [query]
     normalized = re.sub(r"[\s_]+", " ", query).strip()
     if normalized and normalized not in variants:
@@ -492,6 +548,14 @@ def rewrite_query(query: str, plan: dict) -> list[str]:
             if token not in query:
                 variants.append(f"{query} {token}")
 
+    # LLM-based semantic expansion for non-trivial queries (>10 chars, non-ledger)
+    if len(query) > 10 and plan.get("intent") != "ledger_filter":
+        try:
+            llm_variants = _llm_expand_query(query, plan)
+            variants.extend(llm_variants)
+        except Exception:
+            pass  # LLM expansion is best-effort, fall back to lexical
+
     deduped = []
     seen = set()
     for variant in variants:
@@ -499,7 +563,63 @@ def rewrite_query(query: str, plan: dict) -> list[str]:
         if variant and variant not in seen:
             seen.add(variant)
             deduped.append(variant)
-    return deduped[:6]
+    return deduped[:8]
+
+
+def _llm_expand_query(query: str, plan: dict) -> list[str]:
+    """Use LLM to generate 2-3 semantic query variants for better recall."""
+    intent = plan.get("intent", "fact")
+    intent_hints = {
+        "fact": "include key technical terms and synonyms",
+        "relationship": "include entity names and relationship words",
+        "comparison": "include comparison phrases and entity names",
+    }
+    hint = intent_hints.get(intent, "include key terms")
+
+    prompt = f"""Generate 2-3 alternative search queries for: "{query}"
+Intent: {intent}. {hint}.
+Output each query on its own line. Keep each query concise (<15 words). Do not add numbering or bullets."""
+
+    # Use a minimal LLM call with low temperature for consistency
+    from config import get_llm_config, get_api_url
+    import requests as req
+
+    llm_cfg = get_llm_config()
+    provider = llm_cfg.get("provider", "deepseek")
+    api_key = llm_cfg.get("api_key", "")
+    model = llm_cfg.get("model", "deepseek-v4-flash")
+
+    if provider == "ollama":
+        api_url = f"{llm_cfg['base_url'].rstrip('/')}/api/chat"
+        payload = {
+            "model": llm_cfg.get("model", "llama3.2"),
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "options": {"temperature": 0.1, "num_ctx": 4096},
+        }
+        headers = {"Content-Type": "application/json"}
+    else:
+        api_url = get_api_url()
+        payload = {
+            "model": model, "temperature": 0.1, "max_tokens": 300,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        headers = {"Content-Type": "application/json",
+                   "Authorization": f"Bearer {api_key}"}
+        if provider == "deepseek":
+            payload["thinking"] = {"type": "disabled"}
+
+    try:
+        resp = req.post(api_url, json=payload, headers=headers, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        text = (data.get("message", {}).get("content", "") or
+                data["choices"][0]["message"].get("content", "") or "")
+        lines = [l.strip().lstrip("-•*#0123456789. ").strip()
+                 for l in text.strip().split("\n") if l.strip()]
+        return [l for l in lines if len(l) > 3 and l != query][:3]
+    except Exception:
+        return []  # best-effort, never block search
 
 
 # Entity type weights for reranking \u2014 prioritize content-rich types.
