@@ -27,6 +27,29 @@ GRAPH_DIR = WIKI_DIR / "graph"
 ENTITIES_FILE = os.path.join(GRAPH_DIR, "entities.json")
 EDGES_FILE = os.path.join(GRAPH_DIR, "edges.json")
 
+
+def _load_jieba_entities():
+    """Add Chinese entity names to jieba's dictionary for better tokenization."""
+    if jieba is None:
+        return
+    try:
+        entities_path = Path(ENTITIES_FILE)
+        if not entities_path.exists():
+            return
+        entities = json.loads(entities_path.read_text(encoding="utf-8"))
+        for eid, data in entities.items():
+            if not isinstance(data, dict):
+                continue
+            name = data.get("name", "")
+            # Add multi-character Chinese names to jieba dict
+            if name and any('一' <= c <= '鿿' for c in name):
+                jieba.add_word(name, freq=100)
+                # Also add the entity ID if it contains Chinese
+                if any('一' <= c <= '鿿' for c in eid):
+                    jieba.add_word(eid, freq=80)
+    except Exception:
+        pass  # Best-effort, don't break search if entities.json is malformed
+
 # ── Module-level caches (cleared when pages change) ──
 _cache_marker: tuple[int, float] | None = None  # (file_count, latest_mtime)
 _entities_cache: dict | None = None
@@ -34,7 +57,9 @@ _edges_cache: dict | list | None = None
 _bm25_index: dict | None = None
 _BM25_CACHE_FILE = WIKI_DIR / "graph" / ".bm25_index.json"
 _CHUNK_CACHE_FILE = WIKI_DIR / "graph" / ".chunk_index.json"
+_CHUNK_BM25_CACHE_FILE = WIKI_DIR / "graph" / ".chunk_bm25_index.json"
 _METADATA_CACHE_FILE = WIKI_DIR / "graph" / ".metadata_index.json"
+_chunk_bm25_index: list[dict] | None = None
 
 
 def _pages_changed() -> bool:
@@ -101,6 +126,7 @@ def _load_entities() -> dict:
     _entities_cache = _load_json(ENTITIES_FILE) if os.path.exists(ENTITIES_FILE) else {}
     if not isinstance(_entities_cache, dict):
         _entities_cache = {}
+    _load_jieba_entities()  # keep jieba dict in sync with entity names
     return _entities_cache
 
 
@@ -286,31 +312,77 @@ def _load_chunk_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
         return build_chunk_index(pages_dir)
 
 
-def chunk_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
-    """BM25 search over heading-aware chunks."""
-    chunks = _load_chunk_index(pages_dir)
-    query_terms = [_stem(t) for t in _tokenize(query)]
-    if not chunks or not query_terms:
-        return []
+def _load_chunk_bm25_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
+    """Load or build token/frequency data for chunk BM25 search."""
+    global _chunk_bm25_index
+    changed = _pages_changed()
+    if _chunk_bm25_index is not None and not changed:
+        return _chunk_bm25_index
 
-    docs = []
-    for chunk in chunks:
+    if not changed and _CHUNK_BM25_CACHE_FILE.exists():
+        try:
+            data = json.loads(_CHUNK_BM25_CACHE_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                _chunk_bm25_index = [
+                    {
+                        "chunk": item["chunk"],
+                        "tokens": item["tokens"],
+                        "freqs": Counter(item["freqs"]),
+                    }
+                    for item in data
+                    if isinstance(item, dict) and "chunk" in item and "tokens" in item and "freqs" in item
+                ]
+                return _chunk_bm25_index
+        except (json.JSONDecodeError, OSError, KeyError, TypeError):
+            pass
+
+    indexed = []
+    for chunk in _load_chunk_index(pages_dir):
         tokens = [_stem(t) for t in _tokenize(chunk.get("text", ""))]
         if tokens:
-            docs.append((chunk, tokens, Counter(tokens)))
-    if not docs:
+            indexed.append({
+                "chunk": chunk,
+                "tokens": tokens,
+                "freqs": Counter(tokens),
+            })
+
+    try:
+        serializable = [
+            {
+                "chunk": item["chunk"],
+                "tokens": item["tokens"],
+                "freqs": dict(item["freqs"]),
+            }
+            for item in indexed
+        ]
+        _CHUNK_BM25_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _CHUNK_BM25_CACHE_FILE.write_text(json.dumps(serializable, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
+
+    _chunk_bm25_index = indexed
+    return _chunk_bm25_index
+
+
+def chunk_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
+    """BM25 search over heading-aware chunks."""
+    docs = _load_chunk_bm25_index(pages_dir)
+    query_terms = [_stem(t) for t in _tokenize(query)]
+    if not docs or not query_terms:
         return []
 
     num_docs = len(docs)
-    avg_dl = sum(len(tokens) for _, tokens, _ in docs) / num_docs
+    avg_dl = sum(len(item["tokens"]) for item in docs) / num_docs
     doc_freq: Counter = Counter()
-    for _, _, freqs in docs:
-        doc_freq.update(set(freqs.keys()))
+    for item in docs:
+        doc_freq.update(set(item["freqs"].keys()))
 
     scored: list[tuple[dict, float]] = []
     k1, b = 1.5, 0.75
-    for chunk, tokens, freqs in docs:
-        dl = len(tokens)
+    for item in docs:
+        chunk = item["chunk"]
+        freqs = item["freqs"]
+        dl = len(item["tokens"])
         score = 0.0
         for term in query_terms:
             f = freqs.get(term, 0)
@@ -548,7 +620,7 @@ def vector_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
     - No embeddings have been generated yet (graph/embeddings.json missing)
     - embeddings are stale or incompatible with current config
     """
-    embeddings_path = WIKI_DIR / "graph" / "embeddings.json"
+    embeddings_path = Path(os.environ.get("EMBEDDINGS_FILE", WIKI_DIR / "graph" / "embeddings.json"))
 
     try:
         from generate_embeddings import (
@@ -591,7 +663,7 @@ def vector_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
 
 def vector_chunk_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
     """Semantic search over chunk-level embeddings."""
-    chunk_embeddings_path = WIKI_DIR / "graph" / "chunk_embeddings.json"
+    chunk_embeddings_path = Path(os.environ.get("CHUNK_EMBEDDINGS_FILE", WIKI_DIR / "graph" / "chunk_embeddings.json"))
     try:
         from generate_embeddings import (
             embedding_index_status,
@@ -741,13 +813,24 @@ def reciprocal_rank_fusion(results: list[list[dict]], k: int = 60) -> list[dict]
     for result_list in results:
         for rank, item in enumerate(result_list, start=1):
             key = item.get('file') or item.get('entity_id', str(rank))
+            stream = item.get('stream', 'unknown')
             if key not in fused:
                 fused[key] = dict(item)
                 fused[key]['rrf_score'] = 0.0
-                fused[key]['streams'] = {item.get('stream', 'unknown')}
+                fused[key]['streams'] = {stream}
+                fused[key]['stream_ranks'] = {}
+                fused[key]['stream_scores'] = {}
             else:
-                fused[key]['streams'].add(item.get('stream', 'unknown'))
+                fused[key]['streams'].add(stream)
             fused[key]['rrf_score'] += 1.0 / (k + rank)
+            ranks = fused[key].setdefault('stream_ranks', {})
+            scores = fused[key].setdefault('stream_scores', {})
+            ranks[stream] = min(rank, int(ranks.get(stream, rank)))
+            try:
+                score = float(item.get('score', 0))
+            except (TypeError, ValueError):
+                score = 0.0
+            scores[stream] = max(score, float(scores.get(stream, 0.0)))
 
     sorted_results = sorted(fused.values(), key=lambda x: -x['rrf_score'])
     for item in sorted_results:

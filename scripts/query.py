@@ -31,6 +31,20 @@ WIKI_DIR = get_wiki_dir()
 PAGES_DIR = WIKI_DIR / "pages"
 
 
+DEFAULT_SEARCH_STREAMS = ["metadata", "chunk", "bm25", "chunk_vector", "vector", "graph", "ledger"]
+
+
+def enabled_search_streams() -> set[str]:
+    """Return enabled retrieval streams from env/config."""
+    env_value = os.environ.get("LLM_WIKI_SEARCH_STREAMS", "").strip()
+    configured = env_value or str(get_query_config().get("search_streams", "") or "")
+    if not configured:
+        return set(DEFAULT_SEARCH_STREAMS)
+    if configured.lower() in {"all", "*"}:
+        return set(DEFAULT_SEARCH_STREAMS)
+    return {stream.strip() for stream in configured.split(",") if stream.strip()}
+
+
 def load_config():
     return get_config()
 
@@ -110,118 +124,197 @@ def call_llm(system_prompt: str, user_content: str, config: dict) -> str:
         raise RuntimeError(f"Unexpected LLM API response: {e}")
 
 
-def search_wiki(query: str, limit: int = 5, debug: bool = False) -> list[dict] | tuple[list[dict], dict]:
+def _allowed_scopes_from_env() -> set[str]:
+    raw = os.environ.get("LLM_WIKI_ALLOWED_SCOPES", "").strip()
+    return {scope.strip() for scope in raw.split(",") if scope.strip()}
+
+
+def _excluded_statuses_from_env() -> set[str]:
+    raw = os.environ.get("LLM_WIKI_EXCLUDE_STATUSES", "").strip()
+    return {status.strip() for status in raw.split(",") if status.strip()}
+
+
+def _page_frontmatter_value(path: str, key: str, default: str) -> str:
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError, PermissionError):
+        return default
+    if not text.startswith("---"):
+        return default
+    for line in text.splitlines()[1:40]:
+        if line.strip() == "---":
+            break
+        if line.startswith(f"{key}:"):
+            return line.split(":", 1)[1].strip().strip('"').strip("'") or default
+    return default
+
+
+def _page_scope(path: str) -> str:
+    return _page_frontmatter_value(path, "scope", "public")
+
+
+def _page_status(path: str) -> str:
+    return _page_frontmatter_value(path, "status", "current")
+
+
+def _filter_by_allowed_scopes(results: list[dict], allowed_scopes: set[str]) -> list[dict]:
+    if not allowed_scopes:
+        return results
+    filtered = []
+    for result in results:
+        path = result.get("path", "")
+        if not path or _page_scope(path) in allowed_scopes:
+            filtered.append(result)
+    return filtered
+
+
+def _filter_by_excluded_statuses(results: list[dict], excluded_statuses: set[str]) -> list[dict]:
+    if not excluded_statuses:
+        return results
+    filtered = []
+    for result in results:
+        path = result.get("path", "")
+        if not path or _page_status(path) not in excluded_statuses:
+            filtered.append(result)
+    return filtered
+
+
+def search_wiki(
+    query: str,
+    limit: int = 5,
+    debug: bool = False,
+    allowed_scopes: list[str] | set[str] | None = None,
+    exclude_statuses: list[str] | set[str] | None = None,
+) -> list[dict] | tuple[list[dict], dict]:
     """Hybrid search: BM25 + Vector + Graph + entities.json fallback, fused by RRF."""
     all_streams: list[list[dict]] = []
     plan = plan_query(query)
     query_variants = rewrite_query(query, plan)
-    trace: dict = {"query": query, "plan": plan, "query_variants": query_variants, "streams": {}}
+    enabled_streams = enabled_search_streams()
+    scope_filter = set(allowed_scopes or []) or _allowed_scopes_from_env()
+    status_filter = set(exclude_statuses or []) or _excluded_statuses_from_env()
+    trace: dict = {
+        "query": query,
+        "plan": plan,
+        "query_variants": query_variants,
+        "enabled_streams": sorted(enabled_streams),
+        "allowed_scopes": sorted(scope_filter),
+        "exclude_statuses": sorted(status_filter),
+        "streams": {},
+    }
 
     # 0. Metadata search over aliases/keywords/questions/summary.
-    try:
-        from search import metadata_search
-        metadata_results = []
-        for variant in query_variants:
-            metadata_results.extend(metadata_search(variant, str(PAGES_DIR), limit=limit * 2))
-        metadata_results = reciprocal_rank_merge(metadata_results, limit=limit * 2)
-        trace["streams"]["metadata"] = metadata_results
-        if metadata_results:
-            all_streams.append(metadata_results)
-    except Exception as e:
-        trace["streams"]["metadata_error"] = str(e)
+    if "metadata" in enabled_streams:
+        try:
+            from search import metadata_search
+            metadata_results = []
+            for variant in query_variants:
+                metadata_results.extend(metadata_search(variant, str(PAGES_DIR), limit=limit * 4))
+            metadata_results = reciprocal_rank_merge(metadata_results, limit=limit * 4)
+            trace["streams"]["metadata"] = metadata_results
+            if metadata_results:
+                all_streams.append(metadata_results)
+        except Exception as e:
+            trace["streams"]["metadata_error"] = str(e)
 
     # 1. Chunk-level BM25 search for precise page-local matches
-    try:
-        from search import chunk_search
-        chunk_results = []
-        for variant in query_variants:
-            chunk_results.extend(chunk_search(variant, str(PAGES_DIR), limit=limit * 2))
-        chunk_results = reciprocal_rank_merge(chunk_results, limit=limit * 2)
-        trace["streams"]["chunk"] = chunk_results
-        if chunk_results:
-            all_streams.append(chunk_results)
-    except Exception as e:
-        trace["streams"]["chunk_error"] = str(e)
+    if "chunk" in enabled_streams:
+        try:
+            from search import chunk_search
+            chunk_results = []
+            for variant in query_variants:
+                chunk_results.extend(chunk_search(variant, str(PAGES_DIR), limit=limit * 4))
+            chunk_results = reciprocal_rank_merge(chunk_results, limit=limit * 4)
+            trace["streams"]["chunk"] = chunk_results
+            if chunk_results:
+                all_streams.append(chunk_results)
+        except Exception as e:
+            trace["streams"]["chunk_error"] = str(e)
 
     # 2. BM25 keyword search (now supports Chinese via jieba)
-    try:
-        from search import bm25_search
-        bm25_results = []
-        for variant in query_variants:
-            bm25_results.extend(bm25_search(variant, str(PAGES_DIR), limit=limit * 2))
-        bm25_results = reciprocal_rank_merge(bm25_results, limit=limit * 2)
-        trace["streams"]["bm25"] = bm25_results
-        if bm25_results:
-            all_streams.append(bm25_results)
-    except Exception as e:
-        trace["streams"]["bm25_error"] = str(e)
+    if "bm25" in enabled_streams:
+        try:
+            from search import bm25_search
+            bm25_results = []
+            for variant in query_variants:
+                bm25_results.extend(bm25_search(variant, str(PAGES_DIR), limit=limit * 4))
+            bm25_results = reciprocal_rank_merge(bm25_results, limit=limit * 4)
+            trace["streams"]["bm25"] = bm25_results
+            if bm25_results:
+                all_streams.append(bm25_results)
+        except Exception as e:
+            trace["streams"]["bm25_error"] = str(e)
 
     # 2. Vector semantic search (via Ollama)
-    try:
-        from search import vector_chunk_search
-        chunk_vector_results = vector_chunk_search(query, str(PAGES_DIR), limit=limit)
-        trace["streams"]["chunk_vector"] = chunk_vector_results
-        if chunk_vector_results:
-            all_streams.append(chunk_vector_results)
-    except Exception as e:
-        trace["streams"]["chunk_vector_error"] = str(e)
+    if "chunk_vector" in enabled_streams:
+        try:
+            from search import vector_chunk_search
+            chunk_vector_results = vector_chunk_search(query, str(PAGES_DIR), limit=limit * 3)
+            trace["streams"]["chunk_vector"] = chunk_vector_results
+            if chunk_vector_results:
+                all_streams.append(chunk_vector_results)
+        except Exception as e:
+            trace["streams"]["chunk_vector_error"] = str(e)
 
     # 3. Page-level vector semantic search
-    try:
-        from search import vector_search
-        vector_results = vector_search(query, str(PAGES_DIR), limit=limit)
-        trace["streams"]["vector"] = vector_results
-        if vector_results:
-            all_streams.append(vector_results)
-    except Exception as e:
-        trace["streams"]["vector_error"] = str(e)
+    if "vector" in enabled_streams:
+        try:
+            from search import vector_search
+            vector_results = vector_search(query, str(PAGES_DIR), limit=limit * 3)
+            trace["streams"]["vector"] = vector_results
+            if vector_results:
+                all_streams.append(vector_results)
+        except Exception as e:
+            trace["streams"]["vector_error"] = str(e)
 
     # 4. Graph entity search
-    try:
-        from search import graph_search
-        graph_results = graph_search(query, str(WIKI_DIR / "graph"), limit=limit)
-        trace["streams"]["graph_raw"] = graph_results
-        if graph_results:
-            # Convert graph results to BM25-compatible format
-            converted = []
-            for g in graph_results:
-                eid = g.get("entity_id", "")
-                page_dir = "concepts" if g.get("type") in ("concept", "technique", "model") else "entities"
-                page_path = PAGES_DIR / page_dir / f"{eid}.md"
-                if page_path.exists():
-                    converted.append({
-                        "file": eid,
-                        "path": str(page_path),
-                        "score": g.get("confidence", 0.5),
-                        "stream": "graph",
-                    })
-            if converted:
-                trace["streams"]["graph"] = converted
-                all_streams.append(converted)
-    except Exception as e:
-        trace["streams"]["graph_error"] = str(e)
+    if "graph" in enabled_streams:
+        try:
+            from search import graph_search
+            graph_results = graph_search(query, str(WIKI_DIR / "graph"), limit=limit * 3)
+            trace["streams"]["graph_raw"] = graph_results
+            if graph_results:
+                # Convert graph results to BM25-compatible format
+                converted = []
+                for g in graph_results:
+                    eid = g.get("entity_id", "")
+                    page_dir = "concepts" if g.get("type") in ("concept", "technique", "model") else "entities"
+                    page_path = PAGES_DIR / page_dir / f"{eid}.md"
+                    if page_path.exists():
+                        converted.append({
+                            "file": eid,
+                            "path": str(page_path),
+                            "score": g.get("confidence", 0.5),
+                            "stream": "graph",
+                        })
+                if converted:
+                    trace["streams"]["graph"] = converted
+                    all_streams.append(converted)
+        except Exception as e:
+            trace["streams"]["graph_error"] = str(e)
 
     # 5. Ledger search (structured tables)
-    try:
-        from ledger import search_ledgers as ledger_search
-        ledger_results = ledger_search(query, limit=limit)
-        trace["streams"]["ledger_raw"] = ledger_results
-        if ledger_results:
-            converted = []
-            for lr in ledger_results:
-                converted.append({
-                    "file": lr["id"],
-                    "path": str(WIKI_DIR / "ledger" / lr["id"]),
-                    "score": lr.get("score", 1),
-                    "stream": "ledger",
-                    "ledger_name": lr["name"],
-                    "ledger_fields": lr.get("fields", []),
-                    "ledger_preview": lr.get("preview", []),
-                })
-            all_streams.append(converted)
-            trace["streams"]["ledger"] = converted
-    except Exception as e:
-        trace["streams"]["ledger_error"] = str(e)
+    if "ledger" in enabled_streams:
+        try:
+            from ledger import search_ledgers as ledger_search
+            ledger_results = ledger_search(query, limit=limit)
+            trace["streams"]["ledger_raw"] = ledger_results
+            if ledger_results:
+                converted = []
+                for lr in ledger_results:
+                    converted.append({
+                        "file": lr["id"],
+                        "path": str(WIKI_DIR / "ledger" / lr["id"]),
+                        "score": lr.get("score", 1),
+                        "stream": "ledger",
+                        "ledger_name": lr["name"],
+                        "ledger_fields": lr.get("fields", []),
+                        "ledger_preview": lr.get("preview", []),
+                    })
+                all_streams.append(converted)
+                trace["streams"]["ledger"] = converted
+        except Exception as e:
+            trace["streams"]["ledger_error"] = str(e)
 
     # Fuse results with RRF if multiple streams
     if len(all_streams) >= 2:
@@ -231,7 +324,7 @@ def search_wiki(query: str, limit: int = 5, debug: bool = False) -> list[dict] |
             trace["fused"] = fused
             results = []
             seen = set()
-            for f in fused[:limit]:
+            for f in fused[: max(limit * 4, limit)]:
                 path = f.get("path", "")
                 if path and path not in seen:
                     seen.add(path)
@@ -245,9 +338,13 @@ def search_wiki(query: str, limit: int = 5, debug: bool = False) -> list[dict] |
                         "chunk_id": f.get("chunk_id", ""),
                         "heading_path": f.get("heading_path", []),
                         "text": f.get("text", ""),
+                        "stream_ranks": f.get("stream_ranks", {}),
+                        "stream_scores": f.get("stream_scores", {}),
                     })
             if results:
                 results = rerank_results(query, results, plan)
+                results = _filter_by_allowed_scopes(results, scope_filter)
+                results = _filter_by_excluded_statuses(results, status_filter)
                 trace["reranked"] = results
                 return (results[:limit], trace) if debug else results[:limit]
         except Exception as e:
@@ -273,6 +370,8 @@ def search_wiki(query: str, limit: int = 5, debug: bool = False) -> list[dict] |
                 })
         if results:
             results = rerank_results(query, results, plan)
+            results = _filter_by_allowed_scopes(results, scope_filter)
+            results = _filter_by_excluded_statuses(results, status_filter)
             trace["reranked"] = results
             return (results[:limit], trace) if debug else results[:limit]
 
@@ -302,6 +401,8 @@ def search_wiki(query: str, limit: int = 5, debug: bool = False) -> list[dict] |
                     })
 
     results = rerank_results(query, results, plan)
+    results = _filter_by_allowed_scopes(results, scope_filter)
+    results = _filter_by_excluded_statuses(results, status_filter)
     trace["reranked"] = results
     return (results[:limit], trace) if debug else results[:limit]
 
@@ -401,13 +502,76 @@ def rewrite_query(query: str, plan: dict) -> list[str]:
     return deduped[:6]
 
 
+# Entity type weights for reranking \u2014 prioritize content-rich types.
+TYPE_WEIGHTS: dict[str, float] = {
+    "concept": 1.25, "technique": 1.25, "model": 1.15, "framework": 1.10,
+    "benchmark": 0.95, "paper": 0.90, "certification": 0.90, "policy": 0.95,
+    "entity": 0.90, "event": 0.85, "process": 0.95, "rule": 0.95,
+    "algorithm": 1.20, "metric": 0.90, "tool": 0.95, "system": 0.90,
+}
+
+# Intent \u2192 preferred entity types for smarter reranking.
+INTENT_TYPE_PREFERENCE: dict[str, list[str]] = {
+    "fact": ["concept", "technique", "model", "algorithm", "framework"],
+    "relationship": ["technique", "concept", "model", "framework"],
+    "comparison": ["model", "framework", "benchmark", "technique"],
+    "ledger_filter": ["entity", "event", "process"],
+}
+
+def _get_entity_type_weight(entity_type: str, intent: str) -> float:
+    """Calculate entity type bonus based on query intent."""
+    base = TYPE_WEIGHTS.get(entity_type, 1.0)
+    preferred = INTENT_TYPE_PREFERENCE.get(intent, [])
+    if entity_type in preferred:
+        # Higher bonus for top-3 preferred types
+        rank = preferred.index(entity_type)
+        if rank == 0:
+            base *= 1.15
+        elif rank <= 2:
+            base *= 1.08
+        elif rank <= 4:
+            base *= 1.04
+    return base
+
+
 def rerank_results(query: str, results: list[dict], plan: dict) -> list[dict]:
-    """Lightweight reranker using stream preference and lexical overlap."""
+    """Reranker using stream preference, entity type weights, and lexical overlap."""
     query_terms = {t.lower() for t in re.findall(r"[\w\u4e00-\u9fff]+", query) if len(t) >= 2}
     preferred = plan.get("preferred_streams", [])
     stream_weight = {stream: len(preferred) - i for i, stream in enumerate(preferred)}
+    dense_weight = float(os.environ.get("LLM_WIKI_DENSE_RERANK_WEIGHT", "1.5"))
+    intent = plan.get("intent", "fact")
 
     def score(result: dict) -> float:
+        stream_ranks = result.get("stream_ranks") or {}
+        stream_scores = result.get("stream_scores") or {}
+        if stream_ranks:
+            weighted_rrf = 0.0
+            for stream, rank in stream_ranks.items():
+                rank = max(int(rank), 1)
+                weight = 1.0
+                if stream in {"vector", "chunk_vector"}:
+                    weight = dense_weight
+                elif stream == "chunk":
+                    weight = 1.15
+                elif stream == "metadata":
+                    weight = 1.1
+                elif stream == "graph":
+                    weight = 1.08
+                weighted_rrf += weight / (60 + rank)
+
+            # Entity type bonus (new)
+            etype = result.get("type", "")
+            type_bonus = _get_entity_type_weight(etype, intent)
+
+            score_bonus = 0.0
+            if "bm25" in stream_scores:
+                score_bonus += min(float(stream_scores.get("bm25", 0.0) or 0.0), 50.0) * 0.0001
+            for stream in ("vector", "chunk_vector"):
+                if stream in stream_scores:
+                    score_bonus += float(stream_scores.get(stream, 0.0) or 0.0) * 0.01
+            return weighted_rrf * type_bonus + score_bonus
+
         text = " ".join([
             result.get("id", ""),
             result.get("type", ""),
@@ -418,7 +582,10 @@ def rerank_results(query: str, results: list[dict], plan: dict) -> list[dict]:
         overlap = sum(1 for term in query_terms if term in text)
         streams = result.get("stream", "").split(",") if result.get("stream") else []
         stream_bonus = max((stream_weight.get(s, 0) for s in streams), default=0)
-        return float(result.get("score", 0)) + overlap * 0.05 + stream_bonus * 0.01
+        # Apply entity type weight to fallback scoring path
+        etype = result.get("type", "")
+        type_bonus = _get_entity_type_weight(etype, intent)
+        return (float(result.get("score", 0)) + overlap * 0.05 + stream_bonus * 0.01) * type_bonus
 
     ranked = [dict(r) for r in results]
     for item in ranked:
