@@ -369,6 +369,25 @@ def search_wiki(
         except Exception as e:
             trace["streams"]["ledger_error"] = str(e)
 
+    # Graph-traversal recall (Phase 3): expand results via knowledge graph
+    if "graph" in enabled_streams and all_streams:
+        try:
+            top_entities = []
+            for stream_results in all_streams:
+                for r in stream_results[:5]:
+                    eid = r.get("file") or r.get("id") or r.get("entity_id", "")
+                    if eid:
+                        top_entities.append(eid)
+            if top_entities:
+                graph_expanded = _graph_traverse_recall(
+                    list(dict.fromkeys(top_entities)), depth=2, limit=10
+                )
+                if graph_expanded:
+                    all_streams.append(graph_expanded)
+                    trace["streams"]["graph_recall"] = graph_expanded
+        except Exception as e:
+            trace["streams"]["graph_recall_error"] = str(e)
+
     # Fuse results with RRF if multiple streams
     if len(all_streams) >= 2:
         try:
@@ -396,6 +415,8 @@ def search_wiki(
                     })
             if results:
                 results = rerank_results(query, results, plan)
+                # Graph boost (Phase 3): boost pages connected to top results
+                results = _graph_boost(results)
                 # Cross-encoder re-rank (Phase 2): re-scores top candidates
                 results = cross_encode_rerank(query, results, top_k=limit)
                 results = _filter_by_allowed_scopes(results, scope_filter)
@@ -425,6 +446,7 @@ def search_wiki(
                 })
         if results:
             results = rerank_results(query, results, plan)
+            results = _graph_boost(results)
             results = cross_encode_rerank(query, results, top_k=limit)
             results = _filter_by_allowed_scopes(results, scope_filter)
             results = _filter_by_excluded_statuses(results, status_filter)
@@ -566,15 +588,108 @@ def rewrite_query(query: str, plan: dict) -> list[str]:
     return deduped[:8]
 
 
+def _graph_traverse_recall(entity_ids: list[str], depth: int = 2, limit: int = 10) -> list[dict]:
+    """Expand search recall by traversing knowledge graph from top entities.
+
+    For relationship/synthesis queries, top entities' graph neighbors may contain
+    relevant information not captured by text-based retrieval.
+    """
+    try:
+        from graph import traverse, _paths
+        _, entities_file, _ = _paths()
+        import json as _json
+        entities_data = _json.loads(Path(entities_file).read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+    expanded = []
+    seen_ids = set(entity_ids)
+
+    for eid in entity_ids[:3]:  # top 3 entities
+        try:
+            subgraph = traverse(eid, depth=depth)
+            for node_id, node_data in subgraph.items():
+                if node_id in seen_ids:
+                    continue
+                entity = node_data.get("entity", {})
+                if not isinstance(entity, dict):
+                    continue
+                seen_ids.add(node_id)
+                etype = entity.get("type", "concept")
+                page_dir = "concepts" if etype in ("concept", "technique", "model", "framework", "benchmark") else "entities"
+                page_path = PAGES_DIR / page_dir / f"{node_id}.md"
+                if page_path.exists():
+                    expanded.append({
+                        "file": node_id,
+                        "path": str(page_path),
+                        "score": 0.35,  # lower base score — graph recall supplement
+                        "type": etype,
+                        "stream": "graph_recall",
+                    })
+        except Exception:
+            continue
+
+    return expanded[:limit]
+
+
+def _graph_boost(results: list[dict]) -> list[dict]:
+    """Boost pages connected to top-ranked results via knowledge graph edges.
+
+    A page that is connected (via typed edges) to a top-3 result gets a
+    small score boost, since related entities are more likely relevant.
+    """
+    if len(results) < 3:
+        return results
+
+    try:
+        from graph import _paths
+        import json as _json
+        _, _, edges_file = _paths()
+        edges_data = _json.loads(Path(edges_file).read_text(encoding="utf-8"))
+        all_edges = edges_data.get("edges", []) if isinstance(edges_data, dict) else []
+    except Exception:
+        return results
+
+    top_ids = {r.get("id", "") for r in results[:3] if r.get("id")}
+    if not top_ids:
+        return results
+
+    # Build adjacency: which entities are connected to top entities
+    connected_to_top: dict[str, int] = {}
+    for edge in all_edges:
+        src = edge.get("source", "")
+        tgt = edge.get("target", "")
+        if src in top_ids and tgt:
+            connected_to_top[tgt] = connected_to_top.get(tgt, 0) + 1
+        if tgt in top_ids and src:
+            connected_to_top[src] = connected_to_top.get(src, 0) + 1
+
+    for r in results:
+        eid = r.get("id", "")
+        connections = connected_to_top.get(eid, 0)
+        if connections > 0:
+            # +5% per connection, max +15%
+            boost = 1.0 + min(connections, 3) * 0.05
+            r["score"] = r.get("score", 0) * boost
+            r["graph_boost"] = round(boost, 2)
+
+    return sorted(results, key=lambda x: -x.get("score", 0))
+
+
 def _llm_expand_query(query: str, plan: dict) -> list[str]:
     """Use LLM to generate 2-3 semantic query variants for better recall."""
     intent = plan.get("intent", "fact")
-    intent_hints = {
-        "fact": "include key technical terms and synonyms",
-        "relationship": "include entity names and relationship words",
-        "comparison": "include comparison phrases and entity names",
-    }
-    hint = intent_hints.get(intent, "include key terms")
+    is_chinese = any('一' <= c <= '鿿' for c in query)
+
+    if is_chinese:
+        hint = "用中文生成。包含关键实体名称、同义词和相关术语。如果涉及具体技术或产品，直接使用其英文原名。"
+    else:
+        intent_hints = {
+            "fact": "include key technical terms and synonyms",
+            "relationship": "include entity names and relationship words",
+            "comparison": "include comparison phrases and entity names",
+        }
+        hint = intent_hints.get(intent, "include key terms")
 
     prompt = f"""Generate 2-3 alternative search queries for: "{query}"
 Intent: {intent}. {hint}.
