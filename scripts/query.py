@@ -846,10 +846,48 @@ def read_page_content(page_path: str) -> str:
         return ""
 
 
+def _format_page_context(page: dict, index: int) -> str:
+    """Format a wiki page as structured context for the synthesis LLM.
+
+    Includes entity type, name, relationships, and content to help the LLM
+    understand what kind of information each page provides.
+    """
+    pid = page.get("id", f"unknown-{index}")
+    ptype = page.get("type", "concept")
+    pname = page.get("name", pid)
+    content = page.get("text") or read_page_content(page.get("path", ""))
+    if not content:
+        return ""
+
+    # Build metadata header
+    header = f"[{ptype.upper()}] {pname}"
+
+    # Include heading path if available (chunk results)
+    heading = " > ".join(page.get("heading_path", []))
+    if heading:
+        header += f" | Section: {heading}"
+
+    # Include graph relationships if available
+    graph_boost = page.get("graph_boost", 0)
+    cross_score = page.get("cross_score", 0)
+    score_info = ""
+    if graph_boost > 1.0:
+        score_info += f" [graph-connected: +{int((graph_boost-1)*100)}%]"
+    if cross_score:
+        score_info += f" [relevance: {cross_score:.2f}]"
+
+    return (
+        f"## DOC {index}: {header}{score_info}\n"
+        f"**Type**: {ptype} | **ID**: {pid}\n\n"
+        f"{content[:2000]}"
+    )
+
+
 def synthesize_answer(query: str, pages: list[dict], config: dict, fmt: str = "markdown") -> str:
     if not pages:
         return "No relevant wiki pages found. Try adding more sources with `wiki add`."
 
+    # Phase 4: Structured context formatting (4.1)
     contexts = []
     for i, page in enumerate(pages[:5]):
         # Handle table/ledger results (structured data, no file path)
@@ -863,33 +901,36 @@ def synthesize_answer(query: str, pages: list[dict], config: dict, fmt: str = "m
                     if not k.startswith("_")
                 )
                 contexts.append(
-                    f"--- TABLE: {table_name} (row {row_id}) ---\n{row_str}"
+                    f"## DOC {i+1}: [TABLE] {table_name} (row {row_id})\n{row_str}"
                 )
             continue
 
-        # Wiki page/chunk (unstructured markdown)
-        content = page.get("text") or read_page_content(page.get("path", ""))
-        if content:
-            heading = " > ".join(page.get("heading_path", []))
-            heading_line = f"\nHeading: {heading}" if heading else ""
-            contexts.append(
-                f"--- PAGE {i+1}: {page.get('id', 'unknown')} ---"
-                f"{heading_line}\n{content[:2000]}"
-            )
+        ctx = _format_page_context(page, i + 1)
+        if ctx:
+            contexts.append(ctx)
 
     if not contexts:
         return "Wiki pages found but content could not be read."
 
+    # Phase 4: Structured answer template (4.2) — guides LLM to complete answers
     format_prompts = {
         "markdown": """## Output Format
-Provide a clear, concise answer with citations:
+Structure your answer as follows:
 
-**Answer**: [Your synthesized answer]
+**Direct Answer**: [2-3 sentence summary directly answering the question]
+
+**Key Details**:
+- [Specific fact 1 from the wiki pages] — [[source-id]]
+- [Specific fact 2] — [[source-id]]
+- [Include specific numbers, dates, names when available]
 
 **Sources**:
-- [[page-id-1]] — relevant point
+- [[page-id-1]] — how this page contributed to the answer
+- [[page-id-2]] — how this page contributed to the answer
 
-**Related**: [[related-entity-1]], [[related-entity-2]]""",
+**Related Topics**: [[related-1]], [[related-2]] (optional)
+
+If a claim cannot be verified from the provided wiki pages, mark it as **[uncertain]**.""",
 
         "table": """## Output Format
 Provide a comparison table comparing the key entities:
@@ -949,15 +990,18 @@ Output ONLY valid JSON (no markdown, no explanation):
 }""",
     }
 
-    system_prompt = f"""You are a wiki query engine. Answer questions based on the provided wiki pages.
+    system_prompt = f"""You are a precise wiki query engine. Answer questions based STRICTLY on the provided wiki documents.
 
 {format_prompts.get(fmt, format_prompts["markdown"])}
 
-## Rules
-- Synthesize information from multiple pages
-- Always cite sources with wikilinks
-- Note contradictions if found
-- Suggest related topics to explore"""
+## Critical Rules
+- ONLY use information from the provided wiki documents
+- Cite specific sources for each key claim using [[page-id]]
+- Include specific numbers, dates, and names when available
+- If the documents don't contain the answer, say so clearly — do NOT fabricate
+- Mark any inferred or uncertain claims with [uncertain]
+- For comparison questions, highlight differences explicitly
+- Keep answers concise but complete — prefer precision over length"""
 
     user_prompt = f"""Query: {query}
 
