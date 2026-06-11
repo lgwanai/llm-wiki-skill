@@ -67,6 +67,7 @@ def cmd_compile(
     force: bool = False,
     depth: int | None = None,
     dry_run: bool = False,
+    jobs: int | None = None,
 ) -> dict:
     args = [source, "--type", source_type]
     if force:
@@ -75,6 +76,8 @@ def cmd_compile(
         args.extend(["--depth", str(depth)])
     if dry_run:
         args.append("--dry-run")
+    if jobs is not None:
+        args.extend(["-j", str(jobs)])
 
     code, output = run_script("compile_v2.py", args)
 
@@ -290,8 +293,11 @@ Environment:
                                 choices=["doc", "article", "code", "conversation"],
                                 help="Source type (controls entity focus)")
     compile_parser.add_argument("--force", action="store_true", help="Force re-compile")
+    compile_parser.add_argument("--dry-run", action="store_true", help="Preview without writing files")
     compile_parser.add_argument("--depth", type=int, default=None,
                                 help="Directory recursion depth: 0 = direct files only, omit = all subdirectories")
+    compile_parser.add_argument("-j", "--jobs", type=int, default=None,
+                                help="Max concurrent LLM calls (default: 1, cap: 4)")
 
     query_parser = subparsers.add_parser("query", help="Query wiki")
     query_parser.add_argument("question", help="Question to answer")
@@ -438,6 +444,8 @@ Environment:
             source_type=args.source_type,
             force=args.force,
             depth=args.depth,
+            dry_run=getattr(args, 'dry_run', False),
+            jobs=getattr(args, 'jobs', None),
         )
         if result.get("success"):
             print(result.get("message", "Done"))
