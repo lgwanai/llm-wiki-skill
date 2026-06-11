@@ -25,7 +25,10 @@ model:
   # api_url: http://localhost:8000/v1/chat/completions
   # api_key: ${LLM_API_KEY}
 
-# Reranker for precise relevance scoring in search results.
+# Optional reranker for experimental/benchmark retrieval.
+# LLM Wiki is designed to compile knowledge into pages first; rerankers are
+# disabled by default because they add model cost without improving the wiki
+# itself.
 # backend:
 #   flagembedding  — Cross-encoder via FlagEmbedding (BGE/Qwen3-Reranker, PyTorch)
 #   mlx            — Apple Silicon embedding model (bi-encoder, lower accuracy)
@@ -41,6 +44,11 @@ query:
   llm_synthesis: true
   default_format: markdown
   max_results: 5
+  # Default is wiki-native: frontmatter metadata + page BM25 + compiled graph + ledgers.
+  # Optional legacy/RAG-like streams can be enabled explicitly:
+  # metadata,bm25,graph,ledger,chunk,vector,chunk_vector
+  search_streams: metadata,bm25,graph,ledger
+  llm_query_expansion: false
 
 # OCR is optional. Local mode uses one backend; API mode uses an
 # OpenAI-compatible vision endpoint or a provider preset.
@@ -76,6 +84,7 @@ image_analysis:
   ocr_fallback: true
   ocr_min_chars: 800
 
+# Optional embeddings for experiments/benchmarks. Not part of the default query path.
 embeddings:
   mode: local
   model: Qwen/Qwen3-Embedding-8B

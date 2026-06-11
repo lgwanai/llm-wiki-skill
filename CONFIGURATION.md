@@ -154,9 +154,15 @@ query:
   llm_synthesis: true
   default_format: markdown
   max_results: 5
+  search_streams: metadata,bm25,graph,ledger
+  llm_query_expansion: false
 ```
 
 ### `embeddings`
+
+Embeddings are optional for experiments and benchmarks. They are not part of
+the default LLM Wiki query path, which searches compiled pages and graph data
+directly.
 
 ```yaml
 embeddings:

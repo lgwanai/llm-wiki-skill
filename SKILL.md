@@ -67,14 +67,14 @@ wiki compile source.md --force  # re-compile + detect contradictions
 
 ### `/wiki-query <question>` — Search & Answer
 
-Hybrid search (BM25 + Graph + RRF fusion), LLM synthesizes answer with citations.
+Wiki-native search (metadata + page BM25 + compiled graph + ledger), then LLM
+synthesizes from already-compiled pages with citations.
 
 ```bash
 wiki query "What is X?"
 wiki query "What is X?" --debug-search
 wiki search doctor
 wiki search eval .wiki/evals/retrieval.jsonl
-wiki embed --chunks --force
 wiki benchmark evals/rag_benchmark_smoke.jsonl --method both -k 5
 
 # Fast mode — skip LLM synthesis (0.5s)
@@ -97,18 +97,17 @@ wiki query "Explain X" --file-back
 Chinese search via jieba segmentation. English via BM25 + Porter stemming.
 Search index cached to disk (`.wiki/graph/.bm25_index.json`), auto-invalidated on page changes.
 
-Retrieval quality features:
+Default retrieval quality features:
 
-- Chunk-level search retrieves the relevant section instead of only the page start.
 - Metadata search indexes `aliases`, `keywords`, `questions`, and `summary`.
-- Chunk vector search retrieves semantically relevant sections when `wiki embed --chunks` has run.
+- Page BM25 searches compiled wiki pages, not raw source chunks.
+- Graph search anchors natural-language questions to compiled entities and relationships.
 - Query planning prioritizes ledger/graph/page streams by intent.
-- Query rewriting adds lightweight lexical variants for recall.
-- Lightweight reranking improves final ordering after RRF.
-- Embedding index metadata prevents page/query embedding model mismatch.
-- `wiki search doctor` reports stale embeddings, chunk coverage, and graph health.
+- Query rewriting adds only lightweight lexical variants by default.
+- `wiki search doctor` reports page, metadata, graph, and optional embedding health.
 - `wiki search eval` measures Recall@K and MRR from jsonl eval cases.
-- `wiki benchmark` runs BEIR/MTEB-style retrieval metrics and RAGAS-lite end-to-end metrics.
+- `wiki embed`, vector streams, and rerankers are opt-in tools for experiments/benchmarks,
+  not the default product path.
 
 ### `/wiki-lint` — Health Check
 

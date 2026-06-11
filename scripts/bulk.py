@@ -234,11 +234,9 @@ def cmd_stats() -> dict:
 
     entities_file = GRAPH_DIR / "entities.json"
     edges_file = GRAPH_DIR / "edges.json"
-    embeddings_file = GRAPH_DIR / "embeddings.json"
 
     entities_count = 0
     edges_count = 0
-    embeddings_count = 0
     avg_confidence = 0.0
     confidence_dist = {}
 
@@ -259,10 +257,6 @@ def cmd_stats() -> dict:
             edges = edges.get("edges", [])
         edges_count = len(edges) if isinstance(edges, list) else 0
 
-    if embeddings_file.exists():
-        embeddings = json.loads(embeddings_file.read_text(encoding="utf-8"))
-        embeddings_count = len(embeddings)
-
     from collections import Counter
     edge_types = Counter()
     if edges_file.exists():
@@ -273,7 +267,6 @@ def cmd_stats() -> dict:
         "total_size_kb": round(total_size / 1024, 1),
         "entities": entities_count,
         "edges": edges_count,
-        "embeddings": embeddings_count,
         "avg_confidence": round(avg_confidence, 3),
         "confidence_distribution": confidence_dist,
         "edge_type_distribution": dict(edge_types.most_common()),

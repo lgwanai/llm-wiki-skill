@@ -59,7 +59,8 @@ def test_image_source_uses_analysis_and_keeps_source_path(tmp_path, monkeypatch)
     content, source_name = compile_v2.read_source_content(image)
 
     assert source_name == "diagram.webp"
-    assert f"> Source image: {image.resolve()}" in content
+    assert f"> **Original**: `{image.resolve()}`" in content
+    assert "> **Stored at**:" in content
     assert "## Visual Analysis" in content
     assert "- Root" in content
 

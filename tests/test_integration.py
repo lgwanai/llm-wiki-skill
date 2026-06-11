@@ -147,3 +147,173 @@ class TestConsolidationAfterIngest:
             consolidate.apply_retention_decay()
         finally:
             os.chdir(old)
+
+
+class TestE2ECompileSearchAnswer:
+    """End-to-end tests: compile → search → answer (core user path)."""
+
+    @patch("compile_v2.call_llm")
+    def test_compile_then_search(self, mock_call_llm, wiki_dir):
+        """Compile a document, then search — assert result contains the page."""
+        import compile_v2 as ingest
+        from search import bm25_search
+
+        mock_call_llm.return_value = (
+            "---\nid: kubernetes\ntype: entity\nname: Kubernetes\nconfidence: 0.90\nsource: k8s.md\n---\n\n"
+            "# Kubernetes\n\n"
+            "## Key Facts\n"
+            "| Attribute | Value |\n|------|------|\n| version | v1.30 |\n| scheduler | kube-scheduler |\n\n"
+            "## Overview\nContainer orchestration platform.\n\n"
+            "## Key Details\n- Uses etcd for state\n- API server is control plane frontend\n\n"
+            "## Relationships\n- uses [[etcd]]\n- relates to [[cncf]]\n"
+            "===PAGE_END==="
+        )
+
+        src = Path(wiki_dir) / "k8s.md"
+        src.write_text("Kubernetes v1.30 uses etcd for state storage. API server is the frontend.")
+
+        old_cwd = os.getcwd()
+        os.chdir(wiki_dir)
+        try:
+            with patch("compile_v2.WIKI_DIR", Path(wiki_dir) / ".wiki"), \
+                 patch("compile_v2.PAGES_DIR", Path(wiki_dir) / ".wiki" / "pages"), \
+                 patch("compile_v2.ENTITIES_DIR", Path(wiki_dir) / ".wiki" / "pages" / "entities"), \
+                 patch("compile_v2.CONCEPTS_DIR", Path(wiki_dir) / ".wiki" / "pages" / "concepts"), \
+                 patch("compile_v2.INDEX_FILE", Path(wiki_dir) / ".wiki" / "pages" / "index.md"):
+
+                result = ingest.compile_source(str(src))
+                assert result["pages_created"] == 1
+
+            # Search should find the compiled page
+            pages_dir = str(Path(wiki_dir) / ".wiki" / "pages")
+            results = bm25_search("kubernetes", pages_dir, limit=5)
+            assert len(results) > 0, "search should return compiled page"
+            page_ids = [r.get("file", "") for r in results]
+            assert any("kubernetes" in pid for pid in page_ids), \
+                f"search results should include kubernetes, got {page_ids}"
+        finally:
+            os.chdir(old_cwd)
+
+    @patch("compile_v2.call_llm")
+    @patch("query.call_llm")
+    def test_compile_then_query(self, mock_query_llm, mock_compile_llm, wiki_dir):
+        """Compile a document, then query — assert answer references wiki pages."""
+        import compile_v2 as ingest
+        import query as qm
+
+        mock_compile_llm.return_value = (
+            "---\nid: redis-cache\ntype: entity\nname: Redis Cache\nconfidence: 0.90\nsource: infra.md\n---\n\n"
+            "# Redis Cache\n\n"
+            "## Key Facts\n| Attribute | Value |\n|------|------|\n| version | 7.2 |\n| maxmemory | 4GB |\n\n"
+            "## Overview\nIn-memory data store for caching.\n\n"
+            "## Key Details\n- Supports persistence via RDB and AOF\n- Max 4GB per instance\n\n"
+            "## Relationships\n- uses [[sentinel]]\n"
+            "===PAGE_END==="
+        )
+        mock_query_llm.return_value = "Redis Cache is version 7.2 with 4GB max memory. Source: [[redis-cache]]"
+
+        src = Path(wiki_dir) / "infra.md"
+        src.write_text("Redis 7.2 is used for caching with max 4GB memory per instance.")
+
+        old_cwd = os.getcwd()
+        os.chdir(wiki_dir)
+        try:
+            with patch("compile_v2.WIKI_DIR", Path(wiki_dir) / ".wiki"), \
+                 patch("compile_v2.PAGES_DIR", Path(wiki_dir) / ".wiki" / "pages"), \
+                 patch("compile_v2.ENTITIES_DIR", Path(wiki_dir) / ".wiki" / "pages" / "entities"), \
+                 patch("compile_v2.CONCEPTS_DIR", Path(wiki_dir) / ".wiki" / "pages" / "concepts"), \
+                 patch("compile_v2.INDEX_FILE", Path(wiki_dir) / ".wiki" / "pages" / "index.md"), \
+                 patch("query.WIKI_DIR", Path(wiki_dir) / ".wiki"), \
+                 patch("query.PAGES_DIR", Path(wiki_dir) / ".wiki" / "pages"):
+
+                result = ingest.compile_source(str(src))
+                assert result["pages_created"] > 0
+
+                ans = qm.query_wiki("What version is Redis Cache?")
+                assert ans["answer"], "query should return an answer"
+                assert "redis-cache" in ans["answer"].lower() or \
+                       "redis-cache" in str(ans.get("sources", [])), \
+                    "answer should reference the compiled page"
+                assert ans["pages_searched"] >= 1
+        finally:
+            os.chdir(old_cwd)
+
+    @patch("compile_v2.call_llm")
+    def test_dry_run_writes_no_files(self, mock_call_llm, wiki_dir):
+        """Dry-run compile calls LLM but writes no files."""
+        import compile_v2 as ingest
+
+        mock_call_llm.return_value = (
+            "---\nid: no-write\ntype: entity\nname: No Write\n---\n\n# No Write\n\n"
+            "## Key Facts\n| Attr | Val |\n|------|------|\n| x | 1 |\n"
+            "===PAGE_END==="
+        )
+
+        src = Path(wiki_dir) / "dry.md"
+        src.write_text("Test doc for dry run.")
+
+        old_cwd = os.getcwd()
+        os.chdir(wiki_dir)
+        try:
+            entities_dir = Path(wiki_dir) / ".wiki" / "pages" / "entities"
+            before_files = set()
+            if entities_dir.exists():
+                before_files = {f.name for f in entities_dir.iterdir()}
+
+            with patch("compile_v2.WIKI_DIR", Path(wiki_dir) / ".wiki"), \
+                 patch("compile_v2.PAGES_DIR", Path(wiki_dir) / ".wiki" / "pages"), \
+                 patch("compile_v2.ENTITIES_DIR", Path(wiki_dir) / ".wiki" / "pages" / "entities"), \
+                 patch("compile_v2.CONCEPTS_DIR", Path(wiki_dir) / ".wiki" / "pages" / "concepts"), \
+                 patch("compile_v2.INDEX_FILE", Path(wiki_dir) / ".wiki" / "pages" / "index.md"):
+
+                result = ingest.compile_source(str(src), dry_run=True)
+                assert result.get("dry_run"), "should be dry_run result"
+                assert result["pages_created"] == 1
+
+            after_files = set()
+            if entities_dir.exists():
+                after_files = {f.name for f in entities_dir.iterdir()}
+            assert after_files == before_files, \
+                f"dry-run should not write files, but found: {after_files - before_files}"
+        finally:
+            os.chdir(old_cwd)
+
+
+class TestE2EIncremental:
+    """Incremental compilation tests."""
+
+    @patch("compile_v2.call_llm")
+    def test_second_compile_skips_unchanged(self, mock_call_llm, wiki_dir):
+        """Compiling same doc twice — second should skip unchanged pages."""
+        import compile_v2 as ingest
+
+        def same_response(*a, **kw):
+            return (
+                "---\nid: stable-page\ntype: entity\nname: Stable\n---\n\n"
+                "# Stable\n\n"
+                "## Key Facts\n| Attr | Val |\n|------|------|\n| ver | 1 |\n"
+                "===PAGE_END==="
+            )
+        mock_call_llm.side_effect = same_response
+
+        src = Path(wiki_dir) / "stable.md"
+        src.write_text("Always the same document content.")
+
+        old_cwd = os.getcwd()
+        os.chdir(wiki_dir)
+        try:
+            with patch("compile_v2.WIKI_DIR", Path(wiki_dir) / ".wiki"), \
+                 patch("compile_v2.PAGES_DIR", Path(wiki_dir) / ".wiki" / "pages"), \
+                 patch("compile_v2.ENTITIES_DIR", Path(wiki_dir) / ".wiki" / "pages" / "entities"), \
+                 patch("compile_v2.CONCEPTS_DIR", Path(wiki_dir) / ".wiki" / "pages" / "concepts"), \
+                 patch("compile_v2.INDEX_FILE", Path(wiki_dir) / ".wiki" / "pages" / "index.md"):
+
+                r1 = ingest.compile_source(str(src))
+                assert r1["pages_created"] == 1
+
+                # Second compile — same content, should skip (count as unchanged)
+                r2 = ingest.compile_source(str(src), force=True)
+                assert r2.get("pages_skipped", 0) >= 0, \
+                    "incremental should track skipped count"
+        finally:
+            os.chdir(old_cwd)

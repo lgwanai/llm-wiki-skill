@@ -10,7 +10,7 @@ Provides a small user-facing configuration surface:
 
 Usage:
     from config import get_config, get_wiki_dir
-    
+
     config = get_config()
     wiki_dir = get_wiki_dir()
 """
@@ -18,13 +18,13 @@ Usage:
 import os
 import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import yaml
 
-_config_cache: Optional[dict] = None
-_wiki_dir_cache: Optional[Path] = None
-_project_root_cache: Optional[Path] = None
+_config_cache: dict | None = None
+_wiki_dir_cache: Path | None = None
+_project_root_cache: Path | None = None
 
 CONFIG_FILENAME = "wiki_config.yaml"
 CONFIG_ENV_VAR = "LLM_WIKI_CONFIG"
@@ -61,31 +61,12 @@ DEFAULT_CONFIG = {
         "ocr_fallback": True,
         "ocr_min_chars": 800,
     },
-    "embeddings": {
-        "mode": "local",
-        "model": "Qwen/Qwen3-Embedding-8B",
-        "model_backend": "modelscope",
-        "dimension": 4096,
-        "backend": "faiss",
-        "device": "auto",
-        "batch_size": 16,
-        "cache_path": "graph/embeddings.json",
-    },
-    "reranker": {
-        "enabled": True,
-        "backend": "flagembedding",
-        "model": "BAAI/bge-reranker-v2-m3",
-        "model_backend": "modelscope",
-        "cache_dir": "~/.cache/modelscope",
-        "max_pairs": 256,
-        "default_top_k": 5,
-        "use_fp16": True,
-        "batch_size": 8,
-    },
     "query": {
         "llm_synthesis": True,
         "default_format": "markdown",
         "max_results": 5,
+        "search_streams": "metadata,bm25,graph,ledger",
+        "llm_query_expansion": False,
     },
     "logging": {
         "level": "INFO",
@@ -93,27 +74,27 @@ DEFAULT_CONFIG = {
 }
 
 
-def find_config_file() -> Optional[Path]:
+def find_config_file() -> Path | None:
     """Find config file in order: env var > cwd > parent dirs > home."""
     if CONFIG_ENV_VAR in os.environ:
         config_path = Path(os.environ[CONFIG_ENV_VAR])
         if config_path.exists():
             return config_path
-    
+
     cwd = Path.cwd()
     for d in [cwd] + list(cwd.parents):
         config_path = d / CONFIG_FILENAME
         if config_path.exists():
             return config_path
-    
+
     home_config = Path.home() / ".config" / "llm-wiki" / CONFIG_FILENAME
     if home_config.exists():
         return home_config
-    
+
     return None
 
 
-def find_local_config_file() -> Optional[Path]:
+def find_local_config_file() -> Path | None:
     """Find a project-local config file in cwd or its parents."""
     cwd = Path.cwd()
     for d in [cwd] + list(cwd.parents):
@@ -158,11 +139,11 @@ def _expand_env_vars(value: Any) -> Any:
     """Recursively expand environment variables in config values."""
     if isinstance(value, str):
         pattern = r'\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*)'
-        
+
         def replace_var(match):
             var_name = match.group(1) or match.group(2)
             return os.environ.get(var_name, match.group(0))
-        
+
         return re.sub(pattern, replace_var, value)
     elif isinstance(value, dict):
         return {k: _expand_env_vars(v) for k, v in value.items()}
@@ -241,12 +222,12 @@ def _normalize_config(config: dict) -> dict:
 def load_config() -> dict:
     """Load configuration from file, with defaults as fallback."""
     global _config_cache
-    
+
     if _config_cache is not None:
         return _config_cache
-    
+
     config = DEFAULT_CONFIG.copy()
-    
+
     config_file = find_config_file()
     if config_file:
         try:
@@ -255,9 +236,9 @@ def load_config() -> dict:
             config = _deep_merge(config, user_config)
         except (yaml.YAMLError, OSError) as e:
             print(f"Warning: Failed to load config from {config_file}: {e}")
-    
+
     config = _expand_env_vars(_normalize_config(config))
-    
+
     _config_cache = config
     return config
 
@@ -270,21 +251,21 @@ def get_config() -> dict:
 def get_wiki_dir() -> Path:
     """Get wiki directory path (resolved and absolute)."""
     global _wiki_dir_cache
-    
+
     if _wiki_dir_cache is not None:
         return _wiki_dir_cache
-    
+
     config = get_config()
     wiki_dir_str = config.get("wiki_dir", ".wiki")
-    
+
     if "LLM_WIKI_DIR" in os.environ:
         wiki_dir_str = os.environ["LLM_WIKI_DIR"]
-    
+
     wiki_dir = Path(wiki_dir_str).expanduser()
-    
+
     if not wiki_dir.is_absolute():
         wiki_dir = get_project_root() / wiki_dir
-    
+
     _wiki_dir_cache = wiki_dir.resolve()
     return _wiki_dir_cache
 
@@ -294,13 +275,13 @@ def get_llm_config() -> dict:
     config = get_config()
     model = config.get("model", {})
     provider = model.get("provider", "deepseek")
-    
+
     base_url_defaults = {
         "deepseek": "https://api.deepseek.com",
         "openai": "https://api.openai.com",
         "ollama": "http://localhost:11434",
     }
-    
+
     if provider == "ollama":
         return {
             "provider": "ollama",
@@ -311,7 +292,7 @@ def get_llm_config() -> dict:
             "api_key": None,
             "max_tokens": model.get("max_tokens", 32000),
         }
-    
+
     if provider == "custom" or model.get("api_url"):
         return {
             "provider": "custom",
@@ -322,7 +303,7 @@ def get_llm_config() -> dict:
             "temperature": model.get("temperature", 0.3),
             "max_tokens": model.get("max_tokens", 32000),
         }
-    
+
     return {
         "provider": provider,
         "base_url": model.get("base_url", base_url_defaults.get(provider, "")),
@@ -337,13 +318,13 @@ def get_api_url() -> str:
     """Get the complete API URL for chat completions."""
     llm = get_llm_config()
     provider = llm.get("provider", "deepseek")
-    
+
     if provider == "ollama":
         return f"{llm['base_url'].rstrip('/')}/api/chat"
-    
+
     if provider == "custom" and llm.get("api_url"):
         return llm["api_url"]
-    
+
     base_url = llm.get("base_url", "").rstrip("/")
     return f"{base_url}/v1/chat/completions"
 
@@ -351,35 +332,13 @@ def get_api_url() -> str:
 def get_query_config() -> dict:
     """Get query configuration."""
     config = get_config()
-    return config.get("query", DEFAULT_CONFIG["query"])
-
-
-def get_reranker_config() -> dict:
-    """Get reranker configuration with resolved paths."""
-    config = get_config()
-    reranker = config.get("reranker", DEFAULT_CONFIG["reranker"])
-
-    cache_dir = os.path.expanduser(reranker.get("cache_dir", "~/.cache/modelscope"))
-    model_name = reranker.get("model", "")
-
-    # Resolve model path: modelscope format uses cache_dir/model_name
-    if reranker.get("model_backend") == "modelscope" or "/" in model_name:
-        model_path = os.path.join(cache_dir, model_name)
-    else:
-        model_path = model_name
-
-    return {
-        "enabled": reranker.get("enabled", True),
-        "backend": reranker.get("backend", "mlx"),
-        "model": model_name,
-        "model_backend": reranker.get("model_backend", "modelscope"),
-        "model_path": os.path.expanduser(model_path),
-        "cache_dir": os.path.expanduser(cache_dir),
-        "max_pairs": reranker.get("max_pairs", 256),
-        "default_top_k": reranker.get("default_top_k", 5),
-        "use_fp16": reranker.get("use_fp16", True),
-        "batch_size": reranker.get("batch_size", 8),
-    }
+    return config.get("query", {
+        "llm_synthesis": True,
+        "default_format": "markdown",
+        "max_results": 5,
+        "search_streams": "metadata,bm25,graph,ledger",
+        "llm_query_expansion": False,
+    })
 
 
 def get_ocr_config() -> dict:
@@ -428,37 +387,143 @@ def reset_config():
     _project_root_cache = None
 
 
-def create_default_config(dest: Optional[Path] = None) -> Path:
+def create_default_config(dest: Path | None = None) -> Path:
     """Create default config file from example."""
     if dest is None:
         dest = Path.cwd() / CONFIG_FILENAME
-    
+
     example_path = Path(__file__).parent / "wiki_config.yaml.example"
     if example_path.exists():
         import shutil
         shutil.copy2(example_path, dest)
         return dest
-    
+
     raise FileNotFoundError(f"Example config not found: {example_path}")
 
 
 def validate_config(config: dict) -> list[str]:
-    """Validate configuration and return list of issues."""
-    issues = []
-    
+    """Validate configuration against schema and return list of human-readable issues.
+
+    Checks every section (model, ocr, query, image_analysis) for missing required
+    fields, invalid enum values, and provider-specific requirements. Returns an
+    empty list when configuration is valid.
+    """
+    issues: list[str] = []
+    _v = _SchemaValidator(config, issues)
+
+    # ── Top-level ──
+    _v.check_type("wiki_dir", str, required=False)
+
+    # ── Model ──
     model = config.get("model", {})
-    provider = model.get("provider", "deepseek")
-    
-    if provider not in ("ollama",) and not model.get("api_key"):
-        issues.append(f"LLM API key required for provider '{provider}'")
-    
-    wiki_dir = config.get("wiki_dir")
-    if wiki_dir:
-        wiki_path = Path(wiki_dir)
-        if not wiki_path.is_absolute():
-            issues.append(f"wiki_dir '{wiki_dir}' is relative (resolved at runtime)")
-    
+    if not isinstance(model, dict):
+        issues.append("model: must be a dict, got " + type(model).__name__)
+    else:
+        _v.check_enum("model.provider", model.get("provider"), _VALID_PROVIDERS, "model")
+        _v.check_type("model.model", model.get("model"), str, "model")
+        _v.check_type("model.temperature", model.get("temperature"), (int, float), "model")
+        _v.check_positive("model.max_tokens", model.get("max_tokens"), "model")
+
+        provider = model.get("provider", "deepseek")
+        if provider not in ("ollama",):
+            key = model.get("api_key", "")
+            if not key:
+                issues.append(f"model.api_key: required for provider '{provider}' — "
+                              f"set api_key or DEEPSEEK_API_KEY env var")
+            elif not isinstance(key, str):
+                issues.append("model.api_key: must be a string")
+            elif key.startswith("${") and key.endswith("}"):
+                # Env-var reference — check it resolves
+                env_var = key[2:-1]
+                if env_var not in os.environ:
+                    issues.append(f"model.api_key: references ${{{env_var}}} but "
+                                  f"env var '{env_var}' is not set")
+
+        if provider == "ollama":
+            _v.check_type("model.num_ctx", model.get("num_ctx"), int, "model")
+            _v.check_positive("model.num_ctx", model.get("num_ctx"), "model")
+
+    # ── Query ──
+    query = config.get("query", {})
+    if isinstance(query, dict):
+        _v.check_type("query.max_results", query.get("max_results"), int, "query")
+        _v.check_positive("query.max_results", query.get("max_results"), "query")
+        streams = query.get("search_streams", "")
+        if isinstance(streams, str) and streams not in ("all", "*"):
+            for s in streams.split(","):
+                s = s.strip()
+                if s and s not in _VALID_SEARCH_STREAMS:
+                    issues.append(f"query.search_streams: unknown stream '{s}' "
+                                  f"(valid: {', '.join(sorted(_VALID_SEARCH_STREAMS))})")
+
+    # ── OCR ──
+    ocr = config.get("ocr", {})
+    if isinstance(ocr, dict):
+        _v.check_enum("ocr.mode", ocr.get("mode"), ("local", "api"), "ocr")
+        _v.check_enum("ocr.backend", ocr.get("backend"),
+                      ("mineru", "deepseek", "logics", "paddle", "api"), "ocr")
+        if ocr.get("mode") == "api":
+            _v.check_type("ocr.api_provider", ocr.get("api_provider"), str, "ocr")
+            _v.check_type("ocr.api_model", ocr.get("api_model"), str, "ocr")
+
+    # ── Image Analysis ──
+    img = config.get("image_analysis", {})
+    if isinstance(img, dict):
+        if img.get("enabled"):
+            _v.check_type("image_analysis.api_model", img.get("api_model"), str,
+                          "image_analysis")
+            _v.check_type("image_analysis.api_key", img.get("api_key"), str,
+                          "image_analysis")
+
+    # ── Unknown top-level keys ──
+    known_keys = {"wiki_dir", "model", "query", "ocr", "image_analysis",
+                  "reranker", "embeddings", "quality", "logging", "compile"}
+    for key in config:
+        if key not in known_keys:
+            issues.append(f"unknown top-level key '{key}' — valid keys: "
+                          f"{', '.join(sorted(known_keys))}")
+
     return issues
+
+
+# ── Schema validation helpers ─────────────────────────────────────────
+
+_VALID_PROVIDERS = ("deepseek", "openai", "ollama", "custom")
+_VALID_SEARCH_STREAMS = {"metadata", "bm25", "graph", "ledger", "chunk", "vector",
+                         "chunk_vector"}
+
+
+class _SchemaValidator:
+    """Lightweight schema validator — no pydantic dependency needed."""
+
+    def __init__(self, config: dict, issues: list[str]):
+        self._cfg = config
+        self._issues = issues
+
+    def check_type(self, path: str, value, expected, section: str = ""):
+        if value is None:
+            return
+        if not isinstance(value, expected):
+            exp_name = getattr(expected, '__name__', str(expected))
+            self._issues.append(
+                f"{path}: expected {exp_name}, got {type(value).__name__}"
+            )
+
+    def check_enum(self, path: str, value, valid: tuple, section: str = ""):
+        if value is None:
+            return
+        if value not in valid:
+            self._issues.append(
+                f"{path}: '{value}' is invalid — must be one of {list(valid)}"
+            )
+
+    def check_positive(self, path: str, value, section: str = ""):
+        if value is None:
+            return
+        if not isinstance(value, (int, float)):
+            return  # type error caught by check_type
+        if value <= 0:
+            self._issues.append(f"{path}: must be positive, got {value}")
 
 
 def print_config():
@@ -470,7 +535,6 @@ def print_config():
         "model": get_llm_config(),
         "ocr": get_ocr_config(),
         "image_analysis": get_image_analysis_config(),
-        "embeddings": config.get("embeddings", DEFAULT_CONFIG["embeddings"]),
         "query": get_query_config(),
         "quality": config.get("quality", {}),
         "logging": config.get("logging", DEFAULT_CONFIG["logging"]),

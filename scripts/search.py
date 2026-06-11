@@ -1,20 +1,31 @@
 #!/usr/bin/env python3
+"""search.py — Wiki-native Hybrid Search for llm-wiki.
+
+Karpathy/Rohit design: search compiled wiki pages (BM25 + metadata + graph),
+not raw source chunks. No embeddings, no chunks, no rerankers — the wiki pages
+are already structured knowledge units curated by the LLM during compile.
+
+Streams:
+- metadata: Search page frontmatter (aliases, keywords, questions, summary)
+- bm25: Full-page BM25 keyword search with jieba Chinese segmentation
+- graph: Entity-aware graph search with symbolic name matching + traversal
+- table: BM25 search over DuckDB ledger tables
+"""
+
 from __future__ import annotations
-"""search.py — Hybrid Search over Wiki Pages for llm-wiki."""
 
 import argparse
 import json
 import math
 import os
-import sys
-from pathlib import Path
 import re
+import sys
 from collections import Counter
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from config import get_wiki_dir
-
 import yaml
+from config import get_wiki_dir
 
 try:
     import jieba
@@ -41,25 +52,21 @@ def _load_jieba_entities():
             if not isinstance(data, dict):
                 continue
             name = data.get("name", "")
-            # Add multi-character Chinese names to jieba dict
             if name and any('一' <= c <= '鿿' for c in name):
                 jieba.add_word(name, freq=100)
-                # Also add the entity ID if it contains Chinese
                 if any('一' <= c <= '鿿' for c in eid):
                     jieba.add_word(eid, freq=80)
     except Exception:
-        pass  # Best-effort, don't break search if entities.json is malformed
+        pass  # Best-effort
 
-# ── Module-level caches (cleared when pages change) ──
-_cache_marker: tuple[int, float] | None = None  # (file_count, latest_mtime)
+
+# ── Module-level caches (invalidated when pages change) ──
+_cache_marker: tuple[int, float] | None = None
 _entities_cache: dict | None = None
 _edges_cache: dict | list | None = None
 _bm25_index: dict | None = None
 _BM25_CACHE_FILE = WIKI_DIR / "graph" / ".bm25_index.json"
-_CHUNK_CACHE_FILE = WIKI_DIR / "graph" / ".chunk_index.json"
-_CHUNK_BM25_CACHE_FILE = WIKI_DIR / "graph" / ".chunk_bm25_index.json"
 _METADATA_CACHE_FILE = WIKI_DIR / "graph" / ".metadata_index.json"
-_chunk_bm25_index: list[dict] | None = None
 
 
 def _pages_changed() -> bool:
@@ -86,7 +93,7 @@ def _pages_changed() -> bool:
 
 
 def _save_bm25_cache(idx: dict) -> None:
-    """Persist BM25 index to disk (survives process restarts)."""
+    """Persist BM25 index to disk."""
     try:
         serializable = {}
         for path, data in idx.items():
@@ -96,13 +103,15 @@ def _save_bm25_cache(idx: dict) -> None:
                 "length": data["length"],
             }
         _BM25_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        _BM25_CACHE_FILE.write_text(json.dumps(serializable, ensure_ascii=False), encoding="utf-8")
+        _BM25_CACHE_FILE.write_text(
+            json.dumps(serializable, ensure_ascii=False), encoding="utf-8"
+        )
     except OSError:
         pass
 
 
 def _load_bm25_cache() -> dict | None:
-    """Load BM25 index from disk if it exists and pages haven't changed."""
+    """Load BM25 index from disk if pages haven't changed."""
     if _pages_changed() or not _BM25_CACHE_FILE.exists():
         return None
     try:
@@ -126,7 +135,7 @@ def _load_entities() -> dict:
     _entities_cache = _load_json(ENTITIES_FILE) if os.path.exists(ENTITIES_FILE) else {}
     if not isinstance(_entities_cache, dict):
         _entities_cache = {}
-    _load_jieba_entities()  # keep jieba dict in sync with entity names
+    _load_jieba_entities()
     return _entities_cache
 
 
@@ -150,7 +159,6 @@ def _load_json(path: str) -> dict | list:
 
 
 def _load_json_safe(path: str, default: dict | list) -> dict | list:
-    """Load JSON, returning default for missing/corrupt files (no magic detection)."""
     if not os.path.exists(path):
         return default
     try:
@@ -172,7 +180,7 @@ def _read_page_content(filepath: str) -> str:
 
 
 def _read_page_parts(filepath: str) -> tuple[dict, str]:
-    """Read a page as (frontmatter, body)."""
+    """Read a page as (frontmatter dict, body text)."""
     try:
         raw = Path(filepath).read_text(encoding="utf-8")
     except OSError:
@@ -223,191 +231,108 @@ def _known_page_paths(pages_dir: str | Path = PAGES_DIR) -> list[Path]:
 def _tokenize(text: str) -> list[str]:
     """Split text into tokens: jieba for Chinese, regex for English."""
     tokens: list[str] = []
-    # Chinese tokenization via jieba
-    cjk_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+    cjk_chars = sum(1 for c in text if '一' <= c <= '鿿')
     if cjk_chars > 0 and jieba is not None:
         tokens.extend(w for w in jieba.cut(text) if len(w.strip()) > 1)
     else:
         tokens.extend(re.findall(r'[a-z0-9]+', text.lower()))
-    # Also extract English tokens if CJK content is mixed with English
+    # Extract English tokens if CJK content is mixed with English
     if cjk_chars > 0 and len(text) > cjk_chars * 1.5:
         tokens.extend(re.findall(r'[a-z0-9]+', text.lower()))
     return tokens
 
 
-def _split_markdown_chunks(content: str, page_id: str, path: str, max_chars: int = 1800) -> list[dict]:
-    """Split markdown into heading-aware chunks for more precise retrieval."""
-    chunks: list[dict] = []
-    heading_path: list[str] = []
-    current_lines: list[str] = []
-
-    def flush() -> None:
-        text = "\n".join(current_lines).strip()
-        if not text:
-            return
-        while len(text) > max_chars:
-            part = text[:max_chars]
-            cut = max(part.rfind("\n\n"), part.rfind("\n"), part.rfind(". "))
-            if cut < max_chars // 2:
-                cut = max_chars
-            chunk_text = text[:cut].strip()
-            chunks.append({
-                "chunk_id": f"{page_id}#chunk-{len(chunks)+1}",
-                "page_id": page_id,
-                "path": path,
-                "heading_path": list(heading_path),
-                "text": chunk_text,
-            })
-            text = text[cut:].strip()
-        if text:
-            chunks.append({
-                "chunk_id": f"{page_id}#chunk-{len(chunks)+1}",
-                "page_id": page_id,
-                "path": path,
-                "heading_path": list(heading_path),
-                "text": text,
-            })
-
-    for line in content.splitlines():
-        match = re.match(r"^(#{1,6})\s+(.+)$", line)
-        if match:
-            flush()
-            current_lines = []
-            level = len(match.group(1))
-            title = match.group(2).strip()
-            heading_path = heading_path[: level - 1]
-            heading_path.append(title)
-            current_lines.append(line)
-        else:
-            current_lines.append(line)
-    flush()
-    return chunks
+def _stem(word: str) -> str:
+    """Simple suffix-stripping stemmer. English only — CJK passed through."""
+    if any('一' <= c <= '鿿' for c in word):
+        return word
+    if word.endswith('ing') and len(word) > 5:
+        word = word[:-3]
+    elif word.endswith('ed') and len(word) > 4:
+        word = word[:-2]
+    elif word.endswith('s') and not word.endswith('ss') and len(word) > 3:
+        word = word[:-1]
+    elif word.endswith('ion') and len(word) > 5:
+        word = word[:-3]
+    return word
 
 
-def build_chunk_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
-    """Build chunk metadata for all pages."""
-    chunks: list[dict] = []
-    for path in _known_page_paths(pages_dir):
-        content = _read_page_content(str(path))
-        if not content:
-            continue
-        chunks.extend(_split_markdown_chunks(content, path.stem, str(path)))
-    return chunks
+# ═══════════════════════════════════════════════════════════════════════════
+# Stream 1: BM25 keyword search over full wiki pages
+# ═══════════════════════════════════════════════════════════════════════════
 
-
-def _load_chunk_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
-    """Load or rebuild the disk-backed chunk index."""
-    if _pages_changed() or not _CHUNK_CACHE_FILE.exists():
-        chunks = build_chunk_index(pages_dir)
-        try:
-            _CHUNK_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            _CHUNK_CACHE_FILE.write_text(json.dumps(chunks, ensure_ascii=False), encoding="utf-8")
-        except OSError:
-            pass
-        return chunks
-    try:
-        data = json.loads(_CHUNK_CACHE_FILE.read_text(encoding="utf-8"))
-        return data if isinstance(data, list) else []
-    except (json.JSONDecodeError, OSError):
-        return build_chunk_index(pages_dir)
-
-
-def _load_chunk_bm25_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
-    """Load or build token/frequency data for chunk BM25 search."""
-    global _chunk_bm25_index
-    changed = _pages_changed()
-    if _chunk_bm25_index is not None and not changed:
-        return _chunk_bm25_index
-
-    if not changed and _CHUNK_BM25_CACHE_FILE.exists():
-        try:
-            data = json.loads(_CHUNK_BM25_CACHE_FILE.read_text(encoding="utf-8"))
-            if isinstance(data, list):
-                _chunk_bm25_index = [
-                    {
-                        "chunk": item["chunk"],
-                        "tokens": item["tokens"],
-                        "freqs": Counter(item["freqs"]),
-                    }
-                    for item in data
-                    if isinstance(item, dict) and "chunk" in item and "tokens" in item and "freqs" in item
-                ]
-                return _chunk_bm25_index
-        except (json.JSONDecodeError, OSError, KeyError, TypeError):
-            pass
-
-    indexed = []
-    for chunk in _load_chunk_index(pages_dir):
-        tokens = [_stem(t) for t in _tokenize(chunk.get("text", ""))]
-        if tokens:
-            indexed.append({
-                "chunk": chunk,
-                "tokens": tokens,
-                "freqs": Counter(tokens),
-            })
-
-    try:
-        serializable = [
-            {
-                "chunk": item["chunk"],
-                "tokens": item["tokens"],
-                "freqs": dict(item["freqs"]),
-            }
-            for item in indexed
-        ]
-        _CHUNK_BM25_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        _CHUNK_BM25_CACHE_FILE.write_text(json.dumps(serializable, ensure_ascii=False), encoding="utf-8")
-    except OSError:
-        pass
-
-    _chunk_bm25_index = indexed
-    return _chunk_bm25_index
-
-
-def chunk_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
-    """BM25 search over heading-aware chunks."""
-    docs = _load_chunk_bm25_index(pages_dir)
+def bm25_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
+    """BM25 keyword search with stemming over wiki pages. Uses index cache."""
+    global _bm25_index
+    k1, b = 1.5, 0.75
     query_terms = [_stem(t) for t in _tokenize(query)]
-    if not docs or not query_terms:
+    if not query_terms:
         return []
 
-    num_docs = len(docs)
-    avg_dl = sum(len(item["tokens"]) for item in docs) / num_docs
-    doc_freq: Counter = Counter()
-    for item in docs:
-        doc_freq.update(set(item["freqs"].keys()))
+    if _bm25_index is None:
+        _bm25_index = _load_bm25_cache()
+    if _bm25_index is None:
+        _bm25_index = {}
+        for subdir in ('concepts', 'entities', 'models', 'techniques', 'frameworks',
+                       'benchmarks', 'papers', 'decisions', 'sessions', 'patterns'):
+            scan_dir = os.path.join(pages_dir, subdir)
+            if not os.path.isdir(scan_dir):
+                continue
+            for filename in os.listdir(scan_dir):
+                if not filename.endswith('.md'):
+                    continue
+                filepath = os.path.join(scan_dir, filename)
+                content = _read_page_content(filepath)
+                tokens = [_stem(t) for t in _tokenize(content)]
+                if tokens:
+                    _bm25_index[filepath] = {
+                        "tokens": tokens,
+                        "freqs": Counter(tokens),
+                        "length": len(tokens),
+                    }
+        _save_bm25_cache(_bm25_index)
 
-    scored: list[tuple[dict, float]] = []
-    k1, b = 1.5, 0.75
-    for item in docs:
-        chunk = item["chunk"]
-        freqs = item["freqs"]
-        dl = len(item["tokens"])
+    if not _bm25_index:
+        return []
+
+    num_docs = len(_bm25_index)
+    total_length = sum(d["length"] for d in _bm25_index.values())
+    avg_dl = total_length / num_docs if num_docs else 1
+
+    doc_freq: Counter = Counter()
+    for idx in _bm25_index.values():
+        doc_freq.update(set(idx["freqs"].keys()))
+
+    scores: list[tuple[str, float]] = []
+    for path, idx in _bm25_index.items():
         score = 0.0
+        dl = idx["length"]
         for term in query_terms:
-            f = freqs.get(term, 0)
+            f = idx["freqs"].get(term, 0)
             if f == 0:
                 continue
             df = doc_freq.get(term, 0)
             idf = math.log((num_docs - df + 0.5) / (df + 0.5) + 1.0)
             score += idf * (f * (k1 + 1)) / (f + k1 * (1 - b + b * dl / avg_dl))
         if score > 0:
-            scored.append((chunk, score))
+            scores.append((path, score))
 
-    scored.sort(key=lambda x: -x[1])
-    return [
-        {
-            "file": chunk["page_id"],
-            "path": chunk["path"],
-            "score": round(score, 3),
-            "stream": "chunk",
-            "chunk_id": chunk["chunk_id"],
-            "heading_path": chunk.get("heading_path", []),
-            "text": chunk.get("text", "")[:1000],
-        }
-        for chunk, score in scored[:limit]
-    ]
+    scores.sort(key=lambda x: -x[1])
+    results = []
+    for path, score in scores[:limit]:
+        filename = os.path.basename(path)
+        results.append({
+            'file': os.path.splitext(filename)[0],
+            'path': path,
+            'score': round(score, 3),
+            'stream': 'bm25',
+        })
+    return results
 
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stream 2: Metadata search (frontmatter aliases, keywords, questions, summary)
+# ═══════════════════════════════════════════════════════════════════════════
 
 def _as_list(value) -> list[str]:
     if value is None:
@@ -434,7 +359,15 @@ def build_metadata_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
             "aliases": _as_list(fm.get("aliases")),
             "keywords": _as_list(fm.get("keywords")),
             "questions": _as_list(fm.get("questions")),
+            "facts": fm.get("facts", {}),
         }
+        # Build searchable text including facts
+        facts_text = ""
+        facts_dict = fields["facts"]
+        if isinstance(facts_dict, dict):
+            facts_text = " ".join(
+                f"{k} {v}" for k, v in facts_dict.items()
+            )
         searchable = " ".join([
             str(fields["id"]),
             str(fields["name"]),
@@ -443,6 +376,7 @@ def build_metadata_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
             " ".join(fields["aliases"]),
             " ".join(fields["keywords"]),
             " ".join(fields["questions"]),
+            facts_text,
             title,
         ])
         items.append({
@@ -461,7 +395,9 @@ def _load_metadata_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
         items = build_metadata_index(pages_dir)
         try:
             _METADATA_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            _METADATA_CACHE_FILE.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
+            _METADATA_CACHE_FILE.write_text(
+                json.dumps(items, ensure_ascii=False), encoding="utf-8"
+            )
         except OSError:
             pass
         return items
@@ -473,7 +409,7 @@ def _load_metadata_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
 
 
 def metadata_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
-    """Search page frontmatter metadata: aliases, keywords, summary, questions."""
+    """Search page frontmatter: aliases, keywords, summary, questions."""
     items = _load_metadata_index(pages_dir)
     query_terms = [_stem(t) for t in _tokenize(query)]
     if not items or not query_terms:
@@ -514,243 +450,89 @@ def metadata_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
     ]
 
 
-def _stem(word: str) -> str:
-    """Simple Porter-style stemming (suffix stripping). English only — CJK passed through."""
-    if any('\u4e00' <= c <= '\u9fff' for c in word):
-        return word
-    if word.endswith('ing') and len(word) > 5:
-        word = word[:-3]
-    elif word.endswith('ed') and len(word) > 4:
-        word = word[:-2]
-    elif word.endswith('s') and not word.endswith('ss') and len(word) > 3:
-        word = word[:-1]
-    elif word.endswith('ion') and len(word) > 5:
-        word = word[:-3]
-    return word
+# ═══════════════════════════════════════════════════════════════════════════
+# Stream 3: Entity-aware graph search
+# ═══════════════════════════════════════════════════════════════════════════
+
+_RELATION_QUERY_TERMS = {
+    "影响", "依赖", "关系", "路径", "关联", "对比", "比较", "区别",
+    "impact", "depends", "dependency", "relationship", "related",
+    "compare", "difference", "versus", "vs",
+}
 
 
-def _cosine_similarity(a: list[float], b: list[float]) -> float:
-    """Compute cosine similarity between two vectors."""
-    if not a or not b or len(a) != len(b):
-        return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
-    norm_a = math.sqrt(sum(x * x for x in a))
-    norm_b = math.sqrt(sum(y * y for y in b))
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    return dot / (norm_a * norm_b)
+def _normalize_match_text(text: str) -> str:
+    """Normalize names/aliases for entity linking."""
+    return re.sub(r"[\s_\-./:]+", "", text.lower())
 
 
-def bm25_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
-    """BM25 keyword search with stemming over wiki pages. Uses index cache."""
-    global _bm25_index
-    k1, b = 1.5, 0.75
-    query_terms = [_stem(t) for t in _tokenize(query)]
-    if not query_terms:
-        return []
+def _entity_match_score(query: str, entity_id: str, entity: dict) -> float:
+    """Score how strongly a natural-language query mentions an entity.
 
-    # Build or reuse cached index (disk-backed for cross-process persistence)
-    if _bm25_index is None:
-        _bm25_index = _load_bm25_cache()
-    if _bm25_index is None:
-        _bm25_index = {}
-        for subdir in ('concepts', 'entities', 'models', 'techniques', 'frameworks',
-                       'benchmarks', 'papers', 'decisions', 'sessions', 'patterns'):
-            scan_dir = os.path.join(pages_dir, subdir)
-            if not os.path.isdir(scan_dir):
-                continue
-            for filename in os.listdir(scan_dir):
-                if not filename.endswith('.md'):
-                    continue
-                filepath = os.path.join(scan_dir, filename)
-                content = _read_page_content(filepath)
-                tokens = [_stem(t) for t in _tokenize(content)]
-                if tokens:
-                    _bm25_index[filepath] = {
-                        "tokens": tokens,
-                        "freqs": Counter(tokens),
-                        "length": len(tokens),
-                    }
-        _save_bm25_cache(_bm25_index)
-
-    if not _bm25_index:
-        return []
-
-    num_docs = len(_bm25_index)
-    total_length = sum(d["length"] for d in _bm25_index.values())
-    avg_dl = total_length / num_docs if num_docs else 1
-
-    # Compute IDF from index
-    doc_freq: Counter = Counter()
-    for idx in _bm25_index.values():
-        doc_freq.update(set(idx["freqs"].keys()))
-
-    scores: list[tuple[str, float]] = []
-    for path, idx in _bm25_index.items():
-        score = 0.0
-        dl = idx["length"]
-        for term in query_terms:
-            f = idx["freqs"].get(term, 0)
-            if f == 0:
-                continue
-            df = doc_freq.get(term, 0)
-            idf = math.log((num_docs - df + 0.5) / (df + 0.5) + 1.0)
-            score += idf * (f * (k1 + 1)) / (f + k1 * (1 - b + b * dl / avg_dl))
-        if score > 0:
-            scores.append((path, score))
-
-    scores.sort(key=lambda x: -x[1])
-    results = []
-    for path, score in scores[:limit]:
-        filename = os.path.basename(path)
-        results.append({
-            'file': os.path.splitext(filename)[0],
-            'path': path,
-            'score': round(score, 3),
-            'stream': 'bm25',
-        })
-    return results
-
-
-def vector_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
-    """Semantic search using the configured embedding provider.
-
-    Falls back to Jaccard similarity if:
-    - embedding provider is unreachable
-    - No embeddings have been generated yet (graph/embeddings.json missing)
-    - embeddings are stale or incompatible with current config
+    Symbolic matching — no embeddings. Anchors queries to compiled wiki
+    entities and aliases before graph traversal.
     """
-    embeddings_path = Path(os.environ.get("EMBEDDINGS_FILE", WIKI_DIR / "graph" / "embeddings.json"))
+    query_lower = query.lower()
+    query_norm = _normalize_match_text(query)
+    query_terms = {_stem(t) for t in _tokenize(query)}
+    if not query_norm and not query_terms:
+        return 0.0
 
-    try:
-        from generate_embeddings import (
-            embedding_index_status,
-            get_embedding,
-            load_embedding_index,
-        )
-    except Exception:
-        return _jaccard_fallback(query, pages_dir, limit)
-
-    if not os.path.exists(embeddings_path):
-        return _jaccard_fallback(query, pages_dir, limit)
-
-    status = embedding_index_status(Path(embeddings_path))
-    if status.get("stale"):
-        return _jaccard_fallback(query, pages_dir, limit)
-
-    _, embeddings_data = load_embedding_index(Path(embeddings_path))
-    if not embeddings_data:
-        return _jaccard_fallback(query, pages_dir, limit)
-
-    query_emb = get_embedding(query)
-    if query_emb is None:
-        return _jaccard_fallback(query, pages_dir, limit)
-
-    result_list: list[dict] = []
-    for page_id, emb in embeddings_data.items():
-        if isinstance(emb, list) and len(emb) > 0:
-            sim = _cosine_similarity(query_emb, emb)
-            if sim > 0:
-                result_list.append({
-                    'file': page_id,
-                    'path': _page_path_for_id(page_id, pages_dir),
-                    'score': round(sim, 4),
-                    'stream': 'vector',
-                })
-    result_list.sort(key=lambda x: -x['score'])
-    return result_list[:limit]
-
-
-def vector_chunk_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
-    """Semantic search over chunk-level embeddings."""
-    chunk_embeddings_path = Path(os.environ.get("CHUNK_EMBEDDINGS_FILE", WIKI_DIR / "graph" / "chunk_embeddings.json"))
-    try:
-        from generate_embeddings import (
-            embedding_index_status,
-            get_embedding,
-            load_embedding_index,
-        )
-    except Exception:
-        return []
-
-    if not chunk_embeddings_path.exists():
-        return []
-
-    status = embedding_index_status(chunk_embeddings_path)
-    if status.get("stale"):
-        return []
-
-    _, items = load_embedding_index(chunk_embeddings_path)
-    if not items:
-        return []
-
-    query_emb = get_embedding(query)
-    if query_emb is None:
-        return []
-
-    result_list: list[dict] = []
-    for chunk_id, item in items.items():
-        if not isinstance(item, dict):
-            continue
-        emb = item.get("embedding")
-        if isinstance(emb, list) and emb:
-            sim = _cosine_similarity(query_emb, emb)
-            if sim > 0:
-                result_list.append({
-                    "file": item.get("page_id", ""),
-                    "path": item.get("path", ""),
-                    "score": round(sim, 4),
-                    "stream": "chunk_vector",
-                    "chunk_id": chunk_id,
-                    "heading_path": item.get("heading_path", []),
-                    "text": item.get("text", "")[:1000],
-                })
-    result_list.sort(key=lambda x: -x["score"])
-    return result_list[:limit]
-
-
-
-def _jaccard_fallback(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
-    """Jaccard similarity fallback when embeddings are unavailable."""
-    all_docs: dict[str, str] = {}
-    for subdir in ('concepts', 'entities', 'models', 'techniques', 'frameworks',
-                   'benchmarks', 'papers', 'decisions', 'sessions', 'patterns'):
-        scan_dir = os.path.join(pages_dir, subdir)
-        if not os.path.isdir(scan_dir):
-            continue
-        for filename in os.listdir(scan_dir):
-            if filename.endswith('.md'):
-                filepath = os.path.join(scan_dir, filename)
-                all_docs[filename] = _read_page_content(filepath)
-
-    if not all_docs:
-        return []
-
-    query_terms = set(_tokenize(query))
-    scores: list[tuple[str, float]] = []
-    for filename, content in all_docs.items():
-        doc_terms = set(_tokenize(content))
-        if not doc_terms:
-            continue
-        intersection = query_terms & doc_terms
-        jaccard = len(intersection) / len(query_terms | doc_terms)
-        if jaccard > 0:
-            scores.append((filename, jaccard))
-
-    scores.sort(key=lambda x: -x[1])
-    return [
-        {
-            'file': os.path.splitext(f)[0],
-            'path': _page_path_for_id(os.path.splitext(f)[0], pages_dir),
-            'score': round(s, 3),
-            'stream': 'vector',
-        }
-        for f, s in scores[:limit]
+    names = [
+        entity_id,
+        str(entity.get("id", "")),
+        str(entity.get("name", "")),
     ]
+    names.extend(_as_list(entity.get("aliases")))
+    names.extend(_as_list(entity.get("keywords")))
+
+    score = 0.0
+    for raw_name in names:
+        name = str(raw_name).strip()
+        if not name:
+            continue
+        name_lower = name.lower()
+        name_norm = _normalize_match_text(name)
+        if not name_norm:
+            continue
+
+        # Exact match
+        if query_norm == name_norm or query_lower == name_lower:
+            score = max(score, 1.0)
+            continue
+        # Substring match (entity name contained in query)
+        if len(name_norm) >= 3 and name_norm in query_norm:
+            score = max(score, 0.9)
+            continue
+        # Substring match (query contained in entity name)
+        if len(query_norm) >= 3 and query_norm in name_norm:
+            score = max(score, 0.72)
+
+        # Term overlap scoring
+        name_terms = {_stem(t) for t in _tokenize(name)}
+        if name_terms:
+            overlap = query_terms & name_terms
+            if overlap:
+                coverage = len(overlap) / len(name_terms)
+                score = max(score, 0.45 + 0.35 * coverage)
+
+    if score <= 0:
+        return 0.0
+    confidence = float(entity.get("confidence", 0.7) or 0.7)
+    return round(score * (0.85 + min(max(confidence, 0.0), 1.0) * 0.15), 4)
+
+
+def _entity_page_path(entity_id: str, entity: dict, pages_dir: str | Path) -> str:
+    page_rel = str(entity.get("page", "")).strip()
+    if page_rel:
+        path = Path(pages_dir).parent / page_rel
+        if path.exists():
+            return str(path)
+    return _page_path_for_id(entity_id, pages_dir)
 
 
 def graph_search(query: str, graph_dir: str, limit: int = 10) -> list[dict]:
-    """Entity-aware graph traversal search."""
+    """Entity-aware graph traversal search — symbolic, no embeddings."""
     graph_path = Path(graph_dir)
     entities_data = _load_json_safe(str(graph_path / "entities.json"), {})
     if not isinstance(entities_data, dict):
@@ -761,25 +543,21 @@ def graph_search(query: str, graph_dir: str, limit: int = 10) -> list[dict]:
     if not entities_data:
         return []
 
-    query_lower = query.lower()
-    matching: list = []
-
+    pages_dir = graph_path.parent / "pages"
+    scored_entities: list[tuple[str, float]] = []
     for eid, entity in entities_data.items():
-        name = entity.get('name', '').lower()
-        etype = entity.get('type', '').lower()
-        if query_lower in name or query_lower in etype or query_lower in eid:
-            matching.append(eid)
-
-    if not matching:
-        for eid, entity in entities_data.items():
-            name = entity.get('name', '').lower()
-            if any(qt in name for qt in query_lower.split()):
-                matching.append(eid)
+        if not isinstance(entity, dict):
+            continue
+        score = _entity_match_score(query, eid, entity)
+        if score > 0:
+            scored_entities.append((eid, score))
 
     results: list[dict] = []
     visited: set = set()
+    relation_query = any(term in query.lower() for term in _RELATION_QUERY_TERMS)
+    neighbor_scores: dict[str, tuple[float, str, str]] = {}
 
-    for eid in matching[:3]:
+    for eid, match_score in sorted(scored_entities, key=lambda item: -item[1])[:limit]:
         if eid in visited:
             continue
         visited.add(eid)
@@ -794,17 +572,62 @@ def graph_search(query: str, graph_dir: str, limit: int = 10) -> list[dict]:
                         'name': entities_data[other].get('name', other),
                         'relation': edge.get('type', 'related_to'),
                     })
+                    if relation_query and other not in visited:
+                        neighbor_score = match_score * 0.62
+                        previous = neighbor_scores.get(other)
+                        if previous is None or neighbor_score > previous[0]:
+                            neighbor_scores[other] = (
+                                neighbor_score,
+                                eid,
+                                edge.get('type', 'related_to'),
+                            )
+        path = _entity_page_path(eid, entity, pages_dir)
         results.append({
             'entity_id': eid,
             'name': entity.get('name', eid),
             'type': entity.get('type', 'unknown'),
-            'confidence': entity.get('confidence', 0.5),
+            'confidence': match_score,
             'connected': connected[:5],
+            'path': path,
             'stream': 'graph',
         })
 
+    # For relationship queries: include 1-hop neighbors as supplement
+    if relation_query and len(results) < limit:
+        for eid, (match_score, source_id, relation) in sorted(
+            neighbor_scores.items(),
+            key=lambda item: -item[1][0],
+        ):
+            if len(results) >= limit:
+                break
+            if eid in visited:
+                continue
+            entity = entities_data.get(eid, {})
+            if not isinstance(entity, dict):
+                continue
+            visited.add(eid)
+            path = _entity_page_path(eid, entity, pages_dir)
+            results.append({
+                'entity_id': eid,
+                'name': entity.get('name', eid),
+                'type': entity.get('type', 'unknown'),
+                'confidence': round(match_score, 4),
+                'connected': [{
+                    'entity': source_id,
+                    'name': entities_data.get(source_id, {}).get('name', source_id),
+                    'relation': relation,
+                }],
+                'path': path,
+                'stream': 'graph',
+                'graph_anchor': source_id,
+            })
+
     return results[:limit]
 
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Reciprocal Rank Fusion
+# ═══════════════════════════════════════════════════════════════════════════
 
 def reciprocal_rank_fusion(results: list[list[dict]], k: int = 60) -> list[dict]:
     """Fuse multiple search result lists using Reciprocal Rank Fusion."""
@@ -840,134 +663,12 @@ def reciprocal_rank_fusion(results: list[list[dict]], k: int = 60) -> list[dict]
     return sorted_results
 
 
-def search_doctor(wiki_dir: str | Path = WIKI_DIR) -> dict:
-    """Return retrieval index health diagnostics."""
-    wiki = Path(wiki_dir)
-    pages = []
-    for subdir in ('concepts', 'entities', 'models', 'techniques', 'frameworks',
-                   'benchmarks', 'papers', 'decisions', 'sessions', 'patterns'):
-        d = wiki / "pages" / subdir
-        if d.exists():
-            pages.extend(d.glob("*.md"))
-
-    try:
-        from generate_embeddings import embedding_index_status
-        embedding_status = embedding_index_status(wiki / "graph" / "embeddings.json")
-        chunk_embedding_status = embedding_index_status(wiki / "graph" / "chunk_embeddings.json")
-    except Exception as e:
-        embedding_status = {"exists": False, "stale": True, "reason": str(e)}
-        chunk_embedding_status = {"exists": False, "stale": True, "reason": str(e), "items": 0}
-
-    chunks = build_chunk_index(wiki / "pages")
-    metadata_items = build_metadata_index(wiki / "pages")
-    entities = _load_json_safe(str(wiki / "graph" / "entities.json"), {})
-    edges_data = _load_json_safe(str(wiki / "graph" / "edges.json"), {"edges": []})
-    edges = edges_data.get("edges", []) if isinstance(edges_data, dict) else []
-
-    page_ids = {p.stem for p in pages}
-    graph_ids = set(entities.keys()) if isinstance(entities, dict) else set()
-
-    issues = []
-    if not pages:
-        issues.append("no wiki pages found")
-    if embedding_status.get("stale"):
-        issues.append(f"embedding index stale: {embedding_status.get('reason', 'unknown')}")
-    embedding_items = int(embedding_status.get("items", 0) or 0)
-    chunk_embedding_items = int(chunk_embedding_status.get("items", 0) or 0)
-    if pages and embedding_items == 0:
-        issues.append("embedding index has no items")
-    if chunks and chunk_embedding_status.get("exists") and chunk_embedding_items == 0:
-        issues.append("chunk embedding index has no items")
-    if len(chunks) < len(pages):
-        issues.append("chunk index has fewer chunks than pages")
-    if len(metadata_items) < len(pages):
-        issues.append("metadata index has fewer items than pages")
-    orphan_graph_ids = sorted(graph_ids - page_ids)
-    if orphan_graph_ids:
-        issues.append(f"{len(orphan_graph_ids)} graph entities have no matching page")
-
-    return {
-        "pages": len(pages),
-        "chunks": len(chunks),
-        "metadata_items": len(metadata_items),
-        "entities": len(graph_ids),
-        "edges": len(edges),
-        "embedding": embedding_status,
-        "chunk_embedding": chunk_embedding_status,
-        "embedding_coverage_pct": round(embedding_items / max(len(pages), 1) * 100, 1),
-        "chunk_embedding_coverage_pct": round(chunk_embedding_items / max(len(chunks), 1) * 100, 1),
-        "orphan_graph_entities": orphan_graph_ids[:20],
-        "issues": issues,
-        "healthy": not issues,
-    }
-
-
-def eval_retrieval(eval_file: str | Path, limit: int = 5) -> dict:
-    """Evaluate search recall from a jsonl file."""
-    eval_path = Path(eval_file)
-    if not eval_path.exists():
-        return {"status": "error", "message": f"Eval file not found: {eval_path}"}
-
-    cases = []
-    for line in eval_path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        cases.append(json.loads(line))
-
-    evaluated = []
-    hits = 0
-    reciprocal_ranks = []
-    for case in cases:
-        query = case.get("query", "")
-        expected = set(case.get("expected_pages", []))
-        results = reciprocal_rank_fusion([
-            metadata_search(query, str(PAGES_DIR), limit=limit * 2),
-            chunk_search(query, str(PAGES_DIR), limit=limit * 2),
-            vector_chunk_search(query, str(PAGES_DIR), limit=limit),
-            bm25_search(query, str(PAGES_DIR), limit=limit * 2),
-            vector_search(query, str(PAGES_DIR), limit=limit),
-            graph_search(query, str(GRAPH_DIR), limit=limit),
-        ])[:limit]
-        returned = [r.get("file") or r.get("entity_id", "") for r in results]
-        first_rank = None
-        for rank, rid in enumerate(returned, 1):
-            if rid in expected:
-                first_rank = rank
-                break
-        hit = first_rank is not None if expected else bool(returned)
-        if hit:
-            hits += 1
-            reciprocal_ranks.append(1.0 / first_rank if first_rank else 0.0)
-        evaluated.append({
-            "query": query,
-            "expected": sorted(expected),
-            "returned": returned,
-            "hit": hit,
-            "rank": first_rank,
-        })
-
-    total = len(cases)
-    return {
-        "status": "ok",
-        "cases": total,
-        "recall_at_k": round(hits / total, 4) if total else 0.0,
-        "mrr": round(sum(reciprocal_ranks) / total, 4) if total else 0.0,
-        "details": evaluated,
-    }
-
-
-# ═══════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════
 # Ledger table search
-# ═══════════════════════════════════════════════════════════════════════
-
+# ═══════════════════════════════════════════════════════════════════════════
 
 def table_search(query: str, wiki_dir: str, limit: int = 10) -> list[dict]:
-    """BM25 search over text columns in all ledger tables.
-
-    Reuses jieba tokenization and BM25 scoring from bm25_search().
-    Returns results compatible with reciprocal_rank_fusion().
-    """
+    """BM25 search over text columns in all ledger tables."""
     import duckdb
 
     ledger_db = Path(wiki_dir) / "ledger" / "ledger.duckdb"
@@ -1011,8 +712,11 @@ def table_search(query: str, wiki_dir: str, limit: int = 10) -> list[dict]:
             row_dict = dict(zip(col_names, row))
             row_id = row_dict.get("_id", "")
 
-            # Concatenate text columns for search
-            text_parts = [str(row_dict.get(c, "")) for c in search_cols if row_dict.get(c) is not None]
+            text_parts = [
+                str(row_dict.get(c, ""))
+                for c in search_cols
+                if row_dict.get(c) is not None
+            ]
             search_text = " ".join(text_parts)
             if not search_text.strip():
                 continue
@@ -1024,13 +728,11 @@ def table_search(query: str, wiki_dir: str, limit: int = 10) -> list[dict]:
             freq = Counter(tokens)
             dl = len(tokens)
 
-            # BM25 scoring
             score = 0.0
             for term in query_terms:
                 f = freq.get(term, 0)
                 if f == 0:
                     continue
-                # Approximate IDF using row length
                 idf = math.log(1.0 + (50.0 - 0.5) / (0.5 + 0.5))
                 score += idf * (f * (k1 + 1)) / (f + k1 * (1 - b + b * dl / 50.0))
 
@@ -1043,81 +745,189 @@ def table_search(query: str, wiki_dir: str, limit: int = 10) -> list[dict]:
                     "table_name": actual_name,
                     "display_name": display_name,
                     "row_id": row_id,
-                    "row_data": {k: v for k, v in row_dict.items() if not k.startswith("_search")},
+                    "row_data": {k: v for k, v in row_dict.items()
+                                 if not k.startswith("_search")},
                 })
 
+    # ── Table-level results: match table name/description/fields ──
+    # A "预算表" may have no cell containing "预算", but the table IS about budgets.
+    # Table-level results surface the entire table when the concept matches.
+    table_results: list[dict] = []
+    all_rows = conn.execute(
+        "SELECT actual_name, display_name, description, fields_json FROM _registry WHERE record_count > 0"
+    ).fetchall()
+
+    for actual_name, display_name, description, fields_json_str in all_rows:
+        fields = json.loads(fields_json_str)
+        field_names = [f["name"] for f in fields]
+
+        # Score table metadata against query
+        table_searchable = " ".join([
+            str(display_name),
+            str(description or ""),
+            " ".join(field_names),
+        ])
+        table_tokens = [_stem(t) for t in _tokenize(table_searchable)]
+        if not table_tokens:
+            continue
+
+        # Simple TF scoring for table metadata
+        table_score = 0.0
+        for term in query_terms:
+            count = table_tokens.count(term)
+            if count > 0:
+                table_score += count * 0.5  # Lower weight than row matches
+
+        if table_score > 0:
+            # Get sample rows for context
+            try:
+                sample_rows = conn.execute(
+                    f'SELECT * FROM "{actual_name}" LIMIT 5'
+                ).fetchall()
+                sample_cols = [desc[0] for desc in conn.description]
+                sample_data = [
+                    {c: v for c, v in zip(sample_cols, row) if not str(c).startswith("_")}
+                    for row in sample_rows
+                ]
+            except duckdb.Error:
+                sample_data = []
+
+            table_results.append({
+                "file": f"table::{actual_name}",
+                "path": "",
+                "score": round(table_score, 3),
+                "stream": "table",
+                "table_name": actual_name,
+                "display_name": display_name,
+                "row_id": "",
+                "is_table_level": True,
+                "table_schema": {f["name"]: f["type"] for f in fields},
+                "sample_rows": sample_data,
+            })
+
     conn.close()
+
+    # Merge row-level and table-level results
     results.sort(key=lambda x: -x["score"])
-    return results[:limit]
+    table_results.sort(key=lambda x: -x["score"])
+
+    # Deduplicate: if we have table-level result for a table that already has
+    # row-level results, keep the table-level one as a summary (lower score)
+    table_names_with_rows = {r["table_name"] for r in results}
+    merged = list(results)
+    for tr in table_results:
+        if tr["table_name"] not in table_names_with_rows:
+            # Table matched but no rows matched → add as table-level result
+            merged.append(tr)
+        # If rows exist, table-level result is still useful as context summary
+
+    merged.sort(key=lambda x: -x["score"])
+    return merged[:limit]
 
 
-def table_vector_search(query: str, wiki_dir: str, limit: int = 10) -> list[dict]:
-    """Cosine similarity search over embedded table rows.
+# ═══════════════════════════════════════════════════════════════════════════
+# Diagnostics
+# ═══════════════════════════════════════════════════════════════════════════
 
-    Uses _embeddings table and DuckDB array_cosine_similarity.
-    """
-    import duckdb
+def search_doctor(wiki_dir: str | Path = WIKI_DIR) -> dict:
+    """Return retrieval index health diagnostics."""
+    wiki = Path(wiki_dir)
+    pages = []
+    for subdir in ('concepts', 'entities', 'models', 'techniques', 'frameworks',
+                   'benchmarks', 'papers', 'decisions', 'sessions', 'patterns'):
+        d = wiki / "pages" / subdir
+        if d.exists():
+            pages.extend(d.glob("*.md"))
 
-    ledger_db = Path(wiki_dir) / "ledger" / "ledger.duckdb"
-    if not ledger_db.exists():
-        return []
+    metadata_items = build_metadata_index(wiki / "pages")
+    entities = _load_json_safe(str(wiki / "graph" / "entities.json"), {})
+    edges_data = _load_json_safe(str(wiki / "graph" / "edges.json"), {"edges": []})
+    edges = edges_data.get("edges", []) if isinstance(edges_data, dict) else []
 
-    conn = duckdb.connect(str(ledger_db))
+    page_ids = {p.stem for p in pages}
+    graph_ids = set(entities.keys()) if isinstance(entities, dict) else set()
 
-    # Check if embeddings exist
-    emb_count = conn.execute("SELECT COUNT(*) FROM _embeddings").fetchone()[0]
-    if emb_count == 0:
-        conn.close()
-        return []
+    issues = []
+    if not pages:
+        issues.append("no wiki pages found")
+    if len(metadata_items) < len(pages):
+        issues.append("metadata index has fewer items than pages")
+    orphan_graph_ids = sorted(graph_ids - page_ids)
+    if orphan_graph_ids:
+        issues.append(f"{len(orphan_graph_ids)} graph entities have no matching page")
 
-    # Get query embedding
-    try:
-        from generate_embeddings import get_embedding
-        query_emb = get_embedding(query)
-    except (ImportError, Exception):
-        conn.close()
-        return []
+    return {
+        "pages": len(pages),
+        "metadata_items": len(metadata_items),
+        "entities": len(graph_ids),
+        "edges": len(edges),
+        "orphan_graph_entities": orphan_graph_ids[:20],
+        "issues": issues,
+        "healthy": not issues,
+    }
 
-    if query_emb is None:
-        conn.close()
-        return []
 
-    dim = len(query_emb)
-    query_emb_str = "[" + ", ".join(str(v) for v in query_emb) + "]"
+def eval_retrieval(eval_file: str | Path, limit: int = 5) -> dict:
+    """Evaluate search recall from a jsonl file."""
+    eval_path = Path(eval_file)
+    if not eval_path.exists():
+        return {"status": "error", "message": f"Eval file not found: {eval_path}"}
 
-    try:
-        rows = conn.execute(f"""
-            SELECT e.table_name, e.row_id,
-                   array_cosine_similarity(e.embedding, {query_emb_str}::FLOAT[{dim}]) AS sim,
-                   r.display_name
-            FROM _embeddings e
-            JOIN _registry r ON e.table_name = r.actual_name
-            WHERE len(e.embedding) = {dim}
-            ORDER BY sim DESC
-            LIMIT ?
-        """, [limit]).fetchall()
-    except duckdb.Error:
-        conn.close()
-        return []
+    cases = []
+    for line in eval_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        cases.append(json.loads(line))
 
-    conn.close()
+    evaluated = []
+    hits = 0
+    reciprocal_ranks = []
+    for case in cases:
+        query = case.get("query", "")
+        expected = set(case.get("expected_pages", []))
+        results = reciprocal_rank_fusion([
+            metadata_search(query, str(PAGES_DIR), limit=limit * 2),
+            bm25_search(query, str(PAGES_DIR), limit=limit * 2),
+            graph_search(query, str(GRAPH_DIR), limit=limit),
+        ])[:limit]
+        returned = [r.get("file") or r.get("entity_id", "") for r in results]
+        first_rank = None
+        for rank, rid in enumerate(returned, 1):
+            if rid in expected:
+                first_rank = rank
+                break
+        hit = first_rank is not None if expected else bool(returned)
+        if hit:
+            hits += 1
+            reciprocal_ranks.append(1.0 / first_rank if first_rank else 0.0)
+        evaluated.append({
+            "query": query,
+            "expected": sorted(expected),
+            "returned": returned,
+            "hit": hit,
+            "rank": first_rank,
+        })
 
-    return [{
-        "file": f"table::{r[0]}::{r[1]}",
-        "path": "",
-        "score": round(r[2], 4),
-        "stream": "table_vector",
-        "table_name": r[0],
-        "display_name": r[3],
-        "row_id": r[1],
-    } for r in rows if r[2] and r[2] > 0]
+    total = len(cases)
+    return {
+        "status": "ok",
+        "cases": total,
+        "recall_at_k": round(hits / total, 4) if total else 0.0,
+        "mrr": round(sum(reciprocal_ranks) / total, 4) if total else 0.0,
+        "details": evaluated,
+    }
 
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CLI
+# ═══════════════════════════════════════════════════════════════════════════
 
 def _main() -> None:
     parser = argparse.ArgumentParser(description='llm-wiki Hybrid Search')
     parser.add_argument('query', nargs='?', help='Search query')
-    parser.add_argument('--streams', default='bm25,vector,graph',
-                        help='Comma-separated streams to use')
+    parser.add_argument('--streams', default='metadata,bm25,graph,ledger',
+                        help='Comma-separated streams: metadata,bm25,graph,table')
     parser.add_argument('--limit', type=int, default=10, help='Max results per stream')
     parser.add_argument('--impact', help='Impact analysis (entity ID)')
     parser.add_argument('--related', help='Find entities related to this entity ID')
@@ -1130,7 +940,10 @@ def _main() -> None:
         return
 
     if args.eval_file:
-        print(json.dumps(eval_retrieval(args.eval_file, limit=args.limit), indent=2, ensure_ascii=False, default=str))
+        print(json.dumps(
+            eval_retrieval(args.eval_file, limit=args.limit),
+            indent=2, ensure_ascii=False, default=str,
+        ))
         return
 
     if args.impact:
@@ -1156,18 +969,10 @@ def _main() -> None:
         all_results.append(bm25_search(args.query, PAGES_DIR, args.limit))
     if 'metadata' in streams:
         all_results.append(metadata_search(args.query, PAGES_DIR, args.limit))
-    if 'chunk' in streams:
-        all_results.append(chunk_search(args.query, PAGES_DIR, args.limit))
-    if 'vector' in streams:
-        all_results.append(vector_search(args.query, PAGES_DIR, args.limit))
-    if 'chunk_vector' in streams:
-        all_results.append(vector_chunk_search(args.query, PAGES_DIR, args.limit))
     if 'graph' in streams:
         all_results.append(graph_search(args.query, GRAPH_DIR, args.limit))
     if 'table' in streams:
         all_results.append(table_search(args.query, str(WIKI_DIR), args.limit))
-    if 'table_vector' in streams:
-        all_results.append(table_vector_search(args.query, str(WIKI_DIR), args.limit))
 
     if len(all_results) >= 2:
         fused = reciprocal_rank_fusion(all_results)

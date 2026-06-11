@@ -9,7 +9,6 @@ Commands:
     wiki status            Show wiki statistics
     wiki config            Show current configuration
     wiki config --init     Create default config file
-    wiki embed             Generate vector embeddings
     wiki bulk <cmd>        Bulk operations (stats/clean/merge/export/delete)
     wiki consolidate       Memory tier consolidation
     wiki update            Update skill from GitHub (git pull + backup)
@@ -30,7 +29,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -38,9 +36,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config import (
-    get_config, get_wiki_dir, get_llm_config, get_api_url,
-    create_default_config, validate_config, print_config,
-    CONFIG_FILENAME, reset_config
+    CONFIG_FILENAME,
+    create_default_config,
+    get_api_url,
+    get_config,
+    get_wiki_dir,
+    print_config,
+    reset_config,
+    validate_config,
 )
 
 
@@ -63,12 +66,15 @@ def cmd_compile(
     source_type: str = "doc",
     force: bool = False,
     depth: int | None = None,
+    dry_run: bool = False,
 ) -> dict:
     args = [source, "--type", source_type]
     if force:
         args.append("--force")
     if depth is not None:
         args.extend(["--depth", str(depth)])
+    if dry_run:
+        args.append("--dry-run")
 
     code, output = run_script("compile_v2.py", args)
 
@@ -91,7 +97,7 @@ def cmd_query(question: str, file_back: bool = False, fmt: str = "markdown",
             answer += "\n\n--- SEARCH DEBUG ---\n"
             answer += json.dumps(result.get("debug_search", {}), indent=2, ensure_ascii=False, default=str)
         return {"success": True, "answer": answer}
-    except Exception as e:
+    except Exception:
         # Fallback to subprocess on import failure
         args = [question]
         if file_back:
@@ -113,9 +119,9 @@ def cmd_lint(auto_heal: bool = False) -> dict:
     args = []
     if auto_heal:
         args.append("--auto-heal")
-    
+
     code, output = run_script("lint.py", args)
-    
+
     return {
         "success": code == 0,
         "output": output
@@ -127,9 +133,9 @@ def cmd_consolidate(tiers: str = "working,episodic,semantic", decay_only: bool =
         args.extend(["--tiers", tiers])
     if decay_only:
         args.append("--decay-only")
-        
+
     code, output = run_script("consolidate.py", args)
-    
+
     return {
         "success": code == 0,
         "output": output
@@ -200,13 +206,13 @@ def cmd_init() -> dict:
     index_file = pages_dir / "index.md"
     if not index_file.exists():
         index_file.write_text("# Wiki Index\n\nWelcome to your knowledge base.\n")
-    
+
     schema_src = Path(__file__).parent.parent / "templates" / "schema.md"
     schema_dest = wiki_dir / "schema.md"
     if schema_src.exists() and not schema_dest.exists():
         import shutil
         shutil.copy2(schema_src, schema_dest)
-        
+
     log_file = wiki_dir / "log.md"
     if not log_file.exists():
         from datetime import datetime, timezone
@@ -216,7 +222,7 @@ def cmd_init() -> dict:
     return {"success": True, "created": len(dirs), "wiki_dir": str(wiki_dir)}
 
 
-def cmd_config(init: bool = False, show: bool = True) -> dict:
+def cmd_config(init: bool = False, show: bool = True, check: bool = False) -> dict:
     if init:
         dest = Path.cwd() / CONFIG_FILENAME
         if dest.exists():
@@ -226,7 +232,17 @@ def cmd_config(init: bool = False, show: bool = True) -> dict:
             return {"success": True, "created": str(dest)}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
+    if check:
+        config = get_config()
+        issues = validate_config(config)
+        return {
+            "success": len(issues) == 0,
+            "valid": len(issues) == 0,
+            "issues": issues,
+            "checked": len(config),
+        }
+
     if show:
         config = get_config()
         issues = validate_config(config)
@@ -237,7 +253,7 @@ def cmd_config(init: bool = False, show: bool = True) -> dict:
             "api_url": get_api_url(),
             "issues": issues,
         }
-    
+
     return {"success": True}
 
 
@@ -263,9 +279,10 @@ Environment:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     init_parser = subparsers.add_parser("init", help="Initialize wiki structure")
-    
+
     config_parser = subparsers.add_parser("config", help="Show or create configuration")
     config_parser.add_argument("--init", action="store_true", help="Create default config file")
+    config_parser.add_argument("--check", action="store_true", help="Validate configuration and exit")
 
     compile_parser = subparsers.add_parser("compile", help="Compile source file/directory to wiki")
     compile_parser.add_argument("source", help="Source file or directory to compile")
@@ -302,10 +319,6 @@ Environment:
 
     lint_parser = subparsers.add_parser("lint", help="Health check wiki")
     lint_parser.add_argument("--auto-heal", action="store_true", help="Auto-fix issues")
-
-    embed_parser = subparsers.add_parser("embed", help="Generate vector embeddings")
-    embed_parser.add_argument("--force", action="store_true", help="Regenerate all embeddings")
-    embed_parser.add_argument("--chunks", action="store_true", help="Generate chunk-level embeddings")
 
     bulk_parser = subparsers.add_parser("bulk", help="Bulk operations")
     bulk_sub = bulk_parser.add_subparsers(dest="bulk_cmd", required=True)
@@ -356,9 +369,6 @@ Environment:
 
     stats_lp = ledger_sub.add_parser("stats", help="Show table statistics")
     stats_lp.add_argument("table", nargs="?", default=None, help="Table name (omit for all)")
-
-    embed_lp = ledger_sub.add_parser("embed", help="Generate embeddings for table rows")
-    embed_lp.add_argument("table", nargs="?", default=None, help="Table name (omit for all)")
 
     schema_lp = ledger_sub.add_parser("schema", help="Show table schema for SQL generation")
     schema_lp.add_argument("table", help="Table name")
@@ -412,7 +422,7 @@ Environment:
         print(f"Wiki directory: {result['wiki_dir']}")
 
     elif args.command == "config":
-        result = cmd_config(init=args.init)
+        result = cmd_config(init=args.init, check=getattr(args, 'check', False))
         if args.init:
             if result.get("success"):
                 print(f"Config file created: {result['created']}")
@@ -463,15 +473,6 @@ Environment:
         result = cmd_lint(auto_heal=args.auto_heal)
         print(result["output"])
 
-    elif args.command == "embed":
-        embed_args = []
-        if args.force:
-            embed_args.append("--force")
-        if args.chunks:
-            embed_args.append("--chunks")
-        code, output = run_script("generate_embeddings.py", embed_args)
-        print(output)
-    
     elif args.command == "consolidate":
         result = cmd_consolidate(tiers=args.tiers, decay_only=args.decay_only)
         print(result["output"])
@@ -524,9 +525,6 @@ Environment:
             if args.keep_files:
                 ledger_args.append("--keep-files")
         elif args.ledger_cmd == "stats":
-            if args.table:
-                ledger_args.append(args.table)
-        elif args.ledger_cmd == "embed":
             if args.table:
                 ledger_args.append(args.table)
         elif args.ledger_cmd == "import":

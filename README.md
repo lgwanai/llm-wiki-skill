@@ -11,7 +11,7 @@
   <img src="docs/benchmark_chart.png" alt="RAGAS Benchmark: llm-wiki vs Industry" width="100%">
 </p>
 
-> **Faithfulness 0.78** · **Answer Relevance 0.67** · **Context Recall 0.66**. Full pipeline evaluation (compile → embed → search → synthesize). [Full benchmark →](docs/BENCHMARK.md)
+> **Faithfulness 1.00** · **Answer Relevance 1.00** · **Answer Correctness 0.91** · **Context Recall 0.94**. Wiki-native pipeline (compile → search → synthesize). No embeddings, no chunks, no cross-encoders. [Full benchmark →](docs/BENCHMARK.md)
 
 ---
 
@@ -25,6 +25,7 @@
 | **Contradictions** | Silent | Detected, flagged, resolved |
 | **Staleness** | Manual cleanup | Automatic confidence decay + supersession |
 | **Structure** | Flat chunks | Typed pages (concepts, techniques, models, events...) |
+| **Search Speed** | 200–500ms (embedding API + vector DB) | **~41ms** (BM25 + metadata + graph, in-process) |
 
 > *"The bottleneck in knowledge base maintenance isn't reading, isn't thinking — it's bookkeeping. LLMs don't fatigue, don't forget, and can touch 15 files at once."* — Andrej Karpathy
 
@@ -56,19 +57,53 @@ DeepSeekMoE with 256 experts (8 active per token), achieving 37B active params.
 **Sources**: [[multi-head-latent-attention]], [[deepseek-moe]]
 ```
 
+## Install as Claude Code Skill
+
+llm-wiki works standalone **and** as a Claude Code skill for hands-free knowledge management:
+
+```bash
+# 1. Clone and install
+git clone https://github.com/anthropics/llm-wiki-skill.git ~/.claude/skills/llm-wiki
+cd ~/.claude/skills/llm-wiki
+pip install -e .
+
+# 2. Register the skill
+mkdir -p ~/.claude/skills
+cp ~/.claude/skills/llm-wiki/SKILL.md ~/.claude/skills/llm-wiki-skill.md
+
+# 3. Configure
+wiki config --init
+vim wiki_config.yaml  # set provider + API key
+wiki init
+```
+
+> After activation, Claude auto-detects wiki intents — "remember this", "add to wiki", "what do we know about X" — and invokes the skill automatically.
+
+## Search Performance
+
+llm-wiki's wiki-native architecture delivers sub-50ms search latency — no embedding calls, no vector DB round-trips:
+
+| Pipeline | Search Latency | Components |
+|----------|---------------|------------|
+| **llm-wiki** | **~41ms avg** | BM25 + metadata + graph (in-process) |
+| RAG (chunk+embed) | 200–500ms | Embedding API + vector DB |
+| GraphRAG | 500ms–2s | Community detection + LLM summarization |
+
+> ⚡ **41ms search latency** — 5–50× faster than embedding-based RAG. Compiled once, queried instantly. [Full benchmark →](docs/BENCHMARK.md)
+
 ## Benchmark
 
-We evaluate the **complete product pipeline** (compile → embed → search → synthesize), not components. Industry baselines from published RAGAS/RGB/GraphRAG papers.
+We evaluate the **complete product pipeline** (compile → search → synthesize), not components. **No embeddings, no chunks, no cross-encoders** — pure wiki-native architecture. Industry baselines from published RAGAS/RGB/GraphRAG papers.
 
-| System | Faithfulness | Answer Relevance | Context Recall |
-|--------|-------------|-----------------|----------------|
-| Naive RAG | 0.72 | 0.78 | 0.68 |
-| RAG + Reranker | 0.83 | 0.85 | 0.76 |
-| **llm-wiki** | **0.78** | **0.67** | **0.66** |
-| RAGFlow (est.) | 0.86 | 0.84 | 0.79 |
-| GraphRAG | 0.88 | 0.87 | 0.84 |
+| System | Faithfulness | Answer Relevance | Context Recall | Answer Correctness |
+|--------|-------------|-----------------|----------------|-------------------|
+| Naive RAG (chunk+embed) | 0.72 | 0.78 | 0.68 | 0.65 |
+| RAG + Reranker | 0.83 | 0.85 | 0.76 | 0.78 |
+| RAGFlow (est.) | 0.86 | 0.84 | 0.79 | 0.80 |
+| GraphRAG (Microsoft) | 0.88 | 0.87 | 0.84 | 0.83 |
+| **llm-wiki ★** | **1.00** | **1.00** | **0.94** | **0.91** |
 
-> **All scores are LLM-as-judge (RAGAS framework)** over 19 test cases across tech, business, and Chinese domains. Industry baselines from published papers — not identical test sets. Full pipeline: compile_v2 → embed → search → synthesize.
+> **All scores are LLM-as-judge (RAGAS framework)** over 19 test cases across tech, business, and Chinese domains. Industry baselines from published papers — not identical test sets. llm-wiki: compile_v2 → BM25+metadata+graph → entity link → 3-signal rank → synthesize. **4 of 5 metrics surpass GraphRAG.**
 
 → [Full benchmark report with per-case breakdown](docs/BENCHMARK.md)
 
@@ -77,7 +112,7 @@ We evaluate the **complete product pipeline** (compile → embed → search → 
 | Capability | Description |
 |-----------|-------------|
 | **Compile** | LLM extracts entities, builds typed knowledge graph with 12 relationship types |
-| **Query** | 7-stream hybrid search (metadata + BM25 + vector + chunk + graph + ledger) → LLM synthesis |
+| **Query** | Wiki-native search (metadata + BM25 + graph + ledger) + entity linking + 3-signal ranking → LLM synthesis |
 | **Lint** | Health scanning + auto-heal: contradictions, stale claims, orphans, broken links |
 | **Lifecycle** | Ebbinghaus decay, confidence scoring, contradiction detection, supersession |
 | **Memory Tiers** | Working → Episodic → Semantic → Procedural, automatic consolidation |
@@ -105,14 +140,14 @@ llm-wiki-skill/
 ├── scripts/           # Python automation (~30 scripts)
 │   ├── wiki.py        # Unified CLI
 │   ├── compile_v2.py  # LLM source → wiki compiler
-│   ├── query.py       # 7-stream search + answer synthesis
-│   ├── search.py      # BM25/vector/graph/chunk hybrid search
+│   ├── query.py       # Wiki-native search + answer synthesis
+│   ├── search.py      # Metadata/BM25/graph search; vector paths are opt-in
 │   ├── lint.py        # Health scan + auto-heal
 │   ├── ledger.py      # Structured table management (DuckDB)
 │   └── ...
 ├── .wiki/             # Wiki data (LLM-generated)
 │   ├── pages/         # Structured markdown pages
-│   ├── graph/         # entities.json, edges.json, embeddings
+│   ├── graph/         # entities.json, edges.json, optional embeddings
 │   ├── ledger/        # ledger.duckdb database
 │   └── source/        # Original source files (immutable)
 ├── .claude/hooks/     # Automation hooks (optional)

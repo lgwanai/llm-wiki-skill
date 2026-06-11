@@ -5,10 +5,9 @@ Stores tables in .wiki/ledger/ledger.duckdb:
   - _registry meta-table: display_name → actual_name mapping + schema info
   - One DuckDB table per user table, with typed columns
   - SEQUENCE per table for auto-increment
-  - _embeddings table for vector search over table rows
 
 Usage (via wiki.py):
-    wiki ledger list | show | create | insert | update-schema | delete | stats | embed
+    wiki ledger list | show | create | insert | update-schema | delete | stats
 
 Auto-migrates from old JSON format on first use if JSON files exist.
 """
@@ -97,7 +96,7 @@ def _get_conn(read_only: bool = False) -> duckdb.DuckDBPyConnection:
 
 
 def _ensure_schema(conn: duckdb.DuckDBPyConnection) -> None:
-    """Create _registry and _embeddings tables if they don't exist."""
+    """Create _registry table if it doesn't exist."""
     conn.execute("""
         CREATE TABLE IF NOT EXISTS _registry (
             actual_name        VARCHAR PRIMARY KEY,
@@ -110,15 +109,6 @@ def _ensure_schema(conn: duckdb.DuckDBPyConnection) -> None:
             unique_key         VARCHAR DEFAULT '[]',
             auto_increment     BOOLEAN DEFAULT FALSE,
             auto_increment_field VARCHAR DEFAULT NULL
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS _embeddings (
-            table_name  VARCHAR NOT NULL,
-            row_id      INTEGER NOT NULL,
-            embedding   FLOAT[],   -- dimension depends on model
-            updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (table_name, row_id)
         )
     """)
 
@@ -935,8 +925,6 @@ def cmd_delete(table: str, keep_files: bool = False) -> dict:
             conn.execute(f'DROP SEQUENCE IF EXISTS {_q(f"seq_{actual}")}')
         except duckdb.Error:
             pass
-        conn.execute("DELETE FROM _embeddings WHERE table_name = ?", [actual])
-
     conn.execute("DELETE FROM _registry WHERE actual_name = ?", [actual])
     return {"success": True, "message": f"Table '{display_name}' deleted.", "actual_name": actual}
 
@@ -979,73 +967,6 @@ def cmd_stats(table: str | None = None) -> dict:
         })
         total_rows += r[2]
     return {"success": True, "table_count": len(tables), "total_rows": total_rows, "tables": tables}
-
-
-def cmd_embed(table: str | None = None) -> dict:
-    """Generate embeddings for table rows and store in _embeddings table."""
-    conn = _get_conn()
-
-    try:
-        from generate_embeddings import get_embedding
-    except ImportError:
-        return {"success": False, "error": "Embedding module not available. Install sentence-transformers."}
-
-    if table:
-        actual = _resolve_table(table, conn)
-        if actual is None:
-            return {"success": False, "error": f"Table '{table}' not found."}
-        table_names = [actual]
-    else:
-        table_names = [r[0] for r in conn.execute("SELECT actual_name FROM _registry").fetchall()]
-
-    total_embedded = 0
-    for actual_name in table_names:
-        reg = conn.execute(
-            "SELECT fields_json, display_name FROM _registry WHERE actual_name = ?", [actual_name]
-        ).fetchone()
-        if reg is None:
-            continue
-        fields = json.loads(reg[0])
-        text_cols = [f["name"] for f in fields if f.get("type") in ("string", "text") and not f.get("auto_increment")]
-        if not text_cols:
-            continue
-
-        try:
-            rows = conn.execute(f'SELECT * FROM {_q(actual_name)}').fetchall()
-            col_names = [desc[0] for desc in conn.description]
-        except duckdb.Error:
-            continue
-
-        embedded = 0
-        for row in rows:
-            row_dict = dict(zip(col_names, row))
-            row_id = row_dict.get("_id", 0)
-            text_parts = [str(row_dict.get(c, "")) for c in text_cols if row_dict.get(c) is not None]
-            full_text = " ".join(text_parts)
-            if not full_text.strip():
-                continue
-
-            emb = get_embedding(full_text)
-            if emb is None:
-                continue
-
-            # Store as DuckDB array
-            emb_str = "[" + ", ".join(str(v) for v in emb) + "]"
-            try:
-                conn.execute(
-                    f"""INSERT INTO _embeddings (table_name, row_id, embedding, updated_at)
-                        VALUES (?, ?, {emb_str}::FLOAT[{len(emb)}], CURRENT_TIMESTAMP)
-                        ON CONFLICT (table_name, row_id) DO UPDATE SET
-                            embedding = EXCLUDED.embedding, updated_at = CURRENT_TIMESTAMP""",
-                    [actual_name, row_id],
-                )
-                embedded += 1
-            except duckdb.Error:
-                pass
-
-        total_embedded += embedded
-
-    return {"success": True, "message": f"Embedded {total_embedded} rows.", "embedded": total_embedded}
 
 
 def _read_tabular_file(filepath: str) -> list[list[str]]:
@@ -1296,9 +1217,6 @@ def main():
     stats_parser = subparsers.add_parser("stats", help="Show table statistics")
     stats_parser.add_argument("table", nargs="?", default=None, help="Table name (omit for all)")
 
-    embed_parser = subparsers.add_parser("embed", help="Generate embeddings for table rows")
-    embed_parser.add_argument("table", nargs="?", default=None, help="Table name (omit for all)")
-
     import_parser = subparsers.add_parser("import", help="Import CSV/Excel as a ledger table")
     import_parser.add_argument("file", help="CSV or XLSX file path")
     import_parser.add_argument("--name", help="Table display name")
@@ -1332,8 +1250,6 @@ def main():
         result = cmd_delete(args.table, keep_files=args.keep_files)
     elif args.command == "stats":
         result = cmd_stats(args.table)
-    elif args.command == "embed":
-        result = cmd_embed(args.table)
     elif args.command == "import":
         result = cmd_import(args.file, table_name=args.name)
     elif args.command == "search":

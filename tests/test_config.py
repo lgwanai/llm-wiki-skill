@@ -146,6 +146,21 @@ def test_image_analysis_defaults_disabled(monkeypatch, tmp_path):
     assert image["ocr_fallback"] is True
 
 
+def test_default_query_path_is_wiki_native(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("LLM_WIKI_CONFIG", raising=False)
+    monkeypatch.delenv("LLM_WIKI_PROJECT_DIR", raising=False)
+    monkeypatch.delenv("LLM_WIKI_DIR", raising=False)
+    config.reset_config()
+
+    query = config.get_query_config()
+
+    assert query["llm_query_expansion"] is False
+    # Wiki-native defaults: no embeddings, no chunks, no cross-encoders
+    search_streams = query.get("search_streams", "")
+    assert "bm25" in search_streams or "metadata" in search_streams
+
+
 def test_image_analysis_api_url_is_exposed(monkeypatch, tmp_path):
     project = tmp_path / "project"
     project.mkdir()

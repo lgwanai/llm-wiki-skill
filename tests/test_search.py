@@ -1,7 +1,7 @@
-"""Tests for search.py — hybrid search and RRF fusion."""
+"""Tests for search.py — wiki-native hybrid search and RRF fusion."""
 
-import os
 import json
+import os
 from pathlib import Path
 
 import search
@@ -52,6 +52,52 @@ class TestGraphSearch:
         finally:
             os.chdir(old)
 
+    def test_links_entity_alias_inside_natural_language_query(self, tmp_path, monkeypatch):
+        wiki = tmp_path / ".wiki"
+        graph_dir = wiki / "graph"
+        page_dir = wiki / "pages" / "concepts"
+        graph_dir.mkdir(parents=True)
+        page_dir.mkdir(parents=True)
+        page = page_dir / "llm-wiki.md"
+        page.write_text("# LLM Wiki\n\nCompiled knowledge base.", encoding="utf-8")
+        (graph_dir / "entities.json").write_text(
+            json.dumps({
+                "llm-wiki": {
+                    "id": "llm-wiki",
+                    "type": "concept",
+                    "name": "LLM Wiki",
+                    "aliases": ["个人知识库", "LLM维基"],
+                    "confidence": 0.95,
+                    "page": "pages/concepts/llm-wiki.md",
+                }
+            }),
+            encoding="utf-8",
+        )
+        (graph_dir / "edges.json").write_text('{"edges":[]}', encoding="utf-8")
+        monkeypatch.setattr(search, "_cache_marker", None)
+
+        results = search.graph_search("个人知识库如何避免传统RAG问题", str(graph_dir), limit=5)
+
+        assert results
+        assert results[0]["entity_id"] == "llm-wiki"
+        assert results[0]["path"] == str(page)
+
+    def test_relationship_query_adds_connected_entity_candidates(self, wiki_dir, sample_entities):
+        old = os.getcwd()
+        os.chdir(wiki_dir)
+        try:
+            results = search.graph_search(
+                "Auth Service 和 Redis 的关系是什么",
+                str(Path(".wiki") / "graph"),
+                limit=5,
+            )
+        finally:
+            os.chdir(old)
+
+        result_ids = [r["entity_id"] for r in results]
+        assert "auth-service" in result_ids
+        assert "redis-caching" in result_ids
+
 
 class TestReciprocalRankFusion:
     def test_fuses_multiple_streams(self):
@@ -72,7 +118,7 @@ class TestReciprocalRankFusion:
 
     def test_deduplicates_across_streams(self):
         results_a = [{"file": "same.md", "score": 0.9, "stream": "bm25"}]
-        results_b = [{"file": "same.md", "score": 0.8, "stream": "vector"}]
+        results_b = [{"file": "same.md", "score": 0.8, "stream": "graph"}]
         fused = search.reciprocal_rank_fusion([results_a, results_b])
         assert len(fused) == 1
         assert len(fused[0]["streams"]) == 2
@@ -85,97 +131,6 @@ class TestReciprocalRankFusion:
         fused = search.reciprocal_rank_fusion(results)
         first = fused[0]
         assert first["rrf_score"] > 0
-
-
-class TestCosineSimilarity:
-    def test_identical_vectors(self):
-        sim = search._cosine_similarity([1.0, 2.0, 3.0], [1.0, 2.0, 3.0])
-        assert abs(sim - 1.0) < 0.001
-
-    def test_orthogonal_vectors(self):
-        sim = search._cosine_similarity([1.0, 0.0], [0.0, 1.0])
-        assert abs(sim) < 0.001
-
-    def test_empty_vectors(self):
-        sim = search._cosine_similarity([], [])
-        assert sim == 0.0
-
-
-class TestChunkSearch:
-    def test_finds_heading_local_chunk(self, tmp_path, monkeypatch):
-        wiki = tmp_path / ".wiki"
-        page_dir = wiki / "pages" / "concepts"
-        page_dir.mkdir(parents=True)
-        page = page_dir / "approval-flow.md"
-        page.write_text(
-            """---
-id: approval-flow
-type: concept
----
-
-# Approval Flow
-
-## Budget Threshold
-
-Amount 12000 CNY is compared against threshold 10000.
-""",
-            encoding="utf-8",
-        )
-        monkeypatch.setattr(search, "WIKI_DIR", wiki)
-        monkeypatch.setattr(search, "PAGES_DIR", wiki / "pages")
-        monkeypatch.setattr(search, "_CHUNK_CACHE_FILE", wiki / "graph" / ".chunk_index.json")
-        monkeypatch.setattr(search, "_cache_marker", None)
-
-        results = search.chunk_search("threshold 10000", str(wiki / "pages"), limit=5)
-
-        assert results
-        assert results[0]["file"] == "approval-flow"
-        assert results[0]["path"] == str(page)
-        assert "Budget Threshold" in results[0]["heading_path"]
-
-    def test_search_doctor_reports_embedding_status(self, tmp_path, monkeypatch):
-        wiki = tmp_path / ".wiki"
-        page_dir = wiki / "pages" / "concepts"
-        page_dir.mkdir(parents=True)
-        (page_dir / "x.md").write_text("# X\n\nBody", encoding="utf-8")
-        (wiki / "graph").mkdir(parents=True)
-        (wiki / "graph" / "entities.json").write_text("{}", encoding="utf-8")
-        (wiki / "graph" / "edges.json").write_text('{"edges":[]}', encoding="utf-8")
-        monkeypatch.setattr(search, "WIKI_DIR", wiki)
-        monkeypatch.setattr(search, "PAGES_DIR", wiki / "pages")
-        monkeypatch.setattr(search, "_CHUNK_CACHE_FILE", wiki / "graph" / ".chunk_index.json")
-        monkeypatch.setattr(search, "_cache_marker", None)
-
-        result = search.search_doctor(wiki)
-
-        assert result["pages"] == 1
-        assert result["chunks"] >= 1
-        assert "embedding" in result
-
-    def test_eval_retrieval_hits_expected_page(self, tmp_path, monkeypatch):
-        wiki = tmp_path / ".wiki"
-        page_dir = wiki / "pages" / "concepts"
-        page_dir.mkdir(parents=True)
-        (page_dir / "approval-flow.md").write_text(
-            "# Approval Flow\n\nThreshold 10000 requires director approval.",
-            encoding="utf-8",
-        )
-        (wiki / "graph").mkdir(parents=True)
-        eval_file = tmp_path / "retrieval.jsonl"
-        eval_file.write_text(
-            json.dumps({"query": "threshold 10000", "expected_pages": ["approval-flow"]}) + "\n",
-            encoding="utf-8",
-        )
-        monkeypatch.setattr(search, "WIKI_DIR", wiki)
-        monkeypatch.setattr(search, "PAGES_DIR", wiki / "pages")
-        monkeypatch.setattr(search, "GRAPH_DIR", wiki / "graph")
-        monkeypatch.setattr(search, "_CHUNK_CACHE_FILE", wiki / "graph" / ".chunk_index.json")
-        monkeypatch.setattr(search, "_cache_marker", None)
-
-        result = search.eval_retrieval(eval_file, limit=5)
-
-        assert result["status"] == "ok"
-        assert result["recall_at_k"] == 1.0
 
 
 class TestMetadataSearch:
@@ -205,7 +160,9 @@ questions:
         )
         monkeypatch.setattr(search, "WIKI_DIR", wiki)
         monkeypatch.setattr(search, "PAGES_DIR", wiki / "pages")
-        monkeypatch.setattr(search, "_METADATA_CACHE_FILE", wiki / "graph" / ".metadata_index.json")
+        monkeypatch.setattr(
+            search, "_METADATA_CACHE_FILE", wiki / "graph" / ".metadata_index.json"
+        )
         monkeypatch.setattr(search, "_cache_marker", None)
 
         results = search.metadata_search("OAF", str(wiki / "pages"), limit=5)
@@ -225,93 +182,67 @@ questions:
         (wiki / "graph" / "edges.json").write_text('{"edges":[]}', encoding="utf-8")
         monkeypatch.setattr(search, "WIKI_DIR", wiki)
         monkeypatch.setattr(search, "PAGES_DIR", wiki / "pages")
-        monkeypatch.setattr(search, "_CHUNK_CACHE_FILE", wiki / "graph" / ".chunk_index.json")
-        monkeypatch.setattr(search, "_METADATA_CACHE_FILE", wiki / "graph" / ".metadata_index.json")
+        monkeypatch.setattr(
+            search, "_METADATA_CACHE_FILE", wiki / "graph" / ".metadata_index.json"
+        )
         monkeypatch.setattr(search, "_cache_marker", None)
 
         result = search.search_doctor(wiki)
 
         assert result["metadata_items"] == 1
 
-    def test_search_doctor_flags_empty_embedding_index(self, tmp_path, monkeypatch):
+
+class TestSearchDoctor:
+    def test_doctor_reports_missing_pages(self, tmp_path, monkeypatch):
         wiki = tmp_path / ".wiki"
-        page_dir = wiki / "pages" / "concepts"
-        page_dir.mkdir(parents=True)
-        (page_dir / "x.md").write_text("---\nid: x\n---\n# X\n\nBody", encoding="utf-8")
-        graph_dir = wiki / "graph"
-        graph_dir.mkdir(parents=True)
-        (graph_dir / "entities.json").write_text("{}", encoding="utf-8")
-        (graph_dir / "edges.json").write_text('{"edges":[]}', encoding="utf-8")
-        (graph_dir / "embeddings.json").write_text(
-            json.dumps({
-                "_meta": {
-                    "schema_version": 2,
-                    "mode": "local",
-                    "model": "sentence-transformers/all-MiniLM-L6-v2",
-                    "dimension": 384,
-                },
-                "items": {},
-            }),
-            encoding="utf-8",
-        )
+        (wiki / "graph").mkdir(parents=True)
+        (wiki / "graph" / "entities.json").write_text("{}", encoding="utf-8")
+        (wiki / "graph" / "edges.json").write_text('{"edges":[]}', encoding="utf-8")
         monkeypatch.setattr(search, "WIKI_DIR", wiki)
         monkeypatch.setattr(search, "PAGES_DIR", wiki / "pages")
-        monkeypatch.setattr(search, "_CHUNK_CACHE_FILE", graph_dir / ".chunk_index.json")
-        monkeypatch.setattr(search, "_METADATA_CACHE_FILE", graph_dir / ".metadata_index.json")
         monkeypatch.setattr(search, "_cache_marker", None)
 
         result = search.search_doctor(wiki)
 
-        assert result["healthy"] is False
-        assert "embedding index has no items" in result["issues"]
-        assert result["embedding_coverage_pct"] == 0.0
+        assert result["pages"] == 0
+        assert "no wiki pages found" in result["issues"]
 
-    def test_vector_chunk_search_uses_chunk_embedding_index(self, tmp_path, monkeypatch):
+
+class TestEvalRetrieval:
+    def test_eval_retrieval_hits_expected_page(self, tmp_path, monkeypatch):
         wiki = tmp_path / ".wiki"
-        graph_dir = wiki / "graph"
-        graph_dir.mkdir(parents=True)
         page_dir = wiki / "pages" / "concepts"
         page_dir.mkdir(parents=True)
-        page = page_dir / "approval-flow.md"
-        page.write_text("# Approval Flow\n\nDirector threshold.", encoding="utf-8")
-        (graph_dir / "chunk_embeddings.json").write_text(
-            json.dumps({
-                "_meta": {
-                    "schema_version": 2,
-                    "mode": "local",
-                    "model": "sentence-transformers/all-MiniLM-L6-v2",
-                    "dimension": 2,
-                },
-                "items": {
-                    "approval-flow#chunk-1": {
-                        "embedding": [1.0, 0.0],
-                        "page_id": "approval-flow",
-                        "path": str(page),
-                        "heading_path": ["Approval Flow"],
-                        "text": "Director threshold.",
-                    }
-                },
-            }),
+        (page_dir / "approval-flow.md").write_text(
+            "# Approval Flow\n\nThreshold 10000 requires director approval.",
+            encoding="utf-8",
+        )
+        (wiki / "graph").mkdir(parents=True)
+        (wiki / "graph" / "entities.json").write_text("{}", encoding="utf-8")
+        (wiki / "graph" / "edges.json").write_text('{"edges":[]}', encoding="utf-8")
+        eval_file = tmp_path / "retrieval.jsonl"
+        eval_file.write_text(
+            json.dumps({"query": "threshold 10000", "expected_pages": ["approval-flow"]}) + "\n",
             encoding="utf-8",
         )
         monkeypatch.setattr(search, "WIKI_DIR", wiki)
+        monkeypatch.setattr(search, "PAGES_DIR", wiki / "pages")
+        monkeypatch.setattr(search, "GRAPH_DIR", wiki / "graph")
+        monkeypatch.setattr(search, "_BM25_CACHE_FILE", wiki / "graph" / ".bm25_index.json")
+        monkeypatch.setattr(search, "_METADATA_CACHE_FILE", wiki / "graph" / ".metadata_index.json")
+        monkeypatch.setattr(search, "_cache_marker", None)
+        monkeypatch.setattr(search, "_bm25_index", None)
+        monkeypatch.setattr(search, "_entities_cache", None)
+        monkeypatch.setattr(search, "_edges_cache", None)
 
-        import generate_embeddings
+        result = search.eval_retrieval(eval_file, limit=5)
 
-        monkeypatch.setattr(
-            generate_embeddings,
-            "get_embeddings_config",
-            lambda: {
-                "mode": "local",
-                "model": "sentence-transformers/all-MiniLM-L6-v2",
-                "dimension": 2,
-                "backend": "faiss",
-            },
-        )
-        monkeypatch.setattr(generate_embeddings, "get_embedding", lambda text: [1.0, 0.0])
+        assert result["status"] == "ok"
+        assert result["recall_at_k"] == 1.0
 
-        results = search.vector_chunk_search("director", str(wiki / "pages"), limit=5)
 
-        assert results
-        assert results[0]["stream"] == "chunk_vector"
-        assert results[0]["chunk_id"] == "approval-flow#chunk-1"
+class TestTableSearch:
+    def test_returns_empty_when_no_ledger_db(self, tmp_path):
+        wiki = str(tmp_path / ".wiki")
+        results = search.table_search("test", wiki, limit=5)
+        assert results == []

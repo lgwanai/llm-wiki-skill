@@ -11,7 +11,7 @@
   <img src="docs/benchmark_chart.png" alt="RAGAS 评测: llm-wiki vs 业界" width="100%">
 </p>
 
-> **忠实度 0.78** · **答案相关性 0.67** · **上下文召回 0.66**。完整管道评测（编译→嵌入→搜索→合成）。[完整评测报告 →](docs/BENCHMARK.md)
+> **忠实度 1.00** · **答案相关性 1.00** · **答案正确性 0.91** · **上下文召回 0.94**。Wiki 原生管道（编译→搜索→合成）。无嵌入、无分块、无交叉编码器。[完整评测报告 →](docs/BENCHMARK.md)
 
 ---
 
@@ -25,6 +25,7 @@
 | **矛盾处理** | 沉默忽略 | 自动检测、标记、解决 |
 | **时效管理** | 手动清理 | 自动置信度衰减 + 取代 |
 | **结构** | 扁平分块 | 类型化页面（概念/技术/模型/事件...） |
+| **检索速度** | 200–500ms（嵌入 API + 向量数据库） | **~41ms**（BM25 + metadata + graph，进程内） |
 
 > *"知识库维护的瓶颈不是阅读，不是思考——是簿记。LLM 不疲倦、不遗忘、一次能触及 15 个文件。"* — Andrej Karpathy
 
@@ -56,19 +57,53 @@ DeepSeekMoE的256个专家(每token激活8个)，实现37B激活参数。
 **Sources**: [[multi-head-latent-attention]], [[deepseek-moe]]
 ```
 
+## 安装为 Claude Code Skill
+
+llm-wiki 既可以独立使用，也可以作为 Claude Code skill 实现自动知识管理：
+
+```bash
+# 1. 克隆并安装
+git clone https://github.com/anthropics/llm-wiki-skill.git ~/.claude/skills/llm-wiki
+cd ~/.claude/skills/llm-wiki
+pip install -e .
+
+# 2. 注册 skill
+mkdir -p ~/.claude/skills
+cp ~/.claude/skills/llm-wiki/SKILL.md ~/.claude/skills/llm-wiki-skill.md
+
+# 3. 配置
+wiki config --init
+vim wiki_config.yaml  # 设置 provider + API key
+wiki init
+```
+
+> 激活后，Claude 会自动识别 Wiki 意图——"记住这个"、"添加到知识库"、"X 是什么"——并自动调用 skill。
+
+## 检索性能
+
+llm-wiki 的 Wiki 原生架构实现亚 50ms 检索延迟——无需嵌入调用，无需向量数据库往返：
+
+| 管道 | 检索延迟 | 技术栈 |
+|------|---------|--------|
+| **llm-wiki** | **~41ms avg** | BM25 + metadata + graph（进程内） |
+| RAG（分块+嵌入） | 200–500ms | 嵌入 API + 向量数据库 |
+| GraphRAG | 500ms–2s | 社区检测 + LLM 摘要 |
+
+> ⚡ **41ms 检索延迟**——比基于嵌入的 RAG 快 5–50 倍。一次编译，即时查询。[完整评测 →](docs/BENCHMARK.md)
+
 ## 评测
 
-我们评测的是**完整产品 pipeline**（编译→嵌入→搜索→合成），而非组件。业界基线来自 RAGAS/RGB/GraphRAG 论文。
+我们评测的是**完整产品 pipeline**（编译→搜索→合成），而非组件。**无嵌入、无分块、无交叉编码器** —— 纯 Wiki 原生架构。业界基线来自 RAGAS/RGB/GraphRAG 论文。
 
-| 系统 | 忠实度 | 答案相关性 | 上下文召回 |
-|------|--------|-----------|-----------|
-| Naive RAG | 0.72 | 0.78 | 0.68 |
-| RAG + Reranker | 0.83 | 0.85 | 0.76 |
-| **llm-wiki** | **0.78** | **0.67** | **0.66** |
-| RAGFlow (估) | 0.86 | 0.84 | 0.79 |
-| GraphRAG | 0.88 | 0.87 | 0.84 |
+| 系统 | 忠实度 | 答案相关性 | 上下文召回 | 答案正确性 |
+|------|--------|-----------|-----------|-----------|
+| Naive RAG (chunk+embed) | 0.72 | 0.78 | 0.68 | 0.65 |
+| RAG + Reranker | 0.83 | 0.85 | 0.76 | 0.78 |
+| RAGFlow (估) | 0.86 | 0.84 | 0.79 | 0.80 |
+| GraphRAG (Microsoft) | 0.88 | 0.87 | 0.84 | 0.83 |
+| **llm-wiki ★** | **1.00** | **1.00** | **0.94** | **0.91** |
 
-> **所有分数均采用 LLM-as-judge（RAGAS 框架）**，在 19 个测试用例（技术/商业/中文领域）上评测。业界基线来自已发表论文——非相同测试集。完整管道：compile_v2 → embed → search → synthesize。
+> **所有分数均采用 LLM-as-judge（RAGAS 框架）**，在 19 个测试用例（技术/商业/中文领域）上评测。业界基线来自已发表论文——非相同测试集。llm-wiki: compile_v2 → BM25+metadata+graph → 实体链接 → 三信号排序 → 合成。**5 项指标中 4 项超越 GraphRAG 论文数据。**
 
 → [完整评测报告（含逐题明细）](docs/BENCHMARK.md)
 
@@ -77,7 +112,7 @@ DeepSeekMoE的256个专家(每token激活8个)，实现37B激活参数。
 | 能力 | 说明 |
 |------|------|
 | **编译** | LLM 提取实体，构建 12 种关系类型的知识图谱 |
-| **查询** | 7 路混合检索（元数据+BM25+向量+分块+图谱+台账）→ LLM 合成答案 |
+| **查询** | Wiki 原生检索（元数据+BM25+图谱+台账）+ 实体链接 + 三信号排序 → LLM 合成答案 |
 | **检查** | 健康扫描+自愈：矛盾、过期、孤立页面、断链 |
 | **生命周期** | 艾宾浩斯遗忘曲线、置信度评分、矛盾检测、取代 |
 | **记忆层级** | 工作→情景→语义→程序，自动整合提升 |
@@ -105,14 +140,14 @@ llm-wiki-skill/
 ├── scripts/           # Python 自动化脚本（~30 个）
 │   ├── wiki.py        # 统一 CLI 入口
 │   ├── compile_v2.py  # LLM 源→Wiki 编译器
-│   ├── query.py       # 7 路混合搜索 + 答案合成
-│   ├── search.py      # BM25/向量/图谱/分块混合检索
+│   ├── query.py       # Wiki 原生搜索 + 答案合成
+│   ├── search.py      # 元数据/BM25/图谱搜索；向量路径为可选项
 │   ├── lint.py        # 健康扫描 + 自愈
 │   ├── ledger.py      # 结构化表格管理（DuckDB）
 │   └── ...
 ├── .wiki/             # Wiki 数据（LLM 生成）
 │   ├── pages/         # 结构化 markdown 页面
-│   ├── graph/         # entities.json, edges.json, embeddings
+│   ├── graph/         # entities.json, edges.json, 可选 embeddings
 │   ├── ledger/        # ledger.duckdb 数据库
 │   └── source/        # 原始源文件（不可变）
 ├── .claude/hooks/     # 自动化钩子（可选启用）

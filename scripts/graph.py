@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
 """graph.py — Knowledge Graph Builder & Querier for llm-wiki."""
 
 import argparse
 import json
 import os
-import sys
-from pathlib import Path
 import re
+import sys
 from collections import deque
 from datetime import datetime, timezone
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from config import get_wiki_dir
