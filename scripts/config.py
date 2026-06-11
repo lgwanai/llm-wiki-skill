@@ -412,7 +412,7 @@ def validate_config(config: dict) -> list[str]:
     _v = _SchemaValidator(config, issues)
 
     # ── Top-level ──
-    _v.check_type("wiki_dir", str, required=False)
+    _v.check_type("wiki_dir", config.get("wiki_dir"), str)
 
     # ── Model ──
     model = config.get("model", {})

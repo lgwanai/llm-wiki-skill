@@ -2038,6 +2038,11 @@ def compile_path(
             f"Compiling directory {path} ({len(sources)} files, {workers} workers)...",
             file=sys.stderr,
         )
+        print(
+            "  WARNING: concurrent workers may cause data loss in index/graph/audit. "
+            "Use --jobs 1 for safe compilation.",
+            file=sys.stderr,
+        )
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         with ThreadPoolExecutor(max_workers=workers) as executor:

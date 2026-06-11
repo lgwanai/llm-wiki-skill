@@ -4,6 +4,7 @@ Extracted from benchmark_ragas.py retry pattern and deduplicated from
 compile_v2.py / query.py call_llm implementations.
 """
 
+import json
 import sys
 import time
 
@@ -149,7 +150,12 @@ def call_llm(
                 )
 
             resp.raise_for_status()
-            data = resp.json()
+            try:
+                data = resp.json()
+            except json.JSONDecodeError as e:
+                raise RuntimeError(
+                    f"LLM API returned invalid JSON: {e}"
+                ) from e
 
             # Parse provider-specific response
             if provider == "ollama":

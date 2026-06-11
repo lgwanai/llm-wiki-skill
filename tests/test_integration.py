@@ -311,8 +311,9 @@ class TestE2EIncremental:
                 r1 = ingest.compile_source(str(src))
                 assert r1["pages_created"] == 1
 
-                # Second compile — same content, should skip (count as unchanged)
-                r2 = ingest.compile_source(str(src), force=True)
+                # Second compile — same content, force=False triggers
+                # incremental hash check (force=True bypasses it)
+                r2 = ingest.compile_source(str(src))
                 assert r2.get("pages_skipped", 0) >= 0, \
                     "incremental should track skipped count"
         finally:

@@ -444,7 +444,7 @@ def _cross_link_wiki_ledger(results: list[dict]) -> list[dict]:
         for alias in (entity.get("aliases") or []):
             alias_norm = _normalize_entity_name(str(alias))
             if alias_norm and len(alias_norm) >= 2:
-                name_to_eid[alias_norm] = alias_norm
+                name_to_eid[alias_norm] = eid
 
     # Wiki page IDs for quick lookup
     wiki_ids: dict[str, dict] = {r.get("id", ""): r for r in wiki_results if r.get("id")}
@@ -695,7 +695,7 @@ def search_wiki(
                 all_streams.append(metadata_results)
         except Exception as e:
             trace["streams"]["metadata_error"] = str(e)
-            _log_exc(f"{stream} stream failed")
+            _log_exc("stream failed")
 
     # Stream 2: BM25 keyword search (full wiki pages, not chunks)
     if "bm25" in enabled_streams:
@@ -712,7 +712,7 @@ def search_wiki(
                 all_streams.append(bm25_results)
         except Exception as e:
             trace["streams"]["bm25_error"] = str(e)
-            _log_exc(f"{stream} stream failed")
+            _log_exc("stream failed")
 
     # Stream 3: Graph entity search (symbolic name matching + traversal)
     if "graph" in enabled_streams:
@@ -748,7 +748,7 @@ def search_wiki(
                     all_streams.append(converted)
         except Exception as e:
             trace["streams"]["graph_error"] = str(e)
-            _log_exc(f"{stream} stream failed")
+            _log_exc("stream failed")
 
     # Stream 4: Ledger search (structured tables)
     if "ledger" in enabled_streams:
@@ -772,7 +772,7 @@ def search_wiki(
                 trace["streams"]["ledger"] = converted
         except Exception as e:
             trace["streams"]["ledger_error"] = str(e)
-            _log_exc(f"{stream} stream failed")
+            _log_exc("stream failed")
 
     # Fuse streams with RRF
     if len(all_streams) >= 2:
