@@ -456,6 +456,176 @@ def read_source_content(source_path: str | Path) -> tuple[str, str]:
         return f.read(), path.name
 
 
+def _read_agent_visible_source(source_path: Path) -> tuple[str, bool]:
+    """Read source content without invoking OCR, vision, or configured LLM APIs."""
+    try:
+        if source_path.suffix.lower() == ".svg":
+            return _preprocess_svg(source_path), True
+        if is_text_source(source_path):
+            size_bytes = source_path.stat().st_size
+            if size_bytes > 50 * 1024 * 1024:
+                return (
+                    f"[File too large ({size_bytes // 1024 // 1024} MB). "
+                    f"Agent should read the file directly.]",
+                    False,
+                )
+            return source_path.read_text(encoding="utf-8"), True
+        return "", False
+    except (OSError, UnicodeDecodeError):
+        return "", False
+
+
+def infer_source_type(path: Path) -> str:
+    """Return a lightweight hint only; final source type belongs to the Agent."""
+    name_lower = path.name.lower()
+    if "chat" in name_lower or "conversation" in name_lower:
+        return "conversation"
+    suffix = path.suffix.lower()
+    if suffix in {".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".rs", ".java", ".sql"}:
+        return "code"
+    if suffix in {".md", ".markdown", ".rst", ".adoc", ".html", ".htm"}:
+        return "article"
+    return "doc"
+
+
+def create_agent_compile_task(
+    source_path: str,
+    source_type: str = "auto",
+    force: bool = False,
+    dry_run: bool = False,
+    depth: int | None = None,
+) -> dict:
+    """Create an Agent-readable compile task without calling configured models.
+
+    The current Agent is expected to read the source when possible, classify the
+    document type, and write wiki pages according to schema.md and compile rules.
+    """
+    path = Path(source_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Source not found: {source_path}")
+
+    WIKI_DIR.mkdir(parents=True, exist_ok=True)
+    task_dir = WIKI_DIR / "agent_tasks"
+    task_dir.mkdir(parents=True, exist_ok=True)
+
+    if path.is_dir():
+        try:
+            sources = iter_source_files(path, max_depth=depth)
+        except PermissionError as e:
+            raise PermissionError(
+                f"Cannot read source directory: {e}. Check directory permissions."
+            ) from e
+        max_entries = 500
+        displayed = sources[:max_entries]
+        remaining = sources[max_entries:]
+        suffix = ""
+        if remaining:
+            suffix = f"\n\n... and {len(remaining)} more files:\n"
+            suffix += "\n".join(f"- `{src}`" for src in remaining[:10])
+            if len(remaining) > 10:
+                suffix += f"\n- ... ({len(remaining) - 10} additional files omitted)"
+        source_entries = "\n".join(f"- `{src}`" for src in displayed) + suffix or "- No supported files found"
+        readable_content = ""
+        readable = False  # Directory: individual file readability is unknown without per-file extraction
+        source_name = path.name
+        source_hint = "directory"
+    else:
+        content, readable = _read_agent_visible_source(path)
+        readable_content = strip_sensitive(content) if readable else ""
+        source_entries = f"- `{path}`"
+        source_name = path.name
+        source_hint = infer_source_type(path)
+
+    selected_type = source_type if source_type != "auto" else "Agent must decide"
+    schema_text = ""
+    if SCHEMA_PATH.is_file():
+        schema_text = SCHEMA_PATH.read_text(encoding="utf-8")[:12000]
+    else:
+        template_schema = Path(__file__).resolve().parent.parent / "templates" / "schema.md"
+        if template_schema.is_file():
+            schema_text = template_schema.read_text(encoding="utf-8")[:12000]
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    safe_name = re.sub(r"[^a-zA-Z0-9_.-]+", "-", source_name).strip("-") or "source"
+    task_path = task_dir / f"compile-{timestamp}-{safe_name}.md"
+
+    content_block = ""
+    if path.is_file() and readable:
+        preview = readable_content[:50000]
+        truncated = "\n\n[TRUNCATED: Agent should read the source file directly.]" if len(readable_content) > len(preview) else ""
+        content_block = f"""## Source Content Preview
+
+```text
+{preview}
+```
+{truncated}
+"""
+    elif path.is_file():
+        content_block = """## Source Readability
+
+The script did not extract text from this source without OCR/vision/model calls.
+The Agent should try to inspect/read the file with available capabilities. If the
+Agent cannot read it, ask the user to provide a text export or summary.
+"""
+
+    task = f"""# Agent Compile Task
+
+This task was generated in Agent mode. Do not call the configured LLM API.
+
+## Source
+
+{source_entries}
+
+- Requested type: `{selected_type}`
+- Source type hint: `{source_hint}`
+- Force overwrite: `{force}`
+- Dry run: `{dry_run}`
+- Wiki dir: `{WIKI_DIR}`
+
+## Agent Responsibilities
+
+1. Read the source directly if possible.
+2. Decide the source type: `doc`, `article`, `code`, or `conversation`.
+3. Compile knowledge according to `.wiki/schema.md` and LLM Wiki compile rules.
+4. Write pages under `.wiki/pages/concepts/` or `.wiki/pages/entities/`.
+5. Update `.wiki/pages/index.md`, `.wiki/graph/entities.json`, `.wiki/graph/edges.json`,
+   `.wiki/log.md`, and `.wiki/audit.json`.
+6. If the source cannot be read, stop and ask the user for readable content.
+
+## Required Page Standard
+
+- YAML frontmatter: `id`, `type`, `name`, `confidence`, `source`, `aliases`, `keywords`.
+- Sections in order: Key Facts/关键事实, Overview/概述, Questions This Page Answers/可回答的问题,
+  Key Details/关键细节, Relationships/关联关系, Source Context/来源上下文.
+- IDs and entity types must follow schema.md.
+- Prefer high-quality compiled pages over raw chunks. This is not a RAG ingestion step.
+
+## Schema Context
+
+```markdown
+{schema_text}
+```
+
+{content_block}
+"""
+    if not dry_run:
+        atomic_write(task_path, task)
+    return {
+        "source": str(path),
+        "mode": "agent",
+        "agent_task": str(task_path) if not dry_run else "(dry-run — task not written)",
+        "needs_agent": True,
+        "readable": readable,
+        "pages_created": 0,
+        "pages_updated": 0,
+        "dry_run": dry_run,
+        "message": (
+            "Agent compile task created. The current Agent should execute this task; "
+            "no configured LLM was called."
+        ),
+    }
+
+
 def extract_edge_type(line: str) -> str:
     for pattern, rel_type in KEYWORD_RELATION_MAP:
         if re.search(pattern, line):
@@ -2001,11 +2171,24 @@ def compile_path(
     force: bool = False,
     depth: int | None = None,
     dry_run: bool = False,
+    mode: str = "llm",
 ) -> dict:
     """Compile a single source file or every supported file under a directory."""
     path = Path(source_path)
     if not path.exists():
         raise FileNotFoundError(f"Source not found: {source_path}")
+
+    if (mode or "").lower() == "agent":
+        return create_agent_compile_task(
+            source_path,
+            source_type=source_type,
+            force=force,
+            dry_run=dry_run,
+            depth=depth,
+        )
+
+    if source_type == "auto":
+        source_type = infer_source_type(path)
 
     if path.is_file():
         return compile_source(str(path), source_type=source_type, force=force, dry_run=dry_run)
@@ -2248,8 +2431,10 @@ def main():
     parser = argparse.ArgumentParser(description='Wiki compilation')
     parser.add_argument('source', help='Source file or directory to compile')
     parser.add_argument('--type', dest='source_type', default='doc',
-                        choices=['doc', 'article', 'code', 'conversation'],
-                        help='Source type (controls entity focus)')
+                        choices=['auto', 'doc', 'article', 'code', 'conversation'],
+                        help='Source type; "auto" infers from file extension (Agent mode recommended)')
+    parser.add_argument('--mode', choices=['agent', 'llm'], default=None,
+                        help='Compile mode; defaults to configured mode or agent')
     parser.add_argument('--force', action='store_true', help='Force re-compile (overwrite existing pages)')
     parser.add_argument('--dry-run', action='store_true', help='Preview LLM output without writing any files')
     parser.add_argument('--depth', type=int, default=None,
@@ -2261,10 +2446,26 @@ def main():
     if args.jobs is not None:
         import os as _os
         _os.environ["LLM_WIKI_COMPILE_WORKERS"] = str(max(1, args.jobs))
-    result = compile_path(args.source, source_type=args.source_type, force=args.force, depth=args.depth, dry_run=args.dry_run)
+    config_mode = get_config().get("compile", {}).get("mode", "agent")
+    mode = args.mode or config_mode or "agent"
+    result = compile_path(
+        args.source,
+        source_type=args.source_type,
+        force=args.force,
+        depth=args.depth,
+        dry_run=args.dry_run,
+        mode=mode,
+    )
 
     pages_created = result.get('pages_created', 0)
     pages_updated = result.get('pages_updated', 0)
+    if result.get("mode") == "agent":
+        print(f"\nAgent compile task created for {result['source']}")
+        print(f"  → {result['agent_task']}")
+        print("  → No configured LLM was called. The Agent should execute this task.")
+        if not result.get("readable", True):
+            print("  → Source text was not extracted; Agent must inspect it or ask for readable content.")
+        return
     if result.get("directory"):
         failed = len(result.get("failed", []))
         prefix = "[Dry-run] " if args.dry_run else ""

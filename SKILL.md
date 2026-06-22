@@ -31,7 +31,7 @@ Wiki:   Source → [编译] → Wiki 持久化 → 查询时直接使用已有�
 ## Architecture
 
 ```
-Raw Sources (.wiki/source/) — immutable, LLM reads never modifies
+Raw Sources (.wiki/source/) — immutable, Agent reads never modifies
     ↓
 Wiki (.wiki/pages/) — LLM maintains: entity pages, concept pages, index, log
     ↓
@@ -44,21 +44,25 @@ Use the installed shell CLI (`wiki ...`, or the alias `llm-wiki ...`) for all co
 
 ### `/wiki-compile <source>` — Ingest Source
 
-LLM reads source document, extracts entities, builds typed knowledge graph.
+Default mode is **Agent compile**. The current Agent reads the source directly,
+decides the document type, and writes wiki pages according to `schema.md` and
+the compile standard. No configured model/API key is required.
 
 ```bash
 wiki compile source.md
 wiki compile docs/                 # recursively compile supported files
 wiki compile docs/ --depth 1       # only direct files + one directory level
-wiki compile diagram.png           # image source via image analysis/OCR config
-wiki compile source.md --force  # re-compile + detect contradictions
+wiki compile diagram.png           # Agent inspects it; if unreadable, ask user for text
+wiki compile source.md --force     # re-compile + detect contradictions
+wiki compile source.md --mode llm  # optional legacy path using configured model
 ```
 
 **What happens:**
 - Source sanitized (API keys, tokens, passwords, emails stripped)
 - Directories are expanded recursively by default; `.wiki` and `.git` are skipped
-- Images are converted to markdown before compile, with the original image path retained as source context
-- LLM generates 10–20 structured Wiki pages (YAML frontmatter + Overview/Key Details/Relationships/Source Context)
+- Agent chooses source type (`doc`, `article`, `code`, `conversation`) by reading the content
+- Agent generates structured Wiki pages (YAML frontmatter + Key Facts/Overview/Questions/Details/Relationships/Source Context)
+- If the Agent cannot read the source, it must stop and ask the user for readable content
 - **Cross-document entity protection**: same-named entities from different sources auto-prefixed (e.g., `coursepl-专家评审组`), concept aggregation pages auto-created
 - Entity types dynamically loaded from `schema.md` (single source of truth)
 - index.md + log.md updated
@@ -279,10 +283,14 @@ Claude: [调用 wiki ledger update-schema --add]
 Single config file: `wiki_config.yaml` (copy from `.example`). Config is gitignored.
 
 ```yaml
-model:
-  provider: deepseek
-  model: "deepseek-v4-flash"
-  api_key: "sk-xxx"
+compile:
+  mode: agent                  # default; no configured LLM required
+
+# Optional only for `wiki compile --mode llm` or query synthesis
+# model:
+#   provider: deepseek
+#   model: "deepseek-v4-flash"
+#   api_key: "sk-xxx"
 
 ocr:
   mode: local

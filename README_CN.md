@@ -36,7 +36,7 @@ pip install -e .
 wiki config --init        # 创建配置文件
 vim wiki_config.yaml      # 设置 API key
 wiki init                 # 初始化 .wiki/
-wiki compile paper.md     # LLM 提取实体 → 结构化页面
+wiki compile paper.md     # Agent 读取来源 → 结构化页面
 wiki query "什么是Transformer?"  # 搜索 → 合成 → 带引用的答案
 ```
 
@@ -111,7 +111,7 @@ llm-wiki 的 Wiki 原生架构实现亚 50ms 检索延迟——无需嵌入调�
 
 | 能力 | 说明 |
 |------|------|
-| **编译** | LLM 提取实体，构建 12 种关系类型的知识图谱 |
+| **编译** | Agent 读取来源、判断文档类型、写入符合 schema 的 wiki 页面和图谱 |
 | **查询** | Wiki 原生检索（元数据+BM25+图谱+台账）+ 实体链接 + 三信号排序 → LLM 合成答案 |
 | **检查** | 健康扫描+自愈：矛盾、过期、孤立页面、断链 |
 | **生命周期** | 艾宾浩斯遗忘曲线、置信度评分、矛盾检测、取代 |

@@ -4,7 +4,13 @@
 # Wiki data directory. Relative paths are resolved from the current project root.
 wiki_dir: .wiki
 
-# Chat model used for compile/query/ledger ask.
+# Compile defaults to Agent mode. The current Agent reads sources, decides the
+# source type, and writes wiki pages according to schema.md. No model/API key is
+# required unless you explicitly run `wiki compile --mode llm`.
+compile:
+  mode: agent
+
+# Optional chat model used for `wiki compile --mode llm`, query synthesis, or ledger ask.
 # provider: deepseek | openai | ollama | custom
 model:
   provider: deepseek

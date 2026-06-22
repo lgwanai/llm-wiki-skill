@@ -68,6 +68,9 @@ DEFAULT_CONFIG = {
         "search_streams": "metadata,bm25,graph,ledger",
         "llm_query_expansion": False,
     },
+    "compile": {
+        "mode": "agent",
+    },
     "logging": {
         "level": "INFO",
     },
@@ -474,6 +477,11 @@ def validate_config(config: dict) -> list[str]:
                           "image_analysis")
             _v.check_type("image_analysis.api_key", img.get("api_key"), str,
                           "image_analysis")
+
+    # ── Compile ──
+    compile_cfg = config.get("compile", {})
+    if isinstance(compile_cfg, dict):
+        _v.check_enum("compile.mode", compile_cfg.get("mode"), ("agent", "llm"), "compile")
 
     # ── Unknown top-level keys ──
     known_keys = {"wiki_dir", "model", "query", "ocr", "image_analysis",

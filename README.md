@@ -5,7 +5,7 @@
 
 # llm-wiki
 
-**A Living Knowledge Base That Compounds.** Not RAG — don't re-derive, compile once. LLM reads your sources, builds a typed knowledge graph, and maintains it forever. Cross-references, contradiction detection, confidence decay — all automatic.
+**A Living Knowledge Base That Compounds.** Not RAG — don't re-derive, compile once. The Agent reads your sources, builds a typed knowledge graph, and maintains it forever. Cross-references, contradiction detection, confidence decay — all automatic.
 
 <p align="center">
   <img src="docs/benchmark_chart.png" alt="RAGAS Benchmark: llm-wiki vs Industry" width="100%">
@@ -36,7 +36,7 @@ pip install -e .
 wiki config --init        # create wiki_config.yaml
 vim wiki_config.yaml      # set your API key
 wiki init                 # initialize .wiki/
-wiki compile paper.md     # LLM extracts entities → structured pages
+wiki compile paper.md     # Agent reads source → structured pages
 wiki query "What is X?"   # search → synthesize → answer with citations
 ```
 
@@ -111,7 +111,7 @@ We evaluate the **complete product pipeline** (compile → search → synthesize
 
 | Capability | Description |
 |-----------|-------------|
-| **Compile** | LLM extracts entities, builds typed knowledge graph with 12 relationship types |
+| **Compile** | Agent reads sources, decides source type, writes schema-compliant wiki pages and graph |
 | **Query** | Wiki-native search (metadata + BM25 + graph + ledger) + entity linking + 3-signal ranking → LLM synthesis |
 | **Lint** | Health scanning + auto-heal: contradictions, stale claims, orphans, broken links |
 | **Lifecycle** | Ebbinghaus decay, confidence scoring, contradiction detection, supersession |

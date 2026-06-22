@@ -22,25 +22,59 @@ ROOT = Path(__file__).parent.parent
 DIST = ROOT / "dist"
 
 EXCLUDE_PATTERNS = [
-    ".git",
-    "__pycache__",
-    "*.pyc",
     ".DS_Store",
-    "*.egg-info",
-    ".venv",
-    "venv",
-    "env",
-    ".pytest_cache",
-    ".coverage",
-    "htmlcov",
-    "dist",
-    "wiki_config.yaml",
-    ".wiki",
     ".claude/cache",
-    "tests",
-    "references",
+    ".claude/settings.local.json",
+    ".codegraph",
+    ".codex",
+    ".coverage",
+    ".eggs",
+    ".env",
+    ".env.local",
+    ".git",
+    ".gitignore",
+    ".idea",
     ".planning",
+    ".pytest_cache",
     ".ruff_cache",
+    ".venv",
+    ".vscode",
+    ".wiki",
+    "*.egg",
+    "*.egg-info",
+    "*.local.yaml",
+    "*.pyc",
+    "*.pyd",
+    "*.pyo",
+    "*.secret.*",
+    "*.so",
+    "*.swp",
+    "*.swo",
+    "*~",
+    "Thumbs.db",
+    "__pycache__",
+    "backup",
+    "build",
+    "dist",
+    "env",
+    "evals",
+    "htmlcov",
+    "icon.png",
+    "install.bat",
+    "install.ps1",
+    "models",
+    "ocr/mineru.json",
+    "offline",
+    "tests",
+    "venv",
+    "wiki_config.yaml",
+]
+
+# Files/dirs excluded from security scan (test fixtures, doc examples).
+# WARNING: These files must never contain real secrets. Keep them placeholder-only.
+SCAN_EXCLUDE = [
+    "references/privacy-governance.md",
+    "scripts/wiki_config.yaml.example",  # placeholder API keys, safe to skip
 ]
 
 SECRET_PATTERNS = {
@@ -62,6 +96,24 @@ def should_exclude(path: Path) -> bool:
     for pattern in EXCLUDE_PATTERNS:
         if path.match(pattern) or rel.startswith(pattern.rstrip("/")):
             return True
+    # Also check parent directories against directory-like patterns
+    for parent in path.parents:
+        if parent == ROOT:
+            break
+        parent_rel = str(parent.relative_to(ROOT))
+        for pattern in EXCLUDE_PATTERNS:
+            if parent.match(pattern) or parent_rel.startswith(pattern.rstrip("/")):
+                return True
+    return False
+
+
+def scan_should_skip(path: Path) -> bool:
+    """Check if a file should be skipped during security scan (test fixtures, doc examples)."""
+    rel = path.relative_to(ROOT).as_posix()
+    for pattern in SCAN_EXCLUDE:
+        stripped = pattern.rstrip("/")
+        if rel.startswith(stripped + "/") or rel == stripped:
+            return True
     return False
 
 
@@ -69,7 +121,7 @@ def scan_for_secrets() -> list[dict]:
     violations = []
 
     for f in ROOT.rglob("*"):
-        if f.is_dir() or should_exclude(f):
+        if f.is_dir() or should_exclude(f) or scan_should_skip(f):
             continue
         try:
             content = f.read_text(encoding="utf-8", errors="ignore")
@@ -145,7 +197,7 @@ def main():
     print(f"\n[2/2] Packaging...")
     DIST.mkdir(parents=True, exist_ok=True)
 
-    date_str = datetime.now().strftime("%Y%m%d")
+    date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
     if args.format == "zip":
         output = DIST / f"llm-wiki-skill-{date_str}.zip"
         package_zip(output)

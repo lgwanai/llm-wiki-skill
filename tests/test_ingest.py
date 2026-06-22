@@ -46,6 +46,29 @@ class TestFilterSensitive:
 
 
 class TestIngestSource:
+    def test_agent_mode_creates_task_without_llm_call(self, wiki_dir, monkeypatch):
+        def fail_call_llm(*_args, **_kwargs):
+            raise AssertionError("Agent mode must not call configured LLM")
+
+        monkeypatch.setattr(ingest, "call_llm", fail_call_llm)
+        monkeypatch.setattr(ingest, "WIKI_DIR", Path(wiki_dir) / ".wiki")
+        monkeypatch.setattr(ingest, "PAGES_DIR", Path(wiki_dir) / ".wiki" / "pages")
+        monkeypatch.setattr(ingest, "ENTITIES_DIR", Path(wiki_dir) / ".wiki" / "pages" / "entities")
+        monkeypatch.setattr(ingest, "CONCEPTS_DIR", Path(wiki_dir) / ".wiki" / "pages" / "concepts")
+        monkeypatch.setattr(ingest, "INDEX_FILE", Path(wiki_dir) / ".wiki" / "pages" / "index.md")
+        monkeypatch.setattr(ingest, "SCHEMA_PATH", Path(wiki_dir) / ".wiki" / "schema.md")
+
+        src = Path(wiki_dir) / "source.txt"
+        src.write_text("Project uses Redis for caching.", encoding="utf-8")
+
+        result = ingest.compile_path(str(src), source_type="auto", mode="agent")
+
+        task_path = Path(result["agent_task"])
+        assert result["mode"] == "agent"
+        assert result["needs_agent"] is True
+        assert task_path.exists()
+        assert "Do not call the configured LLM API" in task_path.read_text(encoding="utf-8")
+
     @patch("compile_v2.call_llm")
     def test_ingests_text_file(self, mock_call_llm, wiki_dir):
         mock_call_llm.return_value = "---\nid: auth-service\ntype: project\nname: Auth Service\n---\n\n# Auth Service\n===PAGE_END==="

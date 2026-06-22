@@ -158,6 +158,18 @@ query:
   llm_query_expansion: false
 ```
 
+### `compile`
+
+```yaml
+compile:
+  mode: agent
+```
+
+`agent` is the default. The current Agent reads sources, decides whether each
+source is `doc`, `article`, `code`, or `conversation`, and writes pages according
+to `schema.md`. Use `wiki compile --mode llm` only when you explicitly want the
+configured model/API path.
+
 ### `embeddings`
 
 Embeddings are optional for experiments and benchmarks. They are not part of

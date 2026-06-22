@@ -68,8 +68,11 @@ def cmd_compile(
     depth: int | None = None,
     dry_run: bool = False,
     jobs: int | None = None,
+    mode: str | None = None,
 ) -> dict:
     args = [source, "--type", source_type]
+    if mode:
+        args.extend(["--mode", mode])
     if force:
         args.append("--force")
     if depth is not None:
@@ -290,8 +293,10 @@ Environment:
     compile_parser = subparsers.add_parser("compile", help="Compile source file/directory to wiki")
     compile_parser.add_argument("source", help="Source file or directory to compile")
     compile_parser.add_argument("--type", dest="source_type", default="doc",
-                                choices=["doc", "article", "code", "conversation"],
-                                help="Source type (controls entity focus)")
+                                choices=["auto", "doc", "article", "code", "conversation"],
+                                help='Source type; "auto" infers from file extension (Agent mode recommended)')
+    compile_parser.add_argument("--mode", choices=["agent", "llm"], default=None,
+                                help="Compile mode; defaults to configured mode or agent")
     compile_parser.add_argument("--force", action="store_true", help="Force re-compile")
     compile_parser.add_argument("--dry-run", action="store_true", help="Preview without writing files")
     compile_parser.add_argument("--depth", type=int, default=None,
@@ -446,6 +451,7 @@ Environment:
             depth=args.depth,
             dry_run=getattr(args, 'dry_run', False),
             jobs=getattr(args, 'jobs', None),
+            mode=getattr(args, 'mode', None),
         )
         if result.get("success"):
             print(result.get("message", "Done"))
