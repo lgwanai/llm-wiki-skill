@@ -1143,7 +1143,7 @@ Output ONLY valid JSON (no markdown, no explanation):
 {query}
 
 ## 维基文档（你唯一的知识来源）
-{chr(10).join(contexts)}
+{"\n".join(contexts)}
 
 ## 任务
 只使用上面维基文档中的信息回答问题。每个事实都要标明来源 [[id]]。
@@ -1185,7 +1185,7 @@ Answer the query directly. Don't add background context unless directly relevant
 {query}
 
 ## Wiki Documents (YOUR ONLY KNOWLEDGE SOURCE)
-{chr(10).join(contexts)}
+{"\n".join(contexts)}
 
 ## Task
 Answer the query using ONLY information from the wiki documents above. For each fact,
@@ -1193,6 +1193,73 @@ cite the source [[id]] inline immediately after the claim. If the documents lack
 answer, say so explicitly — do NOT guess or use outside knowledge."""
 
     return call_llm(system_prompt, user_prompt)
+
+
+def synthesize_answer_agent(query: str, pages: list[dict], fmt: str = "markdown") -> str:
+    """Return an Agent synthesis task using retrieved wiki pages only.
+
+    This is the default skill path: search is local, and the current Agent
+    performs the final synthesis without using the configured LLM API.
+    """
+    if not pages:
+        return "No relevant wiki pages found. Try adding more sources with `wiki compile`."
+
+    contexts = []
+    for i, page in enumerate(pages[:8]):
+        if page.get("stream") in ("table", "table_vector"):
+            table_name = page.get("display_name", page.get("table_name", "unknown"))
+            row_id = page.get("row_id", "")
+            row_data = page.get("row_data", {})
+            if row_data:
+                row_str = "\n".join(
+                    f"- {k}: {v}" for k, v in row_data.items()
+                    if not k.startswith("_")
+                )
+                contexts.append(
+                    f"## DOC {i + 1}: [TABLE] {table_name} (row {row_id})\n{row_str}"
+                )
+            continue
+
+        ctx = _format_page_context(page, i + 1)
+        if ctx:
+            contexts.append(ctx)
+
+    if not contexts:
+        return "Wiki pages found but content could not be read."
+
+    source_links = ", ".join(
+        f"[[{page.get('id', 'unknown')}]]" for page in pages[:8]
+    )
+    output_hint = {
+        "markdown": "Answer in concise Markdown with inline citations like [[page-id]].",
+        "table": "Answer with a Markdown comparison table and cite sources.",
+        "timeline": "Answer with a Markdown timeline and cite sources.",
+        "slides": "Answer as a Marp slide outline and cite sources.",
+        "json": "Answer as valid JSON with answer, sources, related, and confidence.",
+    }.get(fmt, "Answer in concise Markdown with inline citations like [[page-id]].")
+
+    return f"""# Agent Query Synthesis Task
+
+This task was generated in Agent mode. Do not call the configured LLM API.
+
+## Query
+
+{query}
+
+## Output Requirement
+
+{output_hint}
+
+Use ONLY the wiki documents below. Cite every factual claim with `[[id]]`.
+If the documents do not contain enough information, say so and summarize the
+partial information that is available. Do not use outside knowledge.
+
+Available source IDs: {source_links}
+
+## Retrieved Wiki Documents
+
+{"\n".join(contexts)}
+"""
 
 
 def file_answer_back(query: str, answer: str, sources: list[dict]) -> str:
@@ -1529,9 +1596,16 @@ def _format_debug_table(trace: dict) -> str:
     return "\n".join(lines)
 
 
-def query_wiki(query: str, file_back: bool = False, fmt: str = "markdown",
-               synthesis: bool = True, debug_search: bool = False) -> dict:
+def query_wiki(
+    query: str,
+    file_back: bool = False,
+    fmt: str = "markdown",
+    synthesis: bool = True,
+    debug_search: bool = False,
+    mode: str | None = None,
+) -> dict:
     query_cfg = get_query_config()
+    synthesis_mode = mode or query_cfg.get("synthesis_mode", "agent")
 
     if not synthesis:
         pass
@@ -1587,28 +1661,53 @@ def query_wiki(query: str, file_back: bool = False, fmt: str = "markdown",
             "answer": "\n".join(lines),
             "pages_searched": len(pages),
             "sources": [p.get("id", "unknown") for p in pages],
+            "source_details": [
+                {
+                    "id": p.get("id", "unknown"),
+                    "name": p.get("name", p.get("id", "unknown")),
+                    "path": p.get("path", ""),
+                    "page_type": p.get("type", "unknown"),
+                    "relevance": p.get("score", 0),
+                }
+                for p in pages
+            ],
             "debug_search": trace if debug_search else {},
         }
 
-    answer = (
-        (graph_section + synthesize_answer(query, pages, fmt=fmt))
-        if pages
-        else (graph_section or "No relevant wiki pages found.")
-    )
+    if pages:
+        if synthesis_mode == "llm":
+            answer = graph_section + synthesize_answer(query, pages, fmt=fmt)
+        else:
+            answer = graph_section + synthesize_answer_agent(query, pages, fmt=fmt)
+    else:
+        answer = graph_section or "No relevant wiki pages found."
 
     result = {
         "query": query,
         "format": fmt,
+        "mode": synthesis_mode,
         "answer": answer,
         "pages_searched": len(pages),
         "sources": [p.get("id", "unknown") for p in pages],
+        "source_details": [
+            {
+                "id": p.get("id", "unknown"),
+                "name": p.get("name", p.get("id", "unknown")),
+                "path": p.get("path", ""),
+                "page_type": p.get("type", "unknown"),
+                "relevance": p.get("score", 0),
+            }
+            for p in pages
+        ],
     }
     if debug_search:
         result["debug_search"] = trace
 
-    if file_back and pages:
+    if file_back and pages and synthesis_mode == "llm":
         filed_path = file_answer_back(query, answer, pages)
         result["filed"] = filed_path
+    elif file_back and synthesis_mode != "llm":
+        result["file_back_skipped"] = "agent_mode"
 
     return result
 
@@ -1625,9 +1724,15 @@ def main():
         help="Output format (default: markdown)",
     )
     parser.add_argument(
+        "--mode",
+        choices=["agent", "llm"],
+        default=None,
+        help="Synthesis mode: agent (default) or llm (configured API)",
+    )
+    parser.add_argument(
         "--no-synthesis",
         action="store_true",
-        help="Skip LLM synthesis — return raw search results (fast)",
+        help="Skip synthesis — return raw search results (fast)",
     )
     parser.add_argument(
         "--debug-search",
@@ -1648,6 +1753,7 @@ def main():
     result = query_wiki(
         args.query, file_back=args.file_back, fmt=args.format,
         synthesis=not args.no_synthesis, debug_search=args.debug_search,
+        mode=args.mode,
     )
     print(result["answer"])
     if args.debug_search:

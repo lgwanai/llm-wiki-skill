@@ -26,7 +26,6 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 CONFIG_PATH = Path(__file__).parent.parent / "wiki_config.yaml"
@@ -102,7 +101,10 @@ class DeepSeekOCR2:
             from transformers import AutoModel, AutoTokenizer
             
             dtype = torch.float16 if self.device == "mps" else torch.bfloat16 if self.device == "cuda" else torch.float32
-            attn = "sdpa" if self.device == "mps" else "flash_attention_2"
+            if self.device == "cuda":
+                attn = "flash_attention_2"
+            else:
+                attn = "sdpa"  # mps, cpu, and fallback all use sdpa
             
             logger.info(f"Loading DeepSeek-OCR-2 model (device={self.device}, dtype={dtype})")
             
@@ -180,15 +182,15 @@ class DeepSeekOCR2:
         """Use API instead of local model."""
         import base64
         import requests
-        
+
         with open(image_path, "rb") as f:
             image_data = base64.b64encode(f.read()).decode()
-        
+
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
-        
+
         payload = {
             "model": "deepseek-ocr-2",
             "messages": [
@@ -201,11 +203,41 @@ class DeepSeekOCR2:
                 }
             ]
         }
-        
-        response = requests.post(self.api_url, headers=headers, json=payload, timeout=60)
-        response.raise_for_status()
-        
-        return response.json()["choices"][0]["message"]["content"]
+
+        try:
+            response = requests.post(self.api_url, headers=headers, json=payload, timeout=60)
+            response.raise_for_status()
+            data = response.json()
+            choices = data.get("choices", [])
+            if not choices:
+                raise RuntimeError(f"DeepSeek-OCR API returned no choices: {data}")
+            content = choices[0].get("message", {}).get("content", "")
+            if not content:
+                raise RuntimeError("DeepSeek-OCR API returned empty content")
+            return content.strip()
+        except requests.exceptions.Timeout:
+            raise RuntimeError(
+                f"DeepSeek-OCR API timed out for {image_path} (60s). "
+                "Try a smaller image or check the API server."
+            )
+        except requests.exceptions.HTTPError as e:
+            error_body = ""
+            try:
+                error_body = e.response.text[:500]
+            except Exception:
+                pass
+            raise RuntimeError(
+                f"DeepSeek-OCR API HTTP {e.response.status_code if e.response else '?'}: {error_body}"
+            )
+        except requests.exceptions.ConnectionError as e:
+            raise RuntimeError(
+                f"DeepSeek-OCR API connection failed: {e}\n"
+                f"Check api_url: {self.api_url}"
+            )
+        except Exception as e:
+            if "DeepSeek-OCR API" in str(e):
+                raise
+            raise RuntimeError(f"DeepSeek-OCR API error: {e}")
 
     def ocr_pdf(
         self,

@@ -158,3 +158,53 @@ def test_search_wiki_debug_returns_trace(monkeypatch):
     assert "plan" in trace
     assert "query_variants" in trace
     assert "streams" in trace
+
+
+def test_query_wiki_agent_mode_does_not_call_configured_llm(monkeypatch, tmp_path):
+    page = tmp_path / "concept.md"
+    page.write_text(
+        "---\nid: concept\nname: Concept\n---\n# Concept\n\n## Key Details\n- value: 42\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        query,
+        "search_wiki",
+        lambda *_args, **_kwargs: [
+            {"id": "concept", "type": "concept", "path": str(page), "score": 1.0}
+        ],
+    )
+    monkeypatch.setattr(
+        query,
+        "get_query_config",
+        lambda: {"synthesis_mode": "agent", "llm_synthesis": True},
+    )
+
+    def fail_call_llm(*_args, **_kwargs):
+        raise AssertionError("Agent query mode must not call configured LLM")
+
+    monkeypatch.setattr(query, "call_llm", fail_call_llm)
+
+    result = query.query_wiki("What is the value?")
+
+    assert result["mode"] == "agent"
+    assert "Agent Query Synthesis Task" in result["answer"]
+    assert "[[concept]]" in result["answer"]
+    assert result["source_details"][0]["path"] == str(page)
+
+
+def test_query_wiki_llm_mode_calls_configured_llm(monkeypatch, tmp_path):
+    page = tmp_path / "concept.md"
+    page.write_text("# Concept\n\nAnswer source.", encoding="utf-8")
+    monkeypatch.setattr(
+        query,
+        "search_wiki",
+        lambda *_args, **_kwargs: [
+            {"id": "concept", "type": "concept", "path": str(page), "score": 1.0}
+        ],
+    )
+    monkeypatch.setattr(query, "call_llm", lambda *_args, **_kwargs: "LLM answer")
+
+    result = query.query_wiki("What is it?", mode="llm")
+
+    assert result["mode"] == "llm"
+    assert result["answer"] == "LLM answer"

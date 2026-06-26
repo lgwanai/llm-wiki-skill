@@ -53,6 +53,8 @@ wiki compile source.md
 wiki compile docs/                 # recursively compile supported files
 wiki compile docs/ --depth 1       # only direct files + one directory level
 wiki compile diagram.png           # Agent inspects it; if unreadable, ask user for text
+wiki compile handbook.pdf          # every page rendered; OCR/vision/Agent fallback
+wiki compile slides.pptx           # every slide rendered; never first-slide-only
 wiki compile source.md --force     # re-compile + detect contradictions
 wiki compile source.md --mode llm  # optional legacy path using configured model
 ```
@@ -60,6 +62,14 @@ wiki compile source.md --mode llm  # optional legacy path using configured model
 **What happens:**
 - Source sanitized (API keys, tokens, passwords, emails stripped)
 - Directories are expanded recursively by default; `.wiki` and `.git` are skipped
+- PDF/PPT/PPTX are treated as paginated documents:
+  - Render every page/slide to images first
+  - If OCR is installed/configured, OCR each page image in order
+  - If OCR is unavailable, use configured vision/image analysis on each page image
+  - If neither is available, preserve all page images under `.wiki/source/document_images/`
+    and require the Agent to inspect them or ask the user
+  - Never trust first-page-only extraction; every rendered page/slide must appear in the task output
+- Other Office/document files use MarkItDown when available, otherwise Agent must inspect or ask for readable content
 - Agent chooses source type (`doc`, `article`, `code`, `conversation`) by reading the content
 - Agent generates structured Wiki pages (YAML frontmatter + Key Facts/Overview/Questions/Details/Relationships/Source Context)
 - If the Agent cannot read the source, it must stop and ask the user for readable content
@@ -71,17 +81,19 @@ wiki compile source.md --mode llm  # optional legacy path using configured model
 
 ### `/wiki-query <question>` — Search & Answer
 
-Wiki-native search (metadata + page BM25 + compiled graph + ledger), then LLM
-synthesizes from already-compiled pages with citations.
+Wiki-native search (metadata + page BM25 + compiled graph + ledger), then the
+current Agent synthesizes from already-compiled pages with citations. No
+configured model/API key is required by default.
 
 ```bash
 wiki query "What is X?"
 wiki query "What is X?" --debug-search
+wiki query "What is X?" --mode llm   # optional legacy path using configured model
 wiki search doctor
 wiki search eval .wiki/evals/retrieval.jsonl
 wiki benchmark evals/rag_benchmark_smoke.jsonl --method both -k 5
 
-# Fast mode — skip LLM synthesis (0.5s)
+# Fast mode — skip synthesis (0.5s)
 wiki query "专家评审组" --no-synthesis
 
 # Output formats
@@ -96,7 +108,8 @@ wiki query "Explain X" --file-back
 | Mode | Flag | Time | Output |
 |------|------|------|--------|
 | Fast | `--no-synthesis` | 0.5s | Ranked list + snippets |
-| LLM | default | 2.7s | Synthesized answer + citations |
+| Agent | default | local search + Agent | Synthesized answer + citations |
+| LLM | `--mode llm` | model/API dependent | Configured-model synthesis |
 
 Chinese search via jieba segmentation. English via BM25 + Porter stemming.
 Search index cached to disk (`.wiki/graph/.bm25_index.json`), auto-invalidated on page changes.
@@ -310,7 +323,8 @@ image_analysis:
   ocr_fallback: true              # append OCR text for dense screenshots/docs
 
 query:
-  llm_synthesis: true          # true=LLM合成, false=仅搜索
+  llm_synthesis: true
+  synthesis_mode: agent        # agent=默认由当前 Agent 合成, llm=使用配置模型
 
 retention:
   architecture: {half_life_days: 180}

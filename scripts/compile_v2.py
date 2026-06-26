@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import traceback
 from datetime import datetime, timezone
@@ -24,6 +26,7 @@ from config import (
     get_ocr_config,
     get_wiki_dir,
 )
+from table_extract import persist_page_tables
 
 def _log_exc(msg: str = ""):
     """Log exception traceback to stderr for debugging."""
@@ -85,6 +88,11 @@ IMAGE_EXTENSIONS = {
     ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp",
     ".tiff", ".tif", ".avif", ".heic", ".heif",
 }
+PAGINATED_DOCUMENT_EXTENSIONS = {".pdf", ".ppt", ".pptx"}
+MARKITDOWN_DOCUMENT_EXTENSIONS = {
+    ".doc", ".docx", ".xls", ".xlsx", ".rtf", ".epub", ".msg",
+}
+DOCUMENT_EXTENSIONS = PAGINATED_DOCUMENT_EXTENSIONS | MARKITDOWN_DOCUMENT_EXTENSIONS
 SKIP_DIR_NAMES = {".wiki", ".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
 DEFAULT_ENTITY_TYPES = [
     "entity", "concept", "process", "rule", "role", "event",
@@ -191,8 +199,18 @@ def is_image_source(path: Path) -> bool:
     return path.suffix.lower() in IMAGE_EXTENSIONS
 
 
+def is_paginated_document_source(path: Path) -> bool:
+    return path.suffix.lower() in PAGINATED_DOCUMENT_EXTENSIONS
+
+
+def is_document_source(path: Path) -> bool:
+    return path.suffix.lower() in DOCUMENT_EXTENSIONS
+
+
 def is_supported_source(path: Path) -> bool:
-    return path.is_file() and (is_text_source(path) or is_image_source(path))
+    return path.is_file() and (
+        is_text_source(path) or is_image_source(path) or is_document_source(path)
+    )
 
 
 def iter_source_files(root: Path, max_depth: int | None = None) -> list[Path]:
@@ -295,9 +313,7 @@ def analyze_image_for_compile(image_path: Path) -> str:
     vision_enabled = bool(image_config.get("enabled"))
     if vision_enabled:
         try:
-            from ocr._ocr_api import create_vision_backend
-            backend = create_vision_backend(image_config, IMAGE_ANALYSIS_PROMPT)
-            analysis = backend.ocr_image(str(image_path))
+            analysis = _analyze_page_image_with_vision(image_path)
         except Exception as e:
             print(f"  WARNING: image analysis failed for {image_path}: {e}", file=sys.stderr)
 
@@ -336,6 +352,335 @@ def analyze_image_for_compile(image_path: Path) -> str:
         sections.extend(["## OCR Text (fallback)", "", ocr_text.strip(), ""])
 
     return "\n".join(sections).strip() + "\n"
+
+
+def _document_images_dir(source_path: Path) -> Path:
+    """Return stable storage for rendered document page images."""
+    import hashlib
+
+    # Non-cryptographic: only used to disambiguate filesystem directory names.
+    source_hash = hashlib.md5(str(source_path.resolve()).encode()).hexdigest()[:8]
+    safe_stem = re.sub(r"[^a-zA-Z0-9_.-]+", "-", source_path.stem).strip("-") or "document"
+    return WIKI_DIR / "source" / "document_images" / f"{safe_stem}-{source_hash}"
+
+
+def _clear_rendered_pages(output_dir: Path) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for existing in output_dir.glob("page-*.png"):
+        existing.unlink()
+
+
+def _render_pdf_pages_to_images(pdf_path: Path, output_dir: Path) -> list[Path]:
+    """Render every PDF page to PNG files and return them in page order."""
+    _clear_rendered_pages(output_dir)
+    dpi = int(get_ocr_config().get("pdf_dpi", 150) or 150)
+
+    try:
+        import fitz
+
+        doc = fitz.open(str(pdf_path))
+        images: list[Path] = []
+        zoom = dpi / 72
+        matrix = fitz.Matrix(zoom, zoom)
+        for page_index in range(doc.page_count):
+            pix = doc.load_page(page_index).get_pixmap(matrix=matrix, alpha=False)
+            image_path = output_dir / f"page-{page_index + 1:03d}.png"
+            pix.save(str(image_path))
+            images.append(image_path)
+        doc.close()
+        return images
+    except Exception as fitz_error:
+        try:
+            from pdf2image import convert_from_path
+
+            pages = convert_from_path(str(pdf_path), dpi=dpi)
+            images = []
+            for page_index, page in enumerate(pages, start=1):
+                image_path = output_dir / f"page-{page_index:03d}.png"
+                page.save(str(image_path), "PNG")
+                images.append(image_path)
+            return images
+        except Exception as pdf2image_error:
+            raise RuntimeError(
+                "Could not render PDF pages with PyMuPDF or pdf2image: "
+                f"{fitz_error}; {pdf2image_error}"
+            ) from pdf2image_error
+
+
+def _convert_office_to_pdf(source_path: Path, output_dir: Path) -> Path:
+    """Convert PPT/PPTX and other Office files to PDF using LibreOffice."""
+    converter = shutil.which("soffice") or shutil.which("libreoffice")
+    if not converter:
+        raise RuntimeError("LibreOffice/soffice is not installed; cannot render slides to images.")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    before = set(output_dir.glob("*.pdf"))
+    cmd = [
+        converter,
+        "--headless",
+        "--convert-to",
+        "pdf",
+        "--outdir",
+        str(output_dir),
+        str(source_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    after = set(output_dir.glob("*.pdf"))
+    candidates = sorted(after - before) or sorted(output_dir.glob(f"{source_path.stem}*.pdf"))
+    if result.returncode != 0 or not candidates:
+        message = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(f"LibreOffice conversion failed: {message}")
+    return candidates[0]
+
+
+def _render_paginated_document_to_images(source_path: Path) -> tuple[list[Path], str]:
+    """Render all pages/slides from a PDF/PPT/PPTX source into images."""
+    output_dir = _document_images_dir(source_path)
+    suffix = source_path.suffix.lower()
+    if suffix == ".pdf":
+        return _render_pdf_pages_to_images(source_path, output_dir), "pdf-pages"
+    if suffix in {".ppt", ".pptx"}:
+        pdf_path = _convert_office_to_pdf(source_path, output_dir)
+        return _render_pdf_pages_to_images(pdf_path, output_dir), "slides-via-pdf"
+    raise RuntimeError(f"Unsupported paginated document type: {suffix}")
+
+
+def _ocr_backend_available() -> bool:
+    """Return whether a configured OCR backend appears usable.
+
+    Mirrors the fallback logic in ocr._ocr_api.create_vision_backend so that
+    env-var keys and provider-preset models are recognised.
+    """
+    ocr_config = get_ocr_config()
+    backend = ocr_config.get("backend", "mineru")
+
+    if ocr_config.get("mode") == "api" or backend == "api":
+        provider = ocr_config.get("api_provider", "") or ocr_config.get("provider", "")
+        provider_presets: dict[str, dict[str, str]] = {}
+        if provider:
+            from ocr._ocr_api import _PROVIDER_PRESETS
+            provider_presets = _PROVIDER_PRESETS
+
+        # Resolve api_url (config or provider preset)
+        if ocr_config.get("api_url"):
+            api_url_ok = True
+        elif provider:
+            api_url_ok = bool(provider_presets.get(provider, {}).get("api_url"))
+        else:
+            api_url_ok = False
+
+        # Resolve api_key (config or environment variables)
+        api_key_ok = bool(
+            ocr_config.get("api_key")
+            or os.environ.get("OCR_API_KEY")
+            or os.environ.get("SILICONFLOW_API_KEY")
+            or os.environ.get("DEEPSEEK_API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
+        )
+
+        # Resolve api_model (config or provider preset)
+        if ocr_config.get("api_model") or ocr_config.get("model"):
+            api_model_ok = True
+        elif provider:
+            api_model_ok = bool(provider_presets.get(provider, {}).get("default_model"))
+        else:
+            api_model_ok = False
+
+        return api_url_ok and api_key_ok and api_model_ok
+
+    try:
+        if backend == "deepseek":
+            import ocr._deepseek_ocr2  # noqa: F401
+        elif backend == "logics":
+            import ocr._logics_parsing  # noqa: F401
+        elif backend == "paddle":
+            import ocr._paddle_ocr  # noqa: F401
+        else:
+            import ocr._mineru_ocr  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def _image_analysis_available() -> bool:
+    image_config = get_image_analysis_config()
+    return bool(image_config.get("enabled"))
+
+
+def _analyze_page_image_with_vision(image_path: Path, backend: object | None = None) -> str:
+    """Analyze a single page image with a vision backend.
+
+    Args:
+        image_path: Path to the rendered page image.
+        backend: Optional pre-created vision backend.  When omitted a new
+            backend is created (convenient for single-image callers).
+    """
+    if backend is not None:
+        return backend.ocr_image(str(image_path))
+
+    image_config = get_image_analysis_config()
+    from ocr._ocr_api import create_vision_backend
+
+    backend = create_vision_backend(image_config, IMAGE_ANALYSIS_PROMPT)
+    return backend.ocr_image(str(image_path))
+
+
+def _rendered_page_markdown(image_path: Path, page_number: int, body: str, label: str) -> list[str]:
+    return [
+        f"## Page {page_number}",
+        "",
+        f"![{label} {page_number}]({image_path.resolve()})",
+        "",
+        body.strip() if body.strip() else "[No text extracted from this page.]",
+        "",
+    ]
+
+
+def _read_paginated_document_for_compile(source_path: Path) -> str:
+    """Read a PDF/PPT/PPTX with page-preserving fallbacks.
+
+    Priority:
+    1. Render every page/slide to images, then OCR each image when OCR is usable.
+    2. If OCR is unavailable, use configured vision/image analysis per page.
+    3. If neither exists, preserve all rendered images and hand the page list to the Agent.
+
+    No page may disappear silently: every rendered page gets a heading, image link, and
+    either extracted text or an explicit Agent instruction.
+    """
+    sections = [
+        f"# Document Source: {source_path.name}",
+        "",
+        f"> **Original**: `{source_path.resolve()}`",
+        f"> **Format**: {source_path.suffix.upper().lstrip('.')}",
+        f"> **Size**: {source_path.stat().st_size // 1024} KB",
+        "> **Page guarantee**: every rendered page/slide is listed below.",
+        "",
+    ]
+
+    try:
+        page_images, pipeline = _render_paginated_document_to_images(source_path)
+    except Exception as render_error:
+        markitdown_text = _markitdown_to_markdown(source_path)
+        sections.extend(
+            [
+                "## Rendering Failed",
+                "",
+                f"Could not render pages/slides to images: {render_error}",
+                "",
+            ]
+        )
+        if markitdown_text:
+            sections.extend(
+                [
+                    "## MarkItDown Fallback",
+                    "",
+                    markitdown_text.strip(),
+                    "",
+                    "> Agent must verify whether this fallback contains every page/slide. "
+                    "If not, ask the user for a page-rendered export.",
+                    "",
+                ]
+            )
+        else:
+            sections.extend(
+                [
+                    "## Agent Action Required",
+                    "",
+                    "No page images could be rendered and MarkItDown did not return content. "
+                    "The Agent must inspect the original file directly; if it cannot, ask the user "
+                    "for a PDF/image export with every page or slide.",
+                    "",
+                ]
+            )
+        return "\n".join(sections).strip() + "\n"
+
+    sections.extend(
+        [
+            f"> **Render pipeline**: `{pipeline}`",
+            f"> **Pages/slides rendered**: {len(page_images)}",
+            f"> **Rendered images dir**: `{_document_images_dir(source_path).resolve()}`",
+            "",
+        ]
+    )
+
+    if not page_images:
+        sections.extend(
+            [
+                "## Agent Action Required",
+                "",
+                "The document rendered zero pages. The Agent must inspect the original file "
+                "directly or ask the user for a readable export.",
+                "",
+            ]
+        )
+        return "\n".join(sections).strip() + "\n"
+
+    if _ocr_backend_available():
+        sections.extend(["## Extraction Mode", "", "OCR on every rendered page/slide.", ""])
+        for page_number, image_path in enumerate(page_images, start=1):
+            try:
+                body = _ocr_image_with_config(image_path)
+            except Exception as ocr_error:
+                body = (
+                    f"[OCR failed on this page: {ocr_error}]\n\n"
+                    "Agent must inspect the page image above; if it cannot, ask the user."
+                )
+            sections.extend(_rendered_page_markdown(image_path, page_number, body, "Page"))
+        return "\n".join(sections).strip() + "\n"
+
+    if _image_analysis_available():
+        sections.extend(
+            [
+                "## Extraction Mode",
+                "",
+                "Configured vision/image analysis on every rendered page/slide.",
+                "",
+            ]
+        )
+        image_config = get_image_analysis_config()
+        from ocr._ocr_api import create_vision_backend
+        vision_backend = create_vision_backend(image_config, IMAGE_ANALYSIS_PROMPT)
+        for page_number, image_path in enumerate(page_images, start=1):
+            try:
+                body = _analyze_page_image_with_vision(image_path, backend=vision_backend)
+            except Exception as vision_error:
+                body = (
+                    f"[Vision analysis failed on this page: {vision_error}]\n\n"
+                    "Agent must inspect the page image above; if it cannot, ask the user."
+                )
+            sections.extend(_rendered_page_markdown(image_path, page_number, body, "Page"))
+        return "\n".join(sections).strip() + "\n"
+
+    sections.extend(
+        [
+            "## Extraction Mode",
+            "",
+            "OCR and configured vision/image analysis are unavailable. Rendered page images "
+            "were preserved so the Agent can inspect every page directly.",
+            "",
+        ]
+    )
+    for page_number, image_path in enumerate(page_images, start=1):
+        body = (
+            "Agent must read this rendered page image and compile its visible content. "
+            "If the Agent cannot inspect images in the current environment, ask the user "
+            "for OCR text or a text export for this page."
+        )
+        sections.extend(_rendered_page_markdown(image_path, page_number, body, "Page"))
+
+    return "\n".join(sections).strip() + "\n"
+
+
+def _markitdown_to_markdown(source_path: Path) -> str:
+    """Use MarkItDown for non-paginated document fallback when installed."""
+    try:
+        from markitdown import MarkItDown
+
+        result = MarkItDown().convert(str(source_path))
+        return (getattr(result, "text_content", "") or "").strip()
+    except Exception as exc:
+        print(f"  WARNING: MarkItDown failed for {source_path}: {exc}", file=sys.stderr)
+        return ""
 
 
 def _preprocess_svg(svg_path: Path) -> str:
@@ -445,6 +790,17 @@ def _preprocess_svg(svg_path: Path) -> str:
 def read_source_content(source_path: str | Path) -> tuple[str, str]:
     """Read a compile source and return (content, display_name)."""
     path = Path(source_path)
+    if is_paginated_document_source(path):
+        return _read_paginated_document_for_compile(path), path.name
+
+    if is_document_source(path):
+        content = _markitdown_to_markdown(path)
+        if not content:
+            raise RuntimeError(
+                f"Document compile requires MarkItDown or direct Agent inspection: {path}"
+            )
+        return content, path.name
+
     if is_image_source(path):
         return analyze_image_for_compile(path), path.name
 
@@ -457,8 +813,13 @@ def read_source_content(source_path: str | Path) -> tuple[str, str]:
 
 
 def _read_agent_visible_source(source_path: Path) -> tuple[str, bool]:
-    """Read source content without invoking OCR, vision, or configured LLM APIs."""
+    """Read source content for Agent mode without configured text LLM calls."""
     try:
+        if is_paginated_document_source(source_path):
+            return _read_paginated_document_for_compile(source_path), True
+        if is_document_source(source_path):
+            content = _markitdown_to_markdown(source_path)
+            return (content, True) if content else ("", False)
         if source_path.suffix.lower() == ".svg":
             return _preprocess_svg(source_path), True
         if is_text_source(source_path):
@@ -551,9 +912,29 @@ def create_agent_compile_task(
 
     content_block = ""
     if path.is_file() and readable:
-        preview = readable_content[:50000]
-        truncated = "\n\n[TRUNCATED: Agent should read the source file directly.]" if len(readable_content) > len(preview) else ""
-        content_block = f"""## Source Content Preview
+        if is_paginated_document_source(path):
+            max_preview_chars = 200_000
+            preview = readable_content[:max_preview_chars]
+            truncated = (
+                f"\n\n[TRUNCATED: {len(readable_content) - max_preview_chars:,} additional "
+                "characters omitted. Agent should inspect the rendered page images "
+                f"under {_document_images_dir(path).resolve()}.]"
+                if len(readable_content) > len(preview)
+                else ""
+            )
+            content_block = f"""## Source Content Preview
+
+{preview}
+{truncated}
+"""
+        else:
+            preview = readable_content[:50000]
+            truncated = (
+                "\n\n[TRUNCATED: Agent should read the source file directly.]"
+                if len(readable_content) > len(preview)
+                else ""
+            )
+            content_block = f"""## Source Content Preview
 
 ```text
 {preview}
@@ -1858,6 +2239,15 @@ Output pages separated by ===PAGE_END==="""
 
         if not entity_id:
             continue
+
+        # Persist regular Markdown tables as queryable DuckDB data. Key Facts
+        # remains in the page because the retrieval pipeline reads it directly.
+        if not dry_run:
+            page_content, stored_tables = persist_page_tables(
+                page_content, source_name, str(entity_id)
+            )
+            if stored_tables:
+                print(f"  Extracted tables: {', '.join(stored_tables)}", file=sys.stderr)
 
         # Determine target directory
         target_dir = CONCEPTS_DIR if entity_type in concept_types else ENTITIES_DIR

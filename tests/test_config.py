@@ -156,6 +156,7 @@ def test_default_query_path_is_wiki_native(monkeypatch, tmp_path):
     query = config.get_query_config()
 
     assert config.get_config()["compile"]["mode"] == "agent"
+    assert query["synthesis_mode"] == "agent"
     assert query["search_streams"] == "metadata,bm25,graph,ledger"
     assert query["llm_query_expansion"] is False
 

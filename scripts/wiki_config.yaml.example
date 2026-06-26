@@ -48,6 +48,7 @@ reranker:
 
 query:
   llm_synthesis: true
+  synthesis_mode: agent             # agent (default, no configured LLM) | llm
   default_format: markdown
   max_results: 5
   # Default is wiki-native: frontmatter metadata + page BM25 + compiled graph + ledgers.

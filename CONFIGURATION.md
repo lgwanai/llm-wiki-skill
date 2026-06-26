@@ -152,11 +152,17 @@ ocr:
 ```yaml
 query:
   llm_synthesis: true
+  synthesis_mode: agent
   default_format: markdown
   max_results: 5
   search_streams: metadata,bm25,graph,ledger
   llm_query_expansion: false
 ```
+
+`agent` is the default synthesis mode. Search runs locally over the compiled
+wiki, then the current Agent answers from the retrieved pages. Use
+`wiki query --mode llm` only when you explicitly want the configured model/API
+to synthesize the answer.
 
 ### `compile`
 

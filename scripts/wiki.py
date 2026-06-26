@@ -5,6 +5,7 @@ Commands:
     wiki init              Initialize wiki structure
     wiki compile <source>  Compile source file/directory → build wiki pages
     wiki query <question>  Search wiki → answer questions
+    wiki dream             Optimize retrieval metadata from query behavior
     wiki lint              Health check → auto-heal
     wiki status            Show wiki statistics
     wiki config            Show current configuration
@@ -91,13 +92,15 @@ def cmd_compile(
 
 
 def cmd_query(question: str, file_back: bool = False, fmt: str = "markdown",
-              synthesis: bool = True, debug_search: bool = False) -> dict:
+              synthesis: bool = True, debug_search: bool = False,
+              mode: str | None = None) -> dict:
     # Direct import for speed — avoids subprocess overhead (~0.3s)
     try:
         import query as qm
         result = qm.query_wiki(question, file_back=file_back, fmt=fmt,
                                synthesis=synthesis,
-                               debug_search=debug_search)
+                               debug_search=debug_search,
+                               mode=mode)
         answer = result.get("answer", "")
         if debug_search:
             answer += "\n\n--- SEARCH DEBUG ---\n"
@@ -110,6 +113,8 @@ def cmd_query(question: str, file_back: bool = False, fmt: str = "markdown",
             args.append("--file-back")
         if fmt != "markdown":
             args.extend(["--format", fmt])
+        if mode:
+            args.extend(["--mode", mode])
         if not synthesis:
             args.append("--no-synthesis")
         if debug_search:
@@ -146,6 +151,12 @@ def cmd_consolidate(tiers: str = "working,episodic,semantic", decay_only: bool =
         "success": code == 0,
         "output": output
     }
+
+
+def cmd_dream(foreground: bool = False) -> dict:
+    args = ["--foreground"] if foreground else []
+    code, output = run_script("dream.py", args)
+    return {"success": code == 0, "output": output}
 
 
 def cmd_status() -> dict:
@@ -309,10 +320,15 @@ Environment:
     query_parser.add_argument("--file-back", action="store_true", help="File answer to wiki")
     query_parser.add_argument("--format", choices=["markdown","table","timeline","slides","json","graph"],
                                default="markdown", help="Output format")
+    query_parser.add_argument("--mode", choices=["agent", "llm"], default=None,
+                               help="Synthesis mode: agent (default) or llm (configured API)")
     query_parser.add_argument("--no-synthesis", action="store_true",
-                               help="Skip LLM — return raw search results (fast)")
+                               help="Skip synthesis — return raw search results (fast)")
     query_parser.add_argument("--debug-search", action="store_true",
                                help="Print search trace for retrieval debugging")
+
+    dream_parser = subparsers.add_parser("dream", help="Run query-driven maintenance in the background")
+    dream_parser.add_argument("--foreground", action="store_true", help="Run in the current process")
 
     search_parser = subparsers.add_parser("search", help="Search diagnostics and evaluation")
     search_sub = search_parser.add_subparsers(dest="search_cmd", required=True)
@@ -422,6 +438,19 @@ Environment:
     cons_parser.add_argument("--tiers", default="working,episodic,semantic", help="Tiers to consolidate")
     cons_parser.add_argument("--decay-only", action="store_true", help="Only apply retention decay")
 
+    table_parser = subparsers.add_parser("table", help="View and query Markdown tables extracted by compile")
+    table_sub = table_parser.add_subparsers(dest="table_cmd", required=True)
+    table_sub.add_parser("list", help="List extracted tables")
+    table_show = table_sub.add_parser("show", help="Show an extracted table")
+    table_show.add_argument("table")
+    table_schema = table_sub.add_parser("schema", help="Show an extracted table schema")
+    table_schema.add_argument("table")
+    table_ask = table_sub.add_parser("ask", help="Ask a natural-language question about an extracted table")
+    table_ask.add_argument("table")
+    table_ask.add_argument("question")
+    table_ask.add_argument("--page", type=int, default=1)
+    table_ask.add_argument("--page-size", type=int, default=20)
+
     subparsers.add_parser("status", help="Show wiki statistics")
     subparsers.add_parser("update", help="Update skill from GitHub (git pull + backup)")
 
@@ -444,6 +473,11 @@ Environment:
             print_config()
 
     elif args.command == "compile":
+        try:
+            from dream import cancel_active_dream
+            cancel_active_dream("compile started")
+        except Exception:
+            pass
         result = cmd_compile(
             args.source,
             source_type=args.source_type,
@@ -459,10 +493,21 @@ Environment:
             print(f"Error: {result.get('error', 'Unknown error')}")
 
     elif args.command == "query":
+        try:
+            from dream import cancel_active_dream
+            cancel_active_dream("query started")
+        except Exception:
+            pass
         result = cmd_query(args.question, file_back=args.file_back, fmt=args.format,
                            synthesis=not args.no_synthesis,
-                           debug_search=args.debug_search)
+                           debug_search=args.debug_search,
+                           mode=args.mode)
         if result.get("success"):
+            try:
+                from dream import log_query
+                log_query(result, synthesis=not args.no_synthesis)
+            except Exception:
+                pass
             print(result["answer"])
         else:
             print(f"Error: {result.get('error', 'Unknown error')}")
@@ -490,6 +535,12 @@ Environment:
     elif args.command == "consolidate":
         result = cmd_consolidate(tiers=args.tiers, decay_only=args.decay_only)
         print(result["output"])
+
+    elif args.command == "dream":
+        result = cmd_dream(foreground=args.foreground)
+        print(result["output"])
+        if not result["success"]:
+            sys.exit(1)
 
     elif args.command == "bulk":
         bulk_args = [args.bulk_cmd]
@@ -580,6 +631,24 @@ Environment:
             code, output = run_script("table_query.py", tq_args)
         else:
             code, output = run_script("ledger.py", ledger_args)
+        print(output)
+        if code != 0:
+            sys.exit(code)
+
+    elif args.command == "table":
+        table_args = [args.table_cmd]
+        if args.table_cmd in {"show", "schema"}:
+            table_args.append(args.table)
+        elif args.table_cmd == "ask":
+            table_args.extend([
+                args.table,
+                args.question,
+                "--page",
+                str(args.page),
+                "--page-size",
+                str(args.page_size),
+            ])
+        code, output = run_script("table.py", table_args)
         print(output)
         if code != 0:
             sys.exit(code)

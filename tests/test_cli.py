@@ -55,3 +55,42 @@ def test_cmd_compile_passes_depth(monkeypatch):
             ["docs", "--type", "article", "--force", "--depth", "1"],
         )
     ]
+
+
+def test_table_command_routes_to_table_script(monkeypatch, capsys):
+    calls = []
+
+    def fake_run_script(script_name: str, args: list[str]) -> tuple[int, str]:
+        calls.append((script_name, args))
+        return 0, "ok"
+
+    monkeypatch.setattr(wiki, "run_script", fake_run_script)
+    old_argv = sys.argv
+    try:
+        sys.argv = ["wiki", "table", "ask", "extracted_123", "total?", "--page", "2"]
+        wiki.main()
+    finally:
+        sys.argv = old_argv
+
+    assert calls == [
+        ("table.py", ["ask", "extracted_123", "total?", "--page", "2", "--page-size", "20"])
+    ]
+    assert "ok" in capsys.readouterr().out
+
+
+def test_dream_command_routes_to_worker(monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(
+        wiki,
+        "run_script",
+        lambda script_name, args: (calls.append((script_name, args)) or (0, "started")),
+    )
+    old_argv = sys.argv
+    try:
+        sys.argv = ["wiki", "dream", "--foreground"]
+        wiki.main()
+    finally:
+        sys.argv = old_argv
+
+    assert calls == [("dream.py", ["--foreground"])]
+    assert "started" in capsys.readouterr().out

@@ -112,7 +112,7 @@ We evaluate the **complete product pipeline** (compile → search → synthesize
 | Capability | Description |
 |-----------|-------------|
 | **Compile** | Agent reads sources, decides source type, writes schema-compliant wiki pages and graph |
-| **Query** | Wiki-native search (metadata + BM25 + graph + ledger) + entity linking + 3-signal ranking → LLM synthesis |
+| **Query** | Wiki-native search (metadata + BM25 + graph + ledger) + entity linking + 3-signal ranking → Agent synthesis |
 | **Lint** | Health scanning + auto-heal: contradictions, stale claims, orphans, broken links |
 | **Lifecycle** | Ebbinghaus decay, confidence scoring, contradiction detection, supersession |
 | **Memory Tiers** | Working → Episodic → Semantic → Procedural, automatic consolidation |

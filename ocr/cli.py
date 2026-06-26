@@ -39,11 +39,12 @@ def _get_default_backend() -> str:
 
 
 def main():
+    default_backend = _get_default_backend()
     parser = argparse.ArgumentParser(description="Multi-backend OCR — Image & PDF OCR")
     parser.add_argument("file", nargs="?", help="Image or PDF file path")
     parser.add_argument("--backend", choices=["mineru", "deepseek", "logics", "paddle", "api"],
-                        default=_get_default_backend(),
-                        help=f"OCR backend (default: {_get_default_backend()})")
+                        default=default_backend,
+                        help=f"OCR backend (default: {default_backend})")
     parser.add_argument("--batch", help="Process all images/PDFs in a directory")
     parser.add_argument("-o", "--output", help="Output directory for PDF results")
     parser.add_argument("-n", "--max-pages", type=int, help="Maximum pages to process")

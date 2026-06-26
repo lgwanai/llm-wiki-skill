@@ -63,6 +63,7 @@ DEFAULT_CONFIG = {
     },
     "query": {
         "llm_synthesis": True,
+        "synthesis_mode": "agent",
         "default_format": "markdown",
         "max_results": 5,
         "search_streams": "metadata,bm25,graph,ledger",
