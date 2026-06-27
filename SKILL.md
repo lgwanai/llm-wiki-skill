@@ -434,6 +434,90 @@ what types the LLM can classify — no code changes needed.
 | Audit | Every operation logged with timestamp + reason |
 | Privacy | 5 sensitive-data patterns stripped before LLM ingestion |
 
+## Dream Self-Looping (Auto Mode)
+
+The dream normally generates reports for human review in phases 2-4.  Use
+`--auto` to let the dream **self-execute** modifications with safety guards:
+
+```bash
+wiki dream --auto --foreground   # Auto-execute with quality gating (foreground)
+wiki dream --auto                # Auto-execute in background
+```
+
+### What happens in auto mode
+
+```
+Phase 1 (Light Sleep)     ← always auto, updates page metadata
+Phase 2 (Audit)           ← generates report (unchanged)
+Phase 3 (Purify)          ← auto-merge duplicates → quality check → keep/rollback
+Phase 4 (Enrich)          ← auto-enrich metadata → quality check → keep/rollback
+```
+
+### Safety guarantees
+
+| Guard | Mechanism |
+|-------|-----------|
+| **Git snapshots** | Every modification is preceded by a `git commit` in `.wiki/.git`. |
+| **Quality gating** | Before/after search results are compared across 3 dimensions (rank preservation, density, coverage). |
+| **Auto-rollback** | If quality degrades below threshold (-0.15), `git checkout` restores the pre-modification state. |
+| **Experience accumulation** | Degradations and lessons are recorded to `.wiki/dream/experiences.md` with deduplication. |
+
+### Quality metrics
+
+| Metric | Weight | What it measures |
+|--------|--------|-----------------|
+| Rank preservation | 0.40 | Did target pages maintain/improve search rank? |
+| Density improvement | 0.30 | Did page content become richer? |
+| Coverage score | 0.30 | Are all expected pages still findable? |
+
+### Experience store
+
+`.wiki/dream/experiences.md` — lessons learned from dream runs.  Each experience
+is SHA256-deduplicated; repeated lessons increment a recurrence counter instead
+of creating duplicates.  Max 100 entries; oldest single-occurrence entries
+evicted first.  Experiences are loaded as context for future dream runs.
+
+## Doctor Command
+
+Report issues and trigger automatic diagnosis + repair:
+
+```bash
+# Natural language feedback (primary interface)
+wiki doctor "专家评审组的信息不完整，缺少成员名单和评审流程"
+
+# Targeted diagnosis
+wiki doctor --check coursepl-专家评审组
+
+# Direct repair actions
+wiki doctor --recompile .wiki/source/doc.md
+wiki doctor --re-ocr .wiki/source/slides.pptx
+
+# Issue tracking
+wiki doctor --list                        # List outstanding issues
+wiki doctor --resolve iss-20260627-001    # Mark resolved
+```
+
+### Issue types and repair strategies
+
+| Category | Detection keywords | Repair |
+|----------|-------------------|--------|
+| `missing_info` | 遗漏, 缺少, 缺失, 不全, 没有, 找不到 | Search sources → recompile |
+| `incorrect_info` | 错误, 不对, 不正确, 识别错, 写错了 | Compare source → mark for review |
+| `uncompiled` | 未编译, 没编译, 没入库, 没导入 | Locate source → compile |
+| `ocr_missed` | OCR遗漏, PPT遗漏, 扫描不全, 解析遗漏 | Re-OCR → recompile |
+| `search_quality` | 搜不到, 检索不到, 查不到, 排名低 | Update metadata (keywords, aliases) |
+| `contradiction` | 矛盾, 冲突, 不一致 | Mark contradiction flags |
+| `outdated` | 过时, 过期, 旧信息, 不再适用 | Mark stale status |
+
+### Workflow
+
+```
+User feedback → classify (regex) → diagnose (wiki search) →
+repair (strategy-specific) → verify (re-search) → persist (issues.json)
+```
+
+Issues are tracked in `.wiki/doctor/issues.json` for cross-session follow-up.
+
 ## Design Heritage
 
 - [Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)

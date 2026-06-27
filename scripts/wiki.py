@@ -153,9 +153,43 @@ def cmd_consolidate(tiers: str = "working,episodic,semantic", decay_only: bool =
     }
 
 
-def cmd_dream(foreground: bool = False) -> dict:
+def cmd_dream(foreground: bool = False, auto: bool = False) -> dict:
     args = ["--foreground"] if foreground else []
+    if auto:
+        args.append("--auto")
     code, output = run_script("dream.py", args)
+    return {"success": code == 0, "output": output}
+
+
+def cmd_doctor(
+    feedback: str = "",
+    target_page: str | None = None,
+    issue_category: str | None = None,
+    recompile_path: str | None = None,
+    re_ocr_path: str | None = None,
+    list_issues: bool = False,
+    check_page: str | None = None,
+    resolve_id: str | None = None,
+) -> dict:
+    """Execute doctor command via subprocess call to doctor.py."""
+    args = []
+    if feedback:
+        args.append(feedback)
+    if target_page:
+        args.extend(["--target", target_page])
+    if issue_category:
+        args.extend(["--issue", issue_category])
+    if recompile_path:
+        args.extend(["--recompile", recompile_path])
+    if re_ocr_path:
+        args.extend(["--re-ocr", re_ocr_path])
+    if list_issues:
+        args.append("--list")
+    if check_page:
+        args.extend(["--check", check_page])
+    if resolve_id:
+        args.extend(["--resolve", resolve_id])
+    code, output = run_script("doctor.py", args)
     return {"success": code == 0, "output": output}
 
 
@@ -329,6 +363,30 @@ Environment:
 
     dream_parser = subparsers.add_parser("dream", help="Run query-driven maintenance in the background")
     dream_parser.add_argument("--foreground", action="store_true", help="Run in the current process")
+    dream_parser.add_argument("--auto", action="store_true",
+                              help="Auto-execute phases 3 & 4 with quality gating (no human confirmation)")
+
+    # ── Doctor ────────────────────────────────────────────────────────
+    doctor_parser = subparsers.add_parser("doctor", help="Diagnose and repair wiki issues from user feedback")
+    doctor_parser.add_argument("feedback", nargs="?", default="",
+                               help="Natural language description of the issue")
+    doctor_parser.add_argument("--target", dest="target_page", default=None,
+                               help="Target page ID to check/fix")
+    doctor_parser.add_argument("--issue", dest="issue_category", default=None,
+                               choices=["missing_info", "incorrect_info", "uncompiled",
+                                         "ocr_missed", "search_quality", "contradiction",
+                                         "outdated"],
+                               help="Explicit issue category")
+    doctor_parser.add_argument("--recompile", dest="recompile_path", default=None,
+                               help="Recompile a specific source file")
+    doctor_parser.add_argument("--re-ocr", dest="re_ocr_path", default=None,
+                               help="Re-OCR a specific document")
+    doctor_parser.add_argument("--list", dest="list_issues", action="store_true",
+                               help="List outstanding issues")
+    doctor_parser.add_argument("--check", dest="check_page", default=None,
+                               help="Run diagnostic check on a page")
+    doctor_parser.add_argument("--resolve", dest="resolve_id", default=None,
+                               help="Mark an issue as resolved")
 
     search_parser = subparsers.add_parser("search", help="Search diagnostics and evaluation")
     search_sub = search_parser.add_subparsers(dest="search_cmd", required=True)
@@ -537,7 +595,22 @@ Environment:
         print(result["output"])
 
     elif args.command == "dream":
-        result = cmd_dream(foreground=args.foreground)
+        result = cmd_dream(foreground=args.foreground, auto=getattr(args, 'auto', False))
+        print(result["output"])
+        if not result["success"]:
+            sys.exit(1)
+
+    elif args.command == "doctor":
+        result = cmd_doctor(
+            feedback=args.feedback,
+            target_page=args.target_page,
+            issue_category=args.issue_category,
+            recompile_path=args.recompile_path,
+            re_ocr_path=args.re_ocr_path,
+            list_issues=args.list_issues,
+            check_page=args.check_page,
+            resolve_id=args.resolve_id,
+        )
         print(result["output"])
         if not result["success"]:
             sys.exit(1)
