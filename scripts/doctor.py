@@ -185,14 +185,10 @@ def diagnose(
     """Parse user feedback and diagnose the issue."""
     if wiki_dir is None:
         wiki_dir = get_wiki_dir()
-
     category = classify_feedback(feedback)
     issue = DoctorIssue(
-        category=category,
-        description=feedback,
-        target_page=target_page,
+        category=category, description=feedback, target_page=target_page,
     )
-
     results = _search_wiki_pages(feedback, wiki_dir)
     if results:
         issue.affected_pages = [
@@ -619,6 +615,94 @@ def check_page(page_id: str, wiki_dir: Path | None = None) -> dict:
 
 # ── main entry ────────────────────────────────────────────────────────────────
 
+def _handle_recompile(src_path: str) -> dict:
+    import subprocess
+    src = Path(src_path)
+    if not src.is_file():
+        return {"success": False, "message": f"Source not found: {src_path}"}
+    try:
+        r = subprocess.run(
+            [sys.executable, "-m", "scripts.compile_v2", str(src), "--force"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if r.returncode != 0:
+            return {"success": False, "message": f"Compile failed: {r.stderr[:200]}"}
+        return {"success": True, "message": f"Recompiled: {src.name}"}
+    except subprocess.TimeoutExpired:
+        return {"success": False, "message": f"Compile timed out: {src.name}"}
+    except Exception as exc:
+        return {"success": False, "message": f"Recompile failed: {exc}"}
+
+
+def _handle_re_ocr(doc_path: str) -> dict:
+    import subprocess
+    src = Path(doc_path)
+    if not src.is_file():
+        return {"success": False, "message": f"Document not found: {doc_path}"}
+    try:
+        ocr = subprocess.run(
+            [sys.executable, "-m", "scripts._ocr_cli", str(src)],
+            capture_output=True, text=True, timeout=300,
+        )
+        if ocr.returncode != 0:
+            return {"success": False, "message": f"OCR failed: {ocr.stderr[:200]}"}
+        cmp = subprocess.run(
+            [sys.executable, "-m", "scripts.compile_v2", str(src), "--force"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if cmp.returncode != 0:
+            return {"success": False,
+                    "message": f"OCR ok but compile failed: {cmp.stderr[:200]}"}
+        return {"success": True, "message": f"Re-OCR'd and recompiled: {src.name}"}
+    except subprocess.TimeoutExpired:
+        return {"success": False, "message": f"Re-OCR timed out for {src.name}"}
+    except Exception as exc:
+        return {"success": False, "message": f"Re-OCR failed: {exc}"}
+
+
+def _handle_feedback(
+    feedback: str,
+    target_page: str | None,
+    issue_category: str | None,
+    wiki_dir: Path,
+) -> dict:
+    """Classify → diagnose → repair → verify → persist a user feedback."""
+    issue = diagnose(feedback, target_page, wiki_dir)
+    if issue_category:
+        try:
+            issue.category = IssueCategory(issue_category)
+        except ValueError:
+            valid = [c.value for c in IssueCategory if c != IssueCategory.OTHER]
+            print(f"  [doctor] WARNING: invalid issue category '{issue_category}'. "
+                  f"Valid: {valid}. Using auto-detected: {issue.category.value}",
+                  file=sys.stderr)
+
+    issue = repair(issue, wiki_dir)
+    verified = verify(issue, wiki_dir)
+
+    issues = _load_issues(wiki_dir)
+    issues.append(issue.to_dict())
+    _save_issues(issues, wiki_dir)
+
+    return {
+        "success": issue.status == "resolved",
+        "report": {
+            "issue_id": issue.id,
+            "category": issue.category.value,
+            "description": issue.description,
+            "diagnosis": issue.diagnosis,
+            "repair_strategy": issue.repair_strategy,
+            "repair_result": issue.repair_result,
+            "status": issue.status,
+            "verified": verified,
+        },
+        "message": (
+            f"[{issue.category.value}] {issue.repair_result} "
+            f"(verified: {verified})"
+        ),
+    }
+
+
 def run_doctor(
     feedback: str = "",
     target_page: str | None = None,
@@ -634,113 +718,29 @@ def run_doctor(
 
     if list_issues_flag:
         issues = list_issues(wiki_dir)
-        return {
-            "success": True,
-            "issues": issues,
-            "message": f"{len(issues)} outstanding issue(s).",
-        }
+        return {"success": True, "issues": issues,
+                "message": f"{len(issues)} outstanding issue(s)."}
 
     if resolve_id:
         ok = resolve_issue(resolve_id, wiki_dir)
-        return {
-            "success": ok,
-            "message": f"Issue {resolve_id} resolved." if ok
-            else f"Issue {resolve_id} not found.",
-        }
+        return {"success": ok,
+                "message": f"Issue {resolve_id} resolved." if ok
+                else f"Issue {resolve_id} not found."}
 
     if check_page_id:
         result = check_page(check_page_id, wiki_dir)
         return {"success": "error" not in result, "report": result}
 
     if recompile_path:
-        import subprocess
-        src = Path(recompile_path)
-        if not src.is_file():
-            return {"success": False, "message": f"Source not found: {recompile_path}"}
-        try:
-            result = subprocess.run(
-                [sys.executable, "-m", "scripts.compile_v2", str(src), "--force"],
-                capture_output=True, text=True, timeout=120,
-            )
-            if result.returncode != 0:
-                return {"success": False,
-                        "message": f"Compile failed: {result.stderr[:200]}"}
-            return {"success": True, "message": f"Recompiled: {src.name}"}
-        except subprocess.TimeoutExpired:
-            return {"success": False, "message": f"Compile timed out: {src.name}"}
-        except Exception as exc:
-            return {"success": False, "message": f"Recompile failed: {exc}"}
+        return _handle_recompile(recompile_path)
 
     if re_ocr_path:
-        import subprocess
-        src = Path(re_ocr_path)
-        if not src.is_file():
-            return {"success": False, "message": f"Document not found: {re_ocr_path}"}
-        try:
-            ocr_result = subprocess.run(
-                [sys.executable, "-m", "scripts._ocr_cli", str(src)],
-                capture_output=True, text=True, timeout=300,
-            )
-            if ocr_result.returncode != 0:
-                return {"success": False,
-                        "message": f"OCR failed: {ocr_result.stderr[:200]}"}
-            compile_result = subprocess.run(
-                [sys.executable, "-m", "scripts.compile_v2", str(src), "--force"],
-                capture_output=True, text=True, timeout=120,
-            )
-            if compile_result.returncode != 0:
-                return {"success": False,
-                        "message": f"OCR succeeded but compile failed: {compile_result.stderr[:200]}"}
-            return {"success": True, "message": f"Re-OCR'd and recompiled: {src.name}"}
-        except subprocess.TimeoutExpired:
-            return {"success": False, "message": f"Re-OCR timed out for {src.name}"}
-        except Exception as exc:
-            return {"success": False, "message": f"Re-OCR failed: {exc}"}
+        return _handle_re_ocr(re_ocr_path)
 
     if not feedback:
         return {"success": False, "message": "No feedback provided."}
 
-    # 1. Classify & diagnose
-    issue = diagnose(feedback, target_page, wiki_dir)
-    if issue_category:
-        try:
-            issue.category = IssueCategory(issue_category)
-        except ValueError:
-            valid = [c.value for c in IssueCategory if c != IssueCategory.OTHER]
-            print(f"  [doctor] WARNING: invalid issue category '{issue_category}'. "
-                  f"Valid: {valid}. Using auto-detected: {issue.category.value}",
-                  file=sys.stderr)
-
-    # 2. Repair
-    issue = repair(issue, wiki_dir)
-
-    # 3. Verify
-    verified = verify(issue, wiki_dir)
-
-    # 4. Persist
-    issues = _load_issues(wiki_dir)
-    issues.append(issue.to_dict())
-    _save_issues(issues, wiki_dir)
-
-    report = {
-        "issue_id": issue.id,
-        "category": issue.category.value,
-        "description": issue.description,
-        "diagnosis": issue.diagnosis,
-        "repair_strategy": issue.repair_strategy,
-        "repair_result": issue.repair_result,
-        "status": issue.status,
-        "verified": verified,
-    }
-
-    return {
-        "success": issue.status == "resolved",
-        "report": report,
-        "message": (
-            f"[{issue.category.value}] {issue.repair_result} "
-            f"(verified: {verified})"
-        ),
-    }
+    return _handle_feedback(feedback, target_page, issue_category, wiki_dir)
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────

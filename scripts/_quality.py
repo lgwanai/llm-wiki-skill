@@ -103,30 +103,12 @@ def _find_rank(results: list[dict], page_id: str) -> int:
 
 # ── quality assessment ───────────────────────────────────────────────────────
 
-def assess_quality(
+def _compute_rank_score(
     test_queries: list[str],
     baseline_results: dict[str, list[dict]],
     current_results: dict[str, list[dict]],
-    modified_paths: list[Path],
-) -> QualityReport:
-    """Compare before/after search results and produce a QualityReport.
-
-    Args:
-        test_queries: queries used for evaluation.
-        baseline_results: query → search results BEFORE modifications.
-        current_results: query → search results AFTER modifications.
-        modified_paths: paths that were modified by the dream phase.
-
-    Returns a QualityReport with recommendation.
-    """
-    if not test_queries:
-        return QualityReport(
-            overall_score=0,
-            recommendation="keep",
-            summary="No test queries — skipping quality assessment.",
-        )
-
-    # ── 1. rank preservation ──────────────────────────────────────────────
+) -> tuple[float, dict[str, dict], dict[str, float]]:
+    """Compute rank preservation score and per-query details."""
     rank_deltas: list[float] = []
     rank_changes: dict[str, dict] = {}
     per_query_rank_scores: dict[str, float] = {}
@@ -137,22 +119,20 @@ def assess_quality(
         query_changes: dict[str, tuple[int, int]] = {}
         query_deltas: list[float] = []
 
-        baseline_ids = _extract_page_ids(baseline)
-        for pid in baseline_ids:
+        for pid in _extract_page_ids(baseline):
             old_rank = _find_rank(baseline, pid)
             new_rank = _find_rank(current, pid)
             if old_rank > 0 and new_rank > 0:
                 delta = 1.0 if new_rank < old_rank else (-1.0 if new_rank > old_rank else 0.0)
-                rank_deltas.append(delta)
-                query_deltas.append(delta)
-                query_changes[pid] = (old_rank, new_rank)
             elif old_rank > 0 and new_rank < 0:
-                rank_deltas.append(-1.0)
-                query_deltas.append(-1.0)
-                query_changes[pid] = (old_rank, -1)
+                delta = -1.0
             elif old_rank < 0 and new_rank > 0:
-                rank_deltas.append(0.5)
-                query_deltas.append(0.5)
+                delta = 0.5
+            else:
+                continue
+            rank_deltas.append(delta)
+            query_deltas.append(delta)
+            query_changes[pid] = (old_rank, new_rank)
 
         if query_changes:
             rank_changes[query] = {
@@ -164,8 +144,11 @@ def assess_quality(
 
     avg_rank_delta = sum(rank_deltas) / len(rank_deltas) if rank_deltas else 0.0
     rank_score = max(-1.0, min(1.0, avg_rank_delta))
+    return rank_score, rank_changes, per_query_rank_scores
 
-    # ── 2. density improvement ────────────────────────────────────────────
+
+def _compute_density_score(modified_paths: list[Path]) -> tuple[float, dict[str, int]]:
+    """Compute density improvement score for modified pages."""
     density_changes: dict[str, int] = {}
     density_deltas: list[float] = []
 
@@ -186,51 +169,75 @@ def assess_quality(
         else:
             density_deltas.append(-0.5)
 
-    avg_density_delta = sum(density_deltas) / len(density_deltas) if density_deltas else 0.0
-    density_score = max(-1.0, min(1.0, avg_density_delta))
+    avg = sum(density_deltas) / len(density_deltas) if density_deltas else 0.0
+    return max(-1.0, min(1.0, avg)), density_changes
 
-    # ── 3. coverage score ─────────────────────────────────────────────────
+
+def _compute_coverage_score(
+    test_queries: list[str],
+    baseline_results: dict[str, list[dict]],
+    current_results: dict[str, list[dict]],
+) -> float:
+    """Compute coverage score — are baseline pages still findable?"""
     all_baseline_ids: set[str] = set()
     all_current_ids: set[str] = set()
     for query in test_queries:
         all_baseline_ids |= _extract_page_ids(baseline_results.get(query, []))
         all_current_ids |= _extract_page_ids(current_results.get(query, []))
-
     if all_baseline_ids:
         still_findable = all_baseline_ids & all_current_ids
         coverage = len(still_findable) / len(all_baseline_ids)
     else:
         coverage = 1.0
+    return (coverage * 2.0) - 1.0  # map [0,1] → [-1,1]
 
-    coverage_score = (coverage * 2.0) - 1.0  # map [0,1] → [-1,1]
 
-    # ── 4. composite score ────────────────────────────────────────────────
+def _make_recommendation(overall: float) -> tuple[str, str]:
+    """Translate composite score to a recommendation and summary."""
+    if overall >= 0:
+        return "keep", f"Quality stable or improved (score: {overall:+.2f})."
+    elif overall >= ROLLBACK_THRESHOLD:
+        return "warn", (
+            f"Minor quality degradation (score: {overall:+.2f}). "
+            f"Changes kept; review recommended."
+        )
+    return "rollback", (
+        f"Significant quality degradation (score: {overall:+.2f}). "
+        f"Rolling back to pre-modification state."
+    )
+
+
+def assess_quality(
+    test_queries: list[str],
+    baseline_results: dict[str, list[dict]],
+    current_results: dict[str, list[dict]],
+    modified_paths: list[Path],
+) -> QualityReport:
+    """Compare before/after search results and produce a QualityReport."""
+    if not test_queries:
+        return QualityReport(
+            overall_score=0, recommendation="keep",
+            summary="No test queries — skipping quality assessment.",
+        )
+
+    rank_score, rank_changes, per_query_scores = _compute_rank_score(
+        test_queries, baseline_results, current_results,
+    )
+    density_score, density_changes = _compute_density_score(modified_paths)
+    coverage_score = _compute_coverage_score(
+        test_queries, baseline_results, current_results,
+    )
+
     overall = (
         RANK_PRESERVATION_WEIGHT * rank_score
         + DENSITY_IMPROVEMENT_WEIGHT * density_score
         + COVERAGE_SCORE_WEIGHT * coverage_score
     )
 
-    # ── 5. recommendation ─────────────────────────────────────────────────
-    if overall >= 0:
-        recommendation = "keep"
-        summary = f"Quality stable or improved (score: {overall:+.2f})."
-    elif overall >= ROLLBACK_THRESHOLD:
-        recommendation = "warn"
-        summary = (
-            f"Minor quality degradation (score: {overall:+.2f}). "
-            f"Changes kept; review recommended."
-        )
-    else:
-        recommendation = "rollback"
-        summary = (
-            f"Significant quality degradation (score: {overall:+.2f}). "
-            f"Rolling back to pre-modification state."
-        )
-
+    recommendation, summary = _make_recommendation(overall)
     return QualityReport(
         overall_score=round(overall, 3),
-        per_query_scores=per_query_rank_scores,
+        per_query_scores=per_query_scores,
         density_changes=density_changes,
         rank_changes=rank_changes,
         recommendation=recommendation,

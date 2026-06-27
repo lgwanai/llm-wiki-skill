@@ -23,6 +23,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import yaml
+from _dream_auto import (
+    auto_enrich_pages,
+    auto_merge_duplicates,
+    find_page_path,
+)
 from _experience import Experience, ExperienceStore
 from _quality import (
     QualityReport,
@@ -633,8 +638,8 @@ def phase_purify(
             if duplicate_groups:
                 print(f"  [dream/purify] auto-merging {len(duplicate_groups)} "
                       f"duplicate groups...", file=sys.stderr)
-                merged_count, removed_count, modified_paths = _auto_merge_duplicates(
-                    duplicate_groups, prior_context, wiki_dir,
+                merged_count, removed_count, modified_paths = auto_merge_duplicates(
+                    duplicate_groups, wiki_dir,
                 )
 
             # 4. Post-modification quality assessment
@@ -846,7 +851,7 @@ For each candidate below:
         baseline = run_search_baseline(test_queries, wiki_dir)
 
         # 3. Enrich page metadata mechanically
-        enriched_count, modified_paths = _auto_enrich_pages(
+        enriched_count, modified_paths = auto_enrich_pages(
             selected, wiki_dir,
         )
 
@@ -917,224 +922,6 @@ For each candidate below:
         }
 
     return output
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Auto-execute helpers
-# ══════════════════════════════════════════════════════════════════════════════
-
-def _auto_merge_duplicates(
-    duplicate_groups: list[dict],
-    experiences_context: str,
-    wiki_dir: Path,
-) -> tuple[int, int, list[Path]]:
-    """Mechanically merge duplicate pages. No LLM required.
-
-    For each duplicate pair:
-    1. Read both pages
-    2. If one is a strict subset of the other, keep the richer one, add redirect
-    3. If they have different content, merge non-overlapping sections
-    4. Update edges.json to point to the surviving page
-
-    Returns (merged_count, removed_count, modified_paths).
-    """
-    merged = 0
-    removed = 0
-    modified: list[Path] = []
-
-    pages_dir = wiki_dir / "pages"
-    graph_dir = wiki_dir / "graph"
-    edges_file = graph_dir / "edges.json"
-
-    for group in duplicate_groups:
-        dups = group.get("duplicates", [])
-        if len(dups) < 2:
-            continue
-
-        for dup in dups:
-            dup_id = dup.get("id", "")
-            dup_of_id = dup.get("duplicate_of", "")
-            if not dup_id or not dup_of_id:
-                continue
-
-            dup_path = _find_page_path(dup_id, pages_dir)
-            survivor_path = _find_page_path(dup_of_id, pages_dir)
-            if not dup_path or not survivor_path:
-                continue
-
-            dup_page = _read_page(dup_path)
-            survivor_page = _read_page(survivor_path)
-            if not dup_page or not survivor_page:
-                continue
-
-            dup_fm, dup_body = dup_page
-            surv_fm, surv_body = survivor_page
-
-            # Merge: copy non-overlapping content from duplicate to survivor,
-            # preserving original paragraph order
-            surv_paragraphs = set(_extract_paragraphs(surv_body))
-            new_paragraphs = [
-                p for p in _extract_paragraphs(dup_body)
-                if p not in surv_paragraphs
-            ]
-
-            if new_paragraphs:
-                merged_body = surv_body.rstrip() + "\n\n"
-                merged_body += "<!-- merged from [[{}]] by dream auto-merge -->\n\n".format(
-                    dup_id
-                )
-                merged_body += "\n\n".join(new_paragraphs)
-                _write_page(survivor_path, surv_fm, merged_body)
-                modified.append(survivor_path)
-
-            # Add redirect frontmatter to duplicate
-            dup_fm["redirect"] = dup_of_id
-            dup_fm["status"] = "redirect"
-            dup_fm["dream_merged_date"] = _now()
-            _write_page(dup_path, dup_fm, dup_body)
-            modified.append(dup_path)
-
-            # Update edges: point edges from dup to survivor
-            _update_edges_redirect(edges_file, dup_id, dup_of_id)
-
-            merged += 1
-            removed += 1
-
-    return merged, removed, modified
-
-
-def _auto_enrich_pages(
-    candidates: list[dict],
-    wiki_dir: Path,
-) -> tuple[int, list[Path]]:
-    """Mechanically enrich page metadata. No LLM required.
-
-    For each candidate page:
-    1. Add dream_enrich frontmatter marker
-    2. Extract additional keywords from page body
-    3. Add basic aliases from page name
-
-    Returns (enriched_count, modified_paths).
-    """
-    enriched = 0
-    modified: list[Path] = []
-
-    for candidate in candidates:
-        path_str = candidate.get("path", "")
-        if not path_str:
-            continue
-
-        path = Path(path_str)
-        if not path.is_file():
-            continue
-
-        page = _read_page(path)
-        if not page:
-            continue
-
-        frontmatter, body = page
-
-        # Mark as enriched
-        frontmatter["dream_enrich"] = True
-        frontmatter["dream_enrich_date"] = _now()
-
-        # Extract keywords from body
-        existing_keywords = set(
-            _as_list(frontmatter.get("keywords", []))
-        )
-        body_terms = _extract_key_terms(body)
-        new_keywords = body_terms - existing_keywords
-        if new_keywords:
-            all_keywords = list(existing_keywords) + list(new_keywords)
-            frontmatter["keywords"] = all_keywords[:24]
-
-        # Add alias from page name if not present
-        name = candidate.get("name", "")
-        aliases = set(_as_list(frontmatter.get("aliases", [])))
-        if name and name not in aliases:
-            aliases.add(name)
-            frontmatter["aliases"] = sorted(aliases)
-
-        _write_page(path, frontmatter, body)
-        modified.append(path)
-        enriched += 1
-
-    return enriched, modified
-
-
-def _find_page_path(page_id: str, pages_dir: Path) -> Path | None:
-    """Locate a page file by its ID in the pages directory tree."""
-    for subdir_name in ("concepts", "entities", "models", "techniques",
-                         "frameworks", "benchmarks", "papers", "decisions",
-                         "sessions", "patterns"):
-        subdir = pages_dir / subdir_name
-        if not subdir.is_dir():
-            continue
-        for f in subdir.iterdir():
-            if f.suffix != ".md":
-                continue
-            if f.stem == page_id or f.name == f"{page_id}.md":
-                return f
-    return None
-
-
-def _extract_paragraphs(body: str) -> list[str]:
-    """Split body into non-empty paragraphs."""
-    return [p.strip() for p in body.split("\n\n") if p.strip()]
-
-
-def _extract_key_terms(body: str) -> set[str]:
-    """Extract key terms from page body for keywords."""
-    import re as _re
-    cn_terms = set(_re.findall(r"[一-鿿]{2,8}", body))
-    en_terms = set(
-        w.lower() for w in _re.findall(r"[a-zA-Z]{3,}", body)
-        if len(w) >= 4
-    )
-    return cn_terms | en_terms
-
-
-def _as_list(value) -> list:
-    """Normalise a value to a list."""
-    if isinstance(value, list):
-        return value
-    if isinstance(value, str):
-        return [value]
-    return []
-
-
-def _update_edges_redirect(
-    edges_file: Path, from_id: str, to_id: str,
-) -> None:
-    """Update edges.json: replace references to from_id with to_id."""
-    if not edges_file.is_file():
-        return
-    try:
-        edges_data = json.loads(edges_file.read_text(encoding="utf-8"))
-        edges = (
-            edges_data.get("edges", edges_data)
-            if isinstance(edges_data, dict)
-            else edges_data
-        )
-        if not isinstance(edges, list):
-            return
-
-        changed = False
-        for edge in edges:
-            if edge.get("source") == from_id:
-                edge["source"] = to_id
-                changed = True
-            if edge.get("target") == from_id:
-                edge["target"] = to_id
-                changed = True
-
-        if changed:
-            edges_file.write_text(
-                json.dumps(edges_data, indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
-    except (OSError, json.JSONDecodeError):
-        pass
 
 
 # ══════════════════════════════════════════════════════════════════════════════
