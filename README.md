@@ -91,6 +91,30 @@ llm-wiki's wiki-native architecture delivers sub-50ms search latency — no embe
 
 > ⚡ **41ms search latency** — 5–50× faster than embedding-based RAG. Compiled once, queried instantly. [Full benchmark →](docs/BENCHMARK.md)
 
+## Self-Looping Maintenance & Doctor
+
+**Dream** auto-optimizes your wiki from query logs. **Doctor** lets you report issues and auto-fixes them.
+
+```bash
+# Dream — self-looping optimization (4 phases, zero human confirmation)
+wiki dream --auto --foreground   # auto-merge duplicates, enrich metadata
+                                 # with git snapshots + quality gating + rollback
+
+# Doctor — report issues and auto-repair
+wiki doctor "专家评审组信息不完整，缺少成员名单"   # natural language feedback
+wiki doctor --check coursepl-专家评审组            # diagnostic check
+wiki doctor --recompile .wiki/source/doc.md        # recompile source
+wiki doctor --re-ocr .wiki/source/slides.pptx      # re-OCR + recompile
+wiki doctor --list                                 # outstanding issues
+```
+
+| Feature | Mechanism |
+|---------|-----------|
+| **Git snapshots** | Auto-commit before every modification in `.wiki/.git` — safe rollback |
+| **Quality gating** | 3-dimension search assessment (rank/density/coverage) — auto-rollback if degraded |
+| **Experience store** | SHA256-deduped lessons learned → loaded as context in future runs |
+| **Doctor workflow** | classify (regex) → diagnose (wiki search) → repair (8 strategies) → verify → persist |
+
 ## Benchmark
 
 We evaluate the **complete product pipeline** (compile → search → synthesize), not components. **No embeddings, no chunks, no cross-encoders** — pure wiki-native architecture. Industry baselines from published RAGAS/RGB/GraphRAG papers.
@@ -118,7 +142,8 @@ We evaluate the **complete product pipeline** (compile → search → synthesize
 | **Memory Tiers** | Working → Episodic → Semantic → Procedural, automatic consolidation |
 | **Ledger** | Structured table management with natural language → SQL (DuckDB) |
 | **Multi-lingual** | Chinese/English dual retrieval engine (jieba + Porter stemming) |
-| **Privacy** | Sensitive data filtering on ingest (API keys, tokens, PII) |
+| **Dream (Auto)** | Self-looping query-driven optimization with git snapshots, quality gating, and experience accumulation |
+| **Doctor** | User feedback diagnosis + repair: classify → search → fix → verify |
 | **Audit** | Immutable audit trail for every operation |
 
 ## Documentation
@@ -143,6 +168,8 @@ llm-wiki-skill/
 │   ├── query.py       # Wiki-native search + answer synthesis
 │   ├── search.py      # Metadata/BM25/graph search; vector paths are opt-in
 │   ├── lint.py        # Health scan + auto-heal
+│   ├── dream.py       # Self-looping maintenance (4-phase, auto mode)
+│   ├── doctor.py       # User feedback diagnosis + auto-repair
 │   ├── ledger.py      # Structured table management (DuckDB)
 │   └── ...
 ├── .wiki/             # Wiki data (LLM-generated)
@@ -151,7 +178,7 @@ llm-wiki-skill/
 │   ├── ledger/        # ledger.duckdb database
 │   └── source/        # Original source files (immutable)
 ├── .claude/hooks/     # Automation hooks (optional)
-├── tests/             # Test suite (44+ tests)
+├── tests/             # Test suite (180 tests)
 ├── templates/         # Page templates
 └── references/        # Deep-dive docs
 ```
@@ -171,7 +198,8 @@ Based on [Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893
 | Ebbinghaus forgetting curve | 6 entity half-lives (arch: 260d, bug: 20d...) |
 | Memory consolidation | working → episodic → semantic → procedural |
 | Privacy filtering | 5 sensitive patterns filtered before LLM sends |
-| Audit trail | `audit.json` immutable operation log |
+| Dream self-looping | git snapshots + quality gating + rollback + SHA256-deduped experiences |
+| Doctor diagnosis | regex classify → wiki search → strategy repair → verify → persist |
 
 ## License
 

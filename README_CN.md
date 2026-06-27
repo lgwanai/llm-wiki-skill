@@ -91,6 +91,30 @@ llm-wiki 的 Wiki 原生架构实现亚 50ms 检索延迟——无需嵌入调�
 
 > ⚡ **41ms 检索延迟**——比基于嵌入的 RAG 快 5–50 倍。一次编译，即时查询。[完整评测 →](docs/BENCHMARK.md)
 
+## 自循环维护 & 医生
+
+**梦境** 从查询日志自动优化你的知识库。**医生** 让你一键反馈问题并自动修复。
+
+```bash
+# 梦境 — 自循环优化（4阶段，无需人工确认）
+wiki dream --auto --foreground   # 自动合并重复页面、补充元数据
+                                 # git 快照 + 质量门控 + 自动回滚
+
+# 医生 — 反馈问题，自动诊断修复
+wiki doctor "专家评审组信息不完整，缺少成员名单"   # 自然语言反馈
+wiki doctor --check coursepl-专家评审组            # 诊断检查
+wiki doctor --recompile .wiki/source/doc.md        # 重新编译源文件
+wiki doctor --re-ocr .wiki/source/slides.pptx      # 重新 OCR + 编译
+wiki doctor --list                                 # 列出未解决问题
+```
+
+| 特性 | 机制 |
+|------|------|
+| **Git 快照** | 每次修改前自动 `git commit` 到 `.wiki/.git` — 安全回滚 |
+| **质量门控** | 三维检索评估（排名/密度/覆盖率）— 质量下降自动回滚 |
+| **经验积累** | SHA256 去重的经验教训 → 下次梦境自动加载为上下文 |
+| **医生工作流** | 正则分类 → wiki 搜索诊断 → 8 种修复策略 → 验证 → 持久化 |
+
 ## 评测
 
 我们评测的是**完整产品 pipeline**（编译→搜索→合成），而非组件。**无嵌入、无分块、无交叉编码器** —— 纯 Wiki 原生架构。业界基线来自 RAGAS/RGB/GraphRAG 论文。
@@ -119,7 +143,8 @@ llm-wiki 的 Wiki 原生架构实现亚 50ms 检索延迟——无需嵌入调�
 | **台账** | 结构化表格管理，自然语言→SQL（DuckDB） |
 | **多语言** | 中英文双引擎检索（jieba + Porter 词干提取） |
 | **隐私** | 摄入时敏感信息过滤（API key、token、PII） |
-| **审计** | 每次操作不可变审计记录 |
+| **梦境（自动）** | 查询驱动的自循环优化：git 快照 + 质量门控 + 经验积累 |
+| **医生** | 用户反馈诊断修复：分类 → 搜索 → 修复 → 验证 |
 
 ## 文档
 
@@ -143,6 +168,8 @@ llm-wiki-skill/
 │   ├── query.py       # Wiki 原生搜索 + 答案合成
 │   ├── search.py      # 元数据/BM25/图谱搜索；向量路径为可选项
 │   ├── lint.py        # 健康扫描 + 自愈
+│   ├── dream.py       # 自循环维护（4阶段，自动模式）
+│   ├── doctor.py       # 用户反馈诊断 + 自动修复
 │   ├── ledger.py      # 结构化表格管理（DuckDB）
 │   └── ...
 ├── .wiki/             # Wiki 数据（LLM 生成）
@@ -151,7 +178,7 @@ llm-wiki-skill/
 │   ├── ledger/        # ledger.duckdb 数据库
 │   └── source/        # 原始源文件（不可变）
 ├── .claude/hooks/     # 自动化钩子（可选启用）
-├── tests/             # 测试套件（44+ 测试）
+├── tests/             # 测试套件（180 测试）
 ├── templates/         # 页面模板
 └── references/        # 深度参考资料
 ```
@@ -171,7 +198,8 @@ llm-wiki-skill/
 | 艾宾浩斯遗忘曲线 | 6 种实体半衰期（架构260天, Bug20天...） |
 | 记忆整合 | working → episodic → semantic → procedural |
 | 隐私过滤 | 5 种敏感信息模式，LLM 发送前脱敏 |
-| 审计追踪 | `audit.json` 不可变操作日志 |
+| 梦境自循环 | git 快照 + 质量门控 + 回滚 + SHA256 去重经验 |
+| 医生诊断 | 正则分类 → wiki 搜索 → 策略修复 → 验证 → 持久化 |
 
 ## 许可
 
