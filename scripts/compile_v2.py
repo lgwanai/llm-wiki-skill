@@ -19,7 +19,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).parent))
-from _llm_utils import call_llm, get_chunk_threshold
+from _llm_utils import call_llm, get_chunk_threshold, llm_fuse_pages
 from config import (
     get_config,
     get_image_analysis_config,
@@ -2332,6 +2332,31 @@ Output pages separated by ===PAGE_END==="""
                 })
                 print(f"  Updated: {Path(page_path).name} ({len(contradictions)} contradictions, {len(resolutions)} resolved)", file=sys.stderr)
             else:
+                # No contradictions — semantically fuse new content into
+                # existing page instead of overwriting (which would lose the
+                # knowledge from previously compiled sources).
+                exist_body_match = re.match(
+                    r"^---\s*\n(.*?)\n---\s*\n?(.*)$",
+                    existing_content, flags=re.DOTALL,
+                )
+                new_body_match = re.match(
+                    r"^---\s*\n(.*?)\n---\s*\n?(.*)$",
+                    page_content, flags=re.DOTALL,
+                )
+                if exist_body_match and new_body_match:
+                    exist_body = exist_body_match.group(2)
+                    new_body = new_body_match.group(2)
+                    fused = llm_fuse_pages(exist_body, new_body, entity_id)
+                    if fused is not None:
+                        # Reconstruct: use new frontmatter + fused body
+                        new_fm = new_body_match.group(1)
+                        page_content = "---\n" + new_fm + "\n---\n\n" + fused
+                        print(
+                            f"  Fused: {Path(page_path).name} "
+                            f"(LLM semantic merge, {len(fused)} chars)",
+                            file=sys.stderr,
+                        )
+
                 if not dry_run:
                     # Incremental: skip if content unchanged
                     new_hash = _content_hash(page_content)

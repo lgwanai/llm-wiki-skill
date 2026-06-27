@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""Mechanical merge/enrich helpers for dream auto-execution.
+"""Merge/enrich helpers for dream auto-execution.
 
 Extracted from dream.py to keep the core engine under 800 lines.
-All operations are mechanical — no LLM calls required.
+Mechanical operations for enrichment; LLM-based semantic fusion for merges
+(since mechanical paragraph dedup fails when different sources describe
+the same concept with different wording).
 """
 
 from __future__ import annotations
 
 import json
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -114,19 +117,48 @@ def update_edges_redirect(edges_file: Path, from_id: str, to_id: str) -> None:
         pass
 
 
+# ── semantic merge ────────────────────────────────────────────────────────────
+
+from _llm_utils import llm_fuse_pages
+
+
+def _mechanical_fallback_merge(
+    surv_body: str, dup_body: str, dup_id: str
+) -> str | None:
+    """Mechanical paragraph-level dedup fallback when LLM fusion is unavailable.
+
+    Returns merged body with new paragraphs appended, or None if nothing new.
+    """
+    surv_paragraphs = set(extract_paragraphs(surv_body))
+    new_paragraphs = [
+        p for p in extract_paragraphs(dup_body)
+        if p not in surv_paragraphs
+    ]
+    if not new_paragraphs:
+        return None
+    merged = surv_body.rstrip() + "\n\n"
+    merged += (
+        "<!-- merged from [[{}]] by dream auto-merge (mechanical) -->\n\n"
+        .format(dup_id)
+    )
+    merged += "\n\n".join(new_paragraphs)
+    return merged
+
+
 # ── auto-execute ──────────────────────────────────────────────────────────────
 
 def auto_merge_duplicates(
     duplicate_groups: list[dict],
     wiki_dir: Path,
 ) -> tuple[int, int, list[Path]]:
-    """Mechanically merge duplicate pages. No LLM required.
+    """Merge duplicate pages — LLM semantic fusion with mechanical fallback.
 
     For each duplicate pair:
     1. Read both pages
-    2. Merge non-overlapping content (preserving original paragraph order)
-    3. Add redirect frontmatter to duplicate
-    4. Update edges.json to point to the surviving page
+    2. LLM-based semantic fusion (dedup overlapping info, preserve unique facts)
+    3. Falls back to mechanical paragraph dedup if LLM is unavailable
+    4. Add redirect frontmatter to duplicate
+    5. Update edges.json to point to the surviving page
 
     Returns (merged_count, removed_count, modified_paths).
     """
@@ -155,20 +187,39 @@ def auto_merge_duplicates(
                 continue
             dup_fm, dup_body = dup_page
             surv_fm, surv_body = survivor_page
-            surv_paragraphs = set(extract_paragraphs(surv_body))
-            new_paragraphs = [
-                p for p in extract_paragraphs(dup_body)
-                if p not in surv_paragraphs
-            ]
-            if new_paragraphs:
-                merged_body = surv_body.rstrip() + "\n\n"
-                merged_body += (
-                    "<!-- merged from [[{}]] by dream auto-merge -->\n\n"
-                    .format(dup_id)
-                )
-                merged_body += "\n\n".join(new_paragraphs)
-                _write_page(survivor_path, surv_fm, merged_body)
+
+            # ── LLM semantic fusion (primary) ──
+            fused_body = llm_fuse_pages(
+                surv_body, dup_body, dup_id, dup_of_id,
+            )
+            if fused_body is not None:
+                _write_page(survivor_path, surv_fm, fused_body)
                 modified.append(survivor_path)
+                print(
+                    f"  Fused: [[{dup_id}]] → [[{dup_of_id}]] "
+                    f"(LLM semantic merge, {len(fused_body)} chars)",
+                    file=sys.stderr,
+                )
+            else:
+                # ── Mechanical fallback ──
+                merged_body = _mechanical_fallback_merge(
+                    surv_body, dup_body, dup_id,
+                )
+                if merged_body is not None:
+                    _write_page(survivor_path, surv_fm, merged_body)
+                    modified.append(survivor_path)
+                    print(
+                        f"  Merged: [[{dup_id}]] → [[{dup_of_id}]] "
+                        f"(mechanical fallback)",
+                        file=sys.stderr,
+                    )
+                else:
+                    print(
+                        f"  Skipped: [[{dup_id}]] → [[{dup_of_id}]] "
+                        f"(no new content)",
+                        file=sys.stderr,
+                    )
+
             dup_fm["redirect"] = dup_of_id
             dup_fm["status"] = "redirect"
             dup_fm["dream_merged_date"] = _now()

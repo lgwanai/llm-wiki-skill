@@ -284,3 +284,103 @@ def get_chunk_threshold(override: int | None = None) -> int:
     max_ctx = get_model_max_context()
     usable = max_ctx - _PROMPT_OVERHEAD_ESTIMATE
     return max(int(usable * 0.6), 4000)  # floor at 4K tokens
+
+
+def llm_fuse_pages(
+    survivor_body: str,
+    dup_body: str,
+    dup_id: str = "",
+    survivor_id: str = "",
+) -> str | None:
+    """Semantically fuse two wiki pages into one coherent page using LLM.
+
+    Unlike mechanical paragraph dedup (which fails when different sources
+    describe the same concept with different wording), this identifies
+    overlapping information semantically and produces a clean fused page
+    without duplicated sections or repeated content.
+
+    Returns the fused body text, or None if the LLM is unavailable / fails.
+    The caller should fall back to a mechanical merge on None.
+
+    Args:
+        survivor_body: The body text of the page to keep (without frontmatter).
+        dup_body: The body text of the duplicate page to merge from.
+        dup_id: ID of the duplicate page (for the fusion marker comment).
+        survivor_id: ID of the survivor page (for logging).
+    """
+    import re as _re
+
+    # Detect language: if survivor body is predominantly Chinese, use zh prompt
+    cn_chars = len(_re.findall(r"[一-鿿]", survivor_body))
+    is_zh = cn_chars > 50
+
+    if is_zh:
+        system_prompt = """你是 Wiki 页面融合引擎。你的任务是将两个关于同一主题的 Wiki 页面合并成一个连贯的页面。
+
+## 融合规则（严格遵守！）
+1. **去重合并**：如果两页用不同措辞描述同一件事，保留更精确/更详细的版本，删除冗余
+2. **保留独特事实**：如果某一页有另一页没有的具体事实、数据、细节，务必保留
+3. **禁止重复标题**：最终输出只能有一个 ## 概述、一个 ## 关键细节、一个 ## 关联关系 等
+4. **按节融合**：将相同标题下的内容融合在一起，不要创建重复的节
+5. **保持结构**：维持标准页面结构（标题 → 关键事实 → 概述 → 关键细节 → 关联关系 → 来源）
+6. **添加融合标记**：在融合处添加一行 `<!-- fused from [[重复页面ID]] -->` 注释
+7. **只输出融合后的正文**：不要输出 YAML frontmatter，不要解释
+8. **融合后应比两页之和更短**，而非更长——去重是核心目标
+
+## 标准节顺序
+# [标题]
+## 关键事实
+## 概述
+## 可回答的问题
+## 关键细节
+## 关联关系
+## 来源上下文
+
+只输出融合后的页面正文（无 YAML frontmatter，无额外解释）。"""
+    else:
+        system_prompt = """You are a wiki page fusion engine. Your job is to merge two wiki pages about the same topic into a single coherent page.
+
+## Fusion Rules (follow strictly!)
+1. **Deduplicate**: If both pages say the same thing with different wording, keep the more precise/detailed version and remove redundancy
+2. **Preserve unique facts**: If one page has specific facts, data, or details the other lacks, keep them
+3. **No duplicate headings**: Only one ## Overview, one ## Key Details, one ## Relationships, etc.
+4. **Merge at section level**: Fuse content under shared headings, don't create duplicate sections
+5. **Preserve structure**: Maintain standard page structure (title → key facts → overview → details → relationships → source)
+6. **Add fusion marker**: Add a single `<!-- fused from [[duplicate-page-id]] -->` comment
+7. **Output ONLY the fused body**: No YAML frontmatter, no explanation
+8. **The result should be SHORTER than the sum of both pages** — dedup is the primary goal
+
+## Standard Section Order
+# [Title]
+## Key Facts
+## Overview
+## Questions This Page Answers
+## Key Details
+## Relationships
+## Source Context
+
+Output only the fused page body (no YAML frontmatter, no extra commentary)."""
+
+    dup_label = dup_id or "unknown"
+    surv_label = survivor_id or "survivor"
+    user_prompt = (
+        f"## Survivor Page ({surv_label} — keep this page's ID and frontmatter)\n\n"
+        f"{survivor_body}\n\n"
+        f"## Duplicate Page ({dup_label} — fuse unique content from this page "
+        f"into the survivor)\n\n"
+        f"{dup_body}\n\n"
+        f"Fuse these two pages into one. Output only the fused body."
+    )
+
+    try:
+        fused = call_llm(system_prompt, user_prompt)
+        if fused and len(fused.strip()) > 50:
+            return fused.strip()
+    except Exception as e:
+        print(
+            f"  WARNING: LLM fusion failed for '{dup_id}' → '{surv_label}' "
+            f"({e}), falling back to mechanical merge",
+            file=sys.stderr,
+        )
+
+    return None
