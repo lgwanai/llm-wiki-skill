@@ -473,25 +473,21 @@ def _analyze_search_results(
 
 
 def phase_purify(
-    auto: bool = False,
     experiences: ExperienceStore | None = None,
     prior_context: str = "",
-) -> Path | dict:
-    """Run local searches for top queries, detect duplicates and low-density.
+) -> dict:
+    """Detect duplicates, auto-merge, quality-gate, and rollback if degraded.
 
-    When auto=False (default): produces a merge/density proposal for Agent
-    review.  Does NOT modify any page content — only writes a report.
-
-    When auto=True:
-    1. Run searches, detect duplicates (unchanged logic)
+    1. Simulate searches for top queries → detect duplicates / low-density
     2. Create git snapshot of affected pages
     3. Run baseline quality queries
     4. Execute mechanical merges
     5. Run post-modification quality queries
-    6. Compute QualityReport → keep/warn/rollback
-    7. Record experience if rollback/warning
+    6. Compute QualityReport → keep / warn / rollback
+    7. Record experience if rollback or warning
 
-    Returns Path (report file, auto=False) or dict with results (auto=True).
+    Always modifies content directly — no report-only mode.
+    Returns dict with merged_count, removed_count, quality, outcome.
     """
     _write_status("running", "purify", "Phase 3/4: Purify — simulating searches")
     _check_cancelled()
@@ -514,7 +510,14 @@ def phase_purify(
             "# Dream Purify\n\nInsufficient recurring queries to analyse.\n",
             encoding="utf-8",
         )
-        return output
+        return {
+            "report_path": output,
+            "merged_count": 0,
+            "removed_count": 0,
+            "quality": None,
+            "outcome": "no_changes",
+            "experience_recorded": False,
+        }
 
     # Run searches and analyse
     analyses: list[dict] = []
@@ -607,24 +610,21 @@ def phase_purify(
     output.write_text("\n".join(sections) + "\n", encoding="utf-8")
     _check_cancelled()
 
-    # ── auto-execute path ──────────────────────────────────────────────────
-    if auto and experiences is not None:
-        wiki_dir = get_wiki_dir()
-        modified_paths: list[Path] = []
-        merged_count = 0
-        removed_count = 0
-        outcome = "no_changes"
-        quality_report: QualityReport | None = None
-        exp_recorded = False
+    # ── auto-execute: always modify content ────────────────────────────────
+    wiki_dir = get_wiki_dir()
+    modified_paths: list[Path] = []
+    merged_count = 0
+    removed_count = 0
+    outcome = "no_changes"
+    quality_report: QualityReport | None = None
+    exp_recorded = False
 
-        if duplicate_groups or low_density_pages:
-            # 1. Snapshot before modifications — ABORT if git unavailable
-            snapshot_hash = create_snapshot(wiki_dir, "pre-phase3-purify")
-            if not snapshot_hash:
-                print("  [dream/purify] ABORTING auto-merge: git snapshot unavailable — "
-                      "falling back to report-only mode", file=sys.stderr)
-                # Fall through to return the report path
-                return output
+    if duplicate_groups or low_density_pages:
+        # 1. Snapshot before modifications — warn if git unavailable, continue anyway
+        snapshot_hash = create_snapshot(wiki_dir, "pre-phase3-purify")
+        if not snapshot_hash:
+            print("  [dream/purify] WARNING: git snapshot unavailable — "
+                  "modifications will proceed without rollback safety", file=sys.stderr)
 
             # 2. Collect queries and run baseline
             test_queries = collect_test_queries(3, wiki_dir)
@@ -711,7 +711,15 @@ def phase_purify(
             "experience_recorded": exp_recorded,
         }
 
-    return output
+    # No duplicates or low-density pages found — nothing to modify
+    return {
+        "report_path": output,
+        "merged_count": 0,
+        "removed_count": 0,
+        "quality": None,
+        "outcome": "no_changes",
+        "experience_recorded": False,
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -719,26 +727,21 @@ def phase_purify(
 # ══════════════════════════════════════════════════════════════════════════════
 
 def phase_enrich(
-    auto: bool = False,
     experiences: ExperienceStore | None = None,
     prior_context: str = "",
-) -> Path | dict:
-    """Identify low-density pages that are frequently queried, and produce
-    Agent deep-research task files.
+) -> dict:
+    """Enrich low-density/high-frequency pages, quality-gate, and rollback.
 
-    When auto=False (default): does NOT auto-execute research — only writes
-    task descriptions.
-
-    When auto=True:
-    1. Identify enrichment targets (unchanged logic)
+    1. Identify enrichment targets
     2. Create git snapshot of target pages
     3. Run baseline quality queries
-    4. Enrich page metadata (keywords, aliases, questions) mechanically
+    4. Enrich page metadata (keywords, aliases) mechanically
     5. Run post-modification quality queries
-    6. Compute QualityReport → keep/warn/rollback
-    7. Record experience if rollback/warning
+    6. Compute QualityReport → keep / warn / rollback
+    7. Record experience if rollback or warning
 
-    Returns Path (report file, auto=False) or dict with results (auto=True).
+    Always modifies content directly — no report-only mode.
+    Returns dict with enriched_count, quality, outcome.
     """
     _write_status("running", "enrich", "Phase 4/4: Enrich — identifying research targets")
     _check_cancelled()
@@ -784,7 +787,13 @@ def phase_enrich(
             "# Dream Enrich\n\n✅ No low-density + high-frequency pages found.\n",
             encoding="utf-8",
         )
-        return output
+        return {
+            "report_path": output,
+            "enriched_count": 0,
+            "quality": None,
+            "outcome": "no_changes",
+            "experience_recorded": False,
+        }
 
     # Write enrichment task for Agent
     task_blocks: list[str] = []
@@ -823,8 +832,8 @@ For each candidate below:
 
     _check_cancelled()
 
-    # ── auto-execute path ──────────────────────────────────────────────────
-    if auto and experiences is not None and selected:
+    # ── auto-enrich: always modify content ─────────────────────────────────
+    if selected:
         wiki_dir = get_wiki_dir()
         modified_paths: list[Path] = []
         enriched_count = 0
@@ -832,12 +841,11 @@ For each candidate below:
         quality_report: QualityReport | None = None
         exp_recorded = False
 
-        # 1. Snapshot before modifications — ABORT if git unavailable
+        # 1. Snapshot before modifications — warn if git unavailable, continue anyway
         snapshot_hash = create_snapshot(wiki_dir, "pre-phase4-enrich")
         if not snapshot_hash:
-            print("  [dream/enrich] ABORTING auto-enrich: git snapshot unavailable — "
-                  "falling back to report-only mode", file=sys.stderr)
-            return output
+            print("  [dream/enrich] WARNING: git snapshot unavailable — "
+                  "modifications will proceed without rollback safety", file=sys.stderr)
 
         # 2. Collect queries and run baseline
         test_queries = collect_test_queries(4, wiki_dir)
@@ -921,74 +929,59 @@ For each candidate below:
             "experience_recorded": exp_recorded,
         }
 
-    return output
+    # No enrichment candidates found
+    return {
+        "report_path": output,
+        "enriched_count": 0,
+        "quality": None,
+        "outcome": "no_changes",
+        "experience_recorded": False,
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Orchestration
 # ══════════════════════════════════════════════════════════════════════════════
 
-def run_worker(auto: bool = False) -> str:
-    """Execute all four dream phases in sequence.  Cancellable at any boundary.
-
-    Args:
-        auto: If True, phases 3 & 4 auto-execute modifications with quality
-              gating (snapshot → modify → assess → keep/rollback).
-              If False (default), phases 3 & 4 generate reports for human review.
-    """
+def run_worker() -> str:
+    """Execute all four dream phases.  Directly modifies wiki content with
+    git snapshots, quality gating, auto-rollback, and experience recording.
+    No human confirmation needed — this is an unattended self-looping system."""
     directory = _dream_dir()
     directory.mkdir(parents=True, exist_ok=True)
     _cancel_path().unlink(missing_ok=True)
     _write_status("running", "start", "Dream worker started")
 
     wiki_dir = get_wiki_dir()
-    experiences: ExperienceStore | None = None
-    ctx_phase3 = ""
-    ctx_phase4 = ""
 
-    if auto:
-        # Initialise git repo for snapshot safety
-        ensure_git_repo(wiki_dir)
-        # Load prior experiences for context
-        experiences = ExperienceStore(wiki_dir)
-        ctx_phase3 = experiences.to_context(3)
-        ctx_phase4 = experiences.to_context(4)
-        if ctx_phase3:
-            print(f"  [dream] loaded {len(experiences.load_for_phase(3))} prior experiences for phase 3",
-                  file=sys.stderr)
-        if ctx_phase4:
-            print(f"  [dream] loaded {len(experiences.load_for_phase(4))} prior experiences for phase 4",
-                  file=sys.stderr)
+    # Initialise git repo for snapshot safety
+    ensure_git_repo(wiki_dir)
+    # Load prior experiences for context (compound over time)
+    experiences = ExperienceStore(wiki_dir)
+    ctx_phase3 = experiences.to_context(3)
+    ctx_phase4 = experiences.to_context(4)
+    if ctx_phase3:
+        print(f"  [dream] loaded {len(experiences.load_for_phase(3))} prior experiences for phase 3",
+              file=sys.stderr)
+    if ctx_phase4:
+        print(f"  [dream] loaded {len(experiences.load_for_phase(4))} prior experiences for phase 4",
+              file=sys.stderr)
 
     try:
-        # Phase 1 — safe metadata updates (always auto)
+        # Phase 1 — safe metadata updates
         light = phase_light_sleep()
         _check_cancelled()
 
-        # Phase 2 — query analysis (report only)
+        # Phase 2 — query analysis (feeds Phase 3+4)
         audit = phase_audit(light)
         _check_cancelled()
 
-        # Phase 3 — search simulation + content analysis
-        if auto:
-            purify = phase_purify(
-                auto=True,
-                experiences=experiences,
-                prior_context=ctx_phase3,
-            )
-        else:
-            purify = phase_purify()
+        # Phase 3 — auto-merge duplicates + quality gate + rollback
+        purify = phase_purify(experiences=experiences, prior_context=ctx_phase3)
         _check_cancelled()
 
-        # Phase 4 — enrichment research tasks
-        if auto:
-            enrich = phase_enrich(
-                auto=True,
-                experiences=experiences,
-                prior_context=ctx_phase4,
-            )
-        else:
-            enrich = phase_enrich()
+        # Phase 4 — auto-enrich low-density pages + quality gate + rollback
+        enrich = phase_enrich(experiences=experiences, prior_context=ctx_phase4)
 
     except DreamCancelled:
         return "Dream cancelled"
@@ -1019,18 +1012,13 @@ def run_worker(auto: bool = False) -> str:
     return "Dream complete"
 
 
-def start_dream(foreground: bool = False, worker: bool = False,
-                auto: bool = False) -> str:
+def start_dream(foreground: bool = False, worker: bool = False) -> str:
     """Entry point — run in foreground (blocking) or background (detached).
 
-    Args:
-        foreground: Run synchronously in this process.
-        worker: Internal flag for subprocess invocation.
-        auto: If True, phases 3 & 4 auto-execute with quality gating
-              (snapshot → modify → assess → keep/rollback).
+    Always auto-executes modifications with quality gating.  No report-only mode.
     """
     if foreground or worker:
-        return run_worker(auto=auto)
+        return run_worker()
 
     directory = _dream_dir()
     directory.mkdir(parents=True, exist_ok=True)
@@ -1038,8 +1026,6 @@ def start_dream(foreground: bool = False, worker: bool = False,
     stdout = open(directory / "dream.out.log", "a", encoding="utf-8")
     stderr = open(directory / "dream.err.log", "a", encoding="utf-8")
     cmd = [sys.executable, str(Path(__file__).resolve()), "--worker"]
-    if auto:
-        cmd.append("--auto")
     try:
         child = subprocess.Popen(
             cmd,
@@ -1060,14 +1046,9 @@ def main() -> None:
         "--foreground", action="store_true",
         help="Run the dream worker in this process",
     )
-    parser.add_argument(
-        "--auto", action="store_true",
-        help="Auto-execute phases 3 & 4 with quality gating (no human confirmation)",
-    )
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
-    print(start_dream(foreground=args.foreground, worker=args.worker,
-                      auto=args.auto))
+    print(start_dream(foreground=args.foreground, worker=args.worker))
 
 
 if __name__ == "__main__":

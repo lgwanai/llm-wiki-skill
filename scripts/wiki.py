@@ -153,10 +153,8 @@ def cmd_consolidate(tiers: str = "working,episodic,semantic", decay_only: bool =
     }
 
 
-def cmd_dream(foreground: bool = False, auto: bool = False) -> dict:
+def cmd_dream(foreground: bool = False) -> dict:
     args = ["--foreground"] if foreground else []
-    if auto:
-        args.append("--auto")
     code, output = run_script("dream.py", args)
     return {"success": code == 0, "output": output}
 
@@ -363,8 +361,6 @@ Environment:
 
     dream_parser = subparsers.add_parser("dream", help="Run query-driven maintenance in the background")
     dream_parser.add_argument("--foreground", action="store_true", help="Run in the current process")
-    dream_parser.add_argument("--auto", action="store_true",
-                              help="Auto-execute phases 3 & 4 with quality gating (no human confirmation)")
 
     # ── Doctor ────────────────────────────────────────────────────────
     doctor_parser = subparsers.add_parser("doctor", help="Diagnose and repair wiki issues from user feedback")
@@ -595,7 +591,7 @@ Environment:
         print(result["output"])
 
     elif args.command == "dream":
-        result = cmd_dream(foreground=args.foreground, auto=getattr(args, 'auto', False))
+        result = cmd_dream(foreground=args.foreground)
         print(result["output"])
         if not result["success"]:
             sys.exit(1)

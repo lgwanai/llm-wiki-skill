@@ -96,9 +96,9 @@ llm-wiki's wiki-native architecture delivers sub-50ms search latency — no embe
 **Dream** auto-optimizes your wiki from query logs. **Doctor** lets you report issues and auto-fixes them.
 
 ```bash
-# Dream — self-looping optimization (4 phases, zero human confirmation)
-wiki dream --auto --foreground   # auto-merge duplicates, enrich metadata
-                                 # with git snapshots + quality gating + rollback
+# Dream — self-looping optimization (4 phases, directly modifies content)
+wiki dream --foreground          # auto-merge duplicates, enrich metadata
+                                 # git snapshots + quality gating + rollback
 
 # Doctor — report issues and auto-repair
 wiki doctor "专家评审组信息不完整，缺少成员名单"   # natural language feedback

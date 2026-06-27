@@ -434,23 +434,24 @@ what types the LLM can classify — no code changes needed.
 | Audit | Every operation logged with timestamp + reason |
 | Privacy | 5 sensitive-data patterns stripped before LLM ingestion |
 
-## Dream Self-Looping (Auto Mode)
+## Dream Self-Looping
 
-The dream normally generates reports for human review in phases 2-4.  Use
-`--auto` to let the dream **self-execute** modifications with safety guards:
+The dream **directly modifies content** — no human confirmation needed.
+It's an unattended self-looping system with git snapshots, quality gating,
+auto-rollback, and experience accumulation:
 
 ```bash
-wiki dream --auto --foreground   # Auto-execute with quality gating (foreground)
-wiki dream --auto                # Auto-execute in background
+wiki dream --foreground   # Run synchronously
+wiki dream                # Run in background
 ```
 
-### What happens in auto mode
+### What happens
 
 ```
-Phase 1 (Light Sleep)     ← always auto, updates page metadata
-Phase 2 (Audit)           ← generates report (unchanged)
-Phase 3 (Purify)          ← auto-merge duplicates → quality check → keep/rollback
-Phase 4 (Enrich)          ← auto-enrich metadata → quality check → keep/rollback
+Phase 1 (Light Sleep)     ← updates page metadata from today's queries
+Phase 2 (Audit)           ← aggregates 7d logs → feeds Phase 3+4
+Phase 3 (Purify)          ← detects duplicates → merges → quality check → keep/rollback
+Phase 4 (Enrich)          ← enriches low-density pages → quality check → keep/rollback
 ```
 
 ### Safety guarantees

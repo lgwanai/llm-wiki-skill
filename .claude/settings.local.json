@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ECC_GATEGUARD=off ls *)",
+      "Bash(ECC_GATEGUARD=off wc *)",
+      "Bash(ECC_GATEGUARD=off grep *)",
+      "Bash(ECC_GATEGUARD=off cat *)"
+    ]
+  }
+}

@@ -140,10 +140,12 @@ def test_phase_purify_produces_report(wiki_dir, monkeypatch):
         "source_details": [],
     })
 
-    output = dream.phase_purify()
+    result = dream.phase_purify()
 
-    assert output.exists()
-    content = output.read_text(encoding="utf-8")
+    assert isinstance(result, dict)
+    assert "report_path" in result
+    assert result["report_path"].exists()
+    content = result["report_path"].read_text(encoding="utf-8")
     assert "Dream Purify" in content
 
 
@@ -152,8 +154,10 @@ def test_phase_enrich_produces_report(wiki_dir, monkeypatch):
     monkeypatch.setattr(dream, "_today", lambda: "20260626")
     monkeypatch.setattr(dream, "_read_logs", lambda days=7: [])
 
-    output = dream.phase_enrich()
+    result = dream.phase_enrich()
 
-    assert output.exists()
-    content = output.read_text(encoding="utf-8")
+    assert isinstance(result, dict)
+    assert "report_path" in result
+    assert result["report_path"].exists()
+    content = result["report_path"].read_text(encoding="utf-8")
     assert "Dream Enrich" in content
