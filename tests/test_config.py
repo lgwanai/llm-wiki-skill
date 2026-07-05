@@ -188,3 +188,42 @@ image_analysis:
     assert image["api_url"] == "http://localhost:8000/v1/chat/completions"
     assert image["api_key"] == "test-key"
     assert image["api_model"] == "qwen-vl"
+
+
+def test_vision_skill_defaults_enabled(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("LLM_WIKI_CONFIG", raising=False)
+    monkeypatch.delenv("LLM_WIKI_PROJECT_DIR", raising=False)
+    monkeypatch.delenv("LLM_WIKI_DIR", raising=False)
+    config.reset_config()
+
+    vs = config.get_vision_skill_config()
+
+    assert vs["enabled"] is True
+    assert vs["scripts_path"] == ""
+    assert vs["recognize_format"] == "markdown_note"
+
+
+def test_vision_skill_scripts_path_is_exposed(monkeypatch, tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "wiki_config.yaml").write_text(
+        """
+vision_skill:
+  enabled: true
+  scripts_path: /opt/vision-skill/scripts
+  recognize_format: ocr
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(project)
+    monkeypatch.delenv("LLM_WIKI_CONFIG", raising=False)
+    monkeypatch.delenv("LLM_WIKI_PROJECT_DIR", raising=False)
+    monkeypatch.delenv("LLM_WIKI_DIR", raising=False)
+    config.reset_config()
+
+    vs = config.get_vision_skill_config()
+
+    assert vs["enabled"] is True
+    assert vs["scripts_path"] == "/opt/vision-skill/scripts"
+    assert vs["recognize_format"] == "ocr"

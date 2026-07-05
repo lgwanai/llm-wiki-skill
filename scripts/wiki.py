@@ -70,8 +70,24 @@ def cmd_compile(
     dry_run: bool = False,
     jobs: int | None = None,
     mode: str | None = None,
+    text: str | None = None,
+    source_name: str | None = None,
 ) -> dict:
-    args = [source, "--type", source_type]
+    if text is None and not source:
+        return {
+            "success": False,
+            "error": "compile requires a source file/dir, --text TEXT, or - (stdin)",
+        }
+    args = []
+    # When --text is provided, no positional source is needed; compile_v2.py
+    # handles materializing the text into a source file.
+    if text is not None:
+        args.extend(["--text", text])
+        if source_name:
+            args.extend(["--name", source_name])
+    else:
+        args.append(source)
+    args.extend(["--type", source_type])
     if mode:
         args.extend(["--mode", mode])
     if force:
@@ -334,7 +350,12 @@ Environment:
     config_parser.add_argument("--check", action="store_true", help="Validate configuration and exit")
 
     compile_parser = subparsers.add_parser("compile", help="Compile source file/directory to wiki")
-    compile_parser.add_argument("source", help="Source file or directory to compile")
+    compile_parser.add_argument("source", nargs="?", default=None,
+                                help="Source file/dir to compile, or '-' for stdin (omit if using --text)")
+    compile_parser.add_argument("--text", dest="text", default=None,
+                                help="Compile raw text directly (no source file needed)")
+    compile_parser.add_argument("--name", dest="source_name", default=None,
+                                help="Name for --text / stdin source (default: text-<timestamp>)")
     compile_parser.add_argument("--type", dest="source_type", default="doc",
                                 choices=["auto", "doc", "article", "code", "conversation"],
                                 help='Source type; "auto" infers from file extension (Agent mode recommended)')
@@ -540,6 +561,8 @@ Environment:
             dry_run=getattr(args, 'dry_run', False),
             jobs=getattr(args, 'jobs', None),
             mode=getattr(args, 'mode', None),
+            text=getattr(args, 'text', None),
+            source_name=getattr(args, 'source_name', None),
         )
         if result.get("success"):
             print(result.get("message", "Done"))

@@ -165,7 +165,11 @@ Quality threshold for filing: confidence > 0.5 AND answer is non-trivial (>3 sen
 ## Quality Standards
 
 ### Required Fields for Entity Pages
-- YAML frontmatter with: id, type, name, confidence, sources, status
+- YAML frontmatter with: id, type, name, confidence, sources, status, created_at
+- `created_at` (YYYY-MM-DD): compile creation date — enables date-based retrieval.
+- `published_at` (YYYY-MM-DD, optional): the source content's own publication date
+  (article date, document effective date, paper date, log timestamp). Omit if the
+  source has no identifiable publication date; never fabricate.
 - At least one paragraph of description
 - At least one relationship (edge in the graph)
 - Quality score above 0.4

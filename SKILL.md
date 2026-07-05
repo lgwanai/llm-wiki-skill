@@ -38,6 +38,38 @@ Wiki (.wiki/pages/) — LLM maintains: entity pages, concept pages, index, log
 Schema (schema.md + wiki_config.yaml) — single source of truth for types & rules
 ```
 
+## Dependencies
+
+### `vision-skill` (optional, recommended for image sources)
+
+Image-source compilation (`wiki compile diagram.png`) recognizes images with
+this precedence:
+
+1. **vision-skill (preferred)** — the Agent invokes the `vision-skill` skill,
+   which provides vision recognition (OCR, object detection, image
+   description) via an OpenAI-compatible VL model. If `vision_skill.scripts_path`
+   is set in `wiki_config.yaml`, the compile task also emits a concrete CLI
+   command for the Agent:
+
+   ```bash
+   python3 <vision_skill.scripts_path>/vision_cli.py recognize \
+     "<image>" --format markdown_note --wait
+   ```
+
+   Set `vision_skill.scripts_path` to the directory containing `vision_cli.py`
+   from your vision-skill install. When left empty, the Agent invokes the skill
+   by name only.
+
+2. **OCR fallback** — if the vision-skill is not available, the configured
+   `ocr` backend (mineru / paddle / deepseek / API) is used. OCR text is
+   pre-extracted and attached to the compile task.
+
+3. **Agent native capability** — if neither is available, the Agent reads the
+   image directly with its own image-parsing capability.
+
+The Python-side `image_analysis` vision API is **not** used in agent mode — it
+is reserved for `--mode llm`, where no Agent is in the loop to invoke a skill.
+
 ## Commands
 
 Use the installed shell CLI (`wiki ...`, or the alias `llm-wiki ...`) for all commands.
@@ -52,7 +84,7 @@ the compile standard. No configured model/API key is required.
 wiki compile source.md
 wiki compile docs/                 # recursively compile supported files
 wiki compile docs/ --depth 1       # only direct files + one directory level
-wiki compile diagram.png           # Agent inspects it; if unreadable, ask user for text
+wiki compile diagram.png           # vision-skill → OCR → Agent native (see Dependencies)
 wiki compile handbook.pdf          # every page rendered; OCR/vision/Agent fallback
 wiki compile slides.pptx           # every slide rendered; never first-slide-only
 wiki compile source.md --force     # re-compile + detect contradictions
@@ -314,13 +346,18 @@ ocr:
     formula: true
     table: true
 
-image_analysis:
+image_analysis:                    # --mode llm only; agent mode uses vision_skill below
   enabled: false                  # true to analyze image sources before OCR
   api_provider: openai            # siliconflow | openai | deepseek | paddleocr-vl
   api_url: ""                     # optional OpenAI-compatible API URL
   api_key: "${OPENAI_API_KEY}"
   api_model: gpt-4o
   ocr_fallback: true              # append OCR text for dense screenshots/docs
+
+vision_skill:                     # agent-mode image sources: vision-skill → OCR → Agent
+  enabled: true
+  scripts_path: ""                # dir containing vision_cli.py; empty = invoke skill by name only
+  recognize_format: markdown_note              # vision_cli --format preset
 
 query:
   llm_synthesis: true

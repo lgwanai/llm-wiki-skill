@@ -24,6 +24,7 @@ from config import (
     get_config,
     get_image_analysis_config,
     get_ocr_config,
+    get_vision_skill_config,
     get_wiki_dir,
 )
 from table_extract import persist_page_tables
@@ -170,6 +171,12 @@ Required output for any flowchart/process diagram:
 - If it is a document screenshot: extract text faithfully with section structure.
 - If it contains a table: reproduce the table in markdown table format with all rows and columns.
 
+**★ Data fidelity (non-negotiable):** Every number, date, amount, percentage,
+threshold, unit, and name must be copied **exactly as shown** — no rounding, no
+unit conversion, no merging/dropping/reordering of table cells, and never
+infer or fabricate a value that is not clearly visible. If a value is unclear,
+mark it `[unclear]` rather than guessing.
+
 ### 3. Visual Properties
 - Color scheme (dominant colors, color coding if meaningful)
 - Layout style (top-down / left-to-right / radial / grid / freeform)
@@ -287,21 +294,25 @@ def _copy_to_source_images(image_path: Path) -> Path:
     return dest
 
 
-def analyze_image_for_compile(image_path: Path) -> str:
+def analyze_image_for_compile(image_path: Path, for_agent: bool = False) -> str:
     """Convert an image source to markdown for wiki compilation.
 
-    Pipeline:
-    1. Copy image to .wiki/source/images/ for persistent storage
-    2. Vision model analysis (if enabled) — rich description for retrieval
-    3. OCR only as fallback when vision is disabled (vision already extracts text)
+    Image recognition precedence:
+      1. vision-skill (Agent-side, preferred) — declared dependency, used in
+         agent mode when the Agent has the skill available.
+      2. OCR — configured OCR backend (Python-side fallback).
+      3. Agent's own image-parsing capability — last resort.
 
-    For mind maps / flowcharts / diagrams: vision model restores structure.
-    OCR is redundant for these — the vision model already sees and extracts all text.
+    In agent mode (``for_agent=True``, the default compile mode), emit a
+    precedence instruction for the Agent and pre-extract OCR text as a
+    fallback. The ``image_analysis`` vision API is NOT used here — it is
+    reserved for ``--mode llm`` where no Agent is in the loop to invoke a
+    skill.
+
+    In llm mode (``for_agent=False``), use the configured ``image_analysis``
+    vision API first, then OCR, then hand the image to the model as a last
+    resort.
     """
-    image_config = get_image_analysis_config()
-    analysis = ""
-    ocr_text = ""
-
     # ── Step 1: Copy to persistent storage ──
     try:
         stored_path = _copy_to_source_images(image_path)
@@ -309,34 +320,14 @@ def analyze_image_for_compile(image_path: Path) -> str:
         stored_path = image_path
         print(f"  WARNING: could not copy image to source/images: {e}", file=sys.stderr)
 
-    # ── Step 2: Vision model analysis ──
-    vision_enabled = bool(image_config.get("enabled"))
-    if vision_enabled:
-        try:
-            analysis = _analyze_page_image_with_vision(image_path)
-        except Exception as e:
-            print(f"  WARNING: image analysis failed for {image_path}: {e}", file=sys.stderr)
+    if for_agent:
+        return _build_agent_image_task(image_path, stored_path)
+    return _build_llm_image_task(image_path, stored_path)
 
-    # ── Step 3: OCR only as fallback (vision already extracts text) ──
-    # For mind maps, flowcharts, diagrams: vision model sees all text.
-    # OCR is redundant and adds noise. Only run OCR when:
-    #   - Vision is NOT enabled (ocr_fallback: true = default)
-    #   - OR vision failed (analysis is empty)
-    if not vision_enabled or not analysis:
-        should_ocr = bool(image_config.get("ocr_fallback", True))
-        if should_ocr:
-            try:
-                ocr_text = _ocr_image_with_config(image_path)
-            except Exception as e:
-                print(f"  WARNING: OCR fallback failed for {image_path}: {e}", file=sys.stderr)
 
-    if not analysis and not ocr_text:
-        raise RuntimeError(
-            "Image compile requires image_analysis.enabled or a working OCR backend."
-        )
-
-    # ── Step 4: Build markdown output ──
-    sections = [
+def _image_source_header(image_path: Path, stored_path: Path) -> list[str]:
+    """Shared markdown header for an image source."""
+    return [
         f"# Image Source: {image_path.name}",
         "",
         f"> **Original**: `{image_path.resolve()}`",
@@ -346,10 +337,147 @@ def analyze_image_for_compile(image_path: Path) -> str:
         "",
     ]
 
+
+def _build_llm_image_task(image_path: Path, stored_path: Path) -> str:
+    """llm-mode image task: vision API → OCR → model handoff.
+
+    Used by ``--mode llm`` where no Agent is in the loop to invoke a skill,
+    so the configured ``image_analysis`` vision API is the primary path.
+    """
+    image_config = get_image_analysis_config()
+    analysis = ""
+    ocr_text = ""
+
+    # ── Vision model analysis (Python-side) ──
+    vision_enabled = bool(image_config.get("enabled"))
+    if vision_enabled:
+        try:
+            analysis = _analyze_page_image_with_vision(image_path)
+        except Exception as e:
+            print(f"  WARNING: image analysis failed for {image_path}: {e}", file=sys.stderr)
+
+    # ── OCR only as fallback (vision already extracts text) ──
+    if not vision_enabled or not analysis:
+        should_ocr = bool(image_config.get("ocr_fallback", True))
+        if should_ocr:
+            try:
+                ocr_text = _ocr_image_with_config(image_path)
+            except Exception as e:
+                print(f"  WARNING: OCR fallback failed for {image_path}: {e}", file=sys.stderr)
+
+    sections = _image_source_header(image_path, stored_path)
+
     if analysis:
         sections.extend(["## Visual Analysis", "", analysis.strip(), ""])
     if ocr_text and ocr_text.strip() != analysis.strip():
         sections.extend(["## OCR Text (fallback)", "", ocr_text.strip(), ""])
+
+    # ── Last resort: hand the image to the consuming model ──
+    if not analysis and not ocr_text:
+        sections.extend(
+            [
+                "## Image Recognition Required",
+                "",
+                "No vision model or OCR backend is configured, so this image was not "
+                "processed automatically. If the consuming model is multimodal, read the "
+                "image below and compile its visible content; otherwise ask the user for a "
+                "text export or summary.",
+                "",
+                f"![{image_path.stem}]({stored_path.resolve()})",
+                "",
+            ]
+        )
+
+    return "\n".join(sections).strip() + "\n"
+
+
+def _build_agent_image_task(image_path: Path, stored_path: Path) -> str:
+    """Agent-mode image task: vision-skill → OCR → Agent's own capability.
+
+    The vision-skill is the declared dependency for image sources and the
+    preferred recognition path. OCR is pre-extracted by Python as a fallback
+    (the Agent cannot run OCR backends itself). The Agent's native
+    image-parsing capability is the last resort.
+    """
+    vision_config = get_vision_skill_config()
+    vision_enabled = bool(vision_config.get("enabled"))
+
+    # Pre-extract OCR fallback only when a backend is usable, to avoid
+    # warning noise when the user relies solely on the vision-skill.
+    ocr_text = ""
+    if _ocr_backend_available():
+        try:
+            ocr_text = _ocr_image_with_config(image_path)
+        except Exception as e:
+            print(f"  WARNING: OCR fallback failed for {image_path}: {e}", file=sys.stderr)
+
+    sections = _image_source_header(image_path, stored_path)
+    sections.extend(
+        [
+            "## Image Recognition",
+            "",
+            "**Precedence: vision-skill → OCR → your own capability.**",
+            "",
+        ]
+    )
+
+    tier = 1
+    if vision_enabled:
+        sections.extend(
+            [
+                f"{tier}. **vision-skill (preferred)** — This skill depends on the "
+                "`vision-skill` skill. If it is available in this environment, use it to "
+                "analyze the image and compile its visible content (text, structure, "
+                "diagrams, charts, tables) into the wiki page.",
+                "",
+            ]
+        )
+        scripts_path = vision_config.get("scripts_path", "")
+        fmt = vision_config.get("recognize_format", "markdown_note")
+        if scripts_path:
+            cli = Path(os.path.expanduser(str(scripts_path))) / "vision_cli.py"
+            sections.extend(
+                [
+                    "   Invoke the skill directly, or run its CLI for structured markdown:",
+                    "",
+                    "   ```bash",
+                    f"   python3 {cli} recognize \\",
+                    f'     "{stored_path.resolve()}" --format {fmt} --wait',
+                    "   ```",
+                    "",
+                ]
+            )
+        tier += 1
+
+    sections.extend(
+        [
+            f"{tier}. **OCR fallback** — If the vision-skill is unavailable, use the OCR "
+            "text below (pre-extracted by the configured OCR backend).",
+            "",
+        ]
+    )
+    tier += 1
+    sections.extend(
+        [
+            f"{tier}. **Native capability** — If OCR is also unavailable, read the image "
+            "directly with your own image-parsing capability.",
+            "",
+            f"![{image_path.stem}]({stored_path.resolve()})",
+            "",
+        ]
+    )
+
+    if ocr_text:
+        sections.extend(["### OCR Text (fallback)", "", ocr_text.strip(), ""])
+    else:
+        sections.extend(
+            [
+                "### OCR Text (fallback)",
+                "",
+                "[No OCR backend configured — vision-skill or your own capability is required.]",
+                "",
+            ]
+        )
 
     return "\n".join(sections).strip() + "\n"
 
@@ -817,6 +945,11 @@ def _read_agent_visible_source(source_path: Path) -> tuple[str, bool]:
     try:
         if is_paginated_document_source(source_path):
             return _read_paginated_document_for_compile(source_path), True
+        if is_image_source(source_path):
+            # Reuses the full image pipeline: vision-skill (preferred) with
+            # OCR fallback pre-extracted, and the Agent's own capability as a
+            # last resort.
+            return analyze_image_for_compile(source_path, for_agent=True), True
         if is_document_source(source_path):
             content = _markitdown_to_markdown(source_path)
             return (content, True) if content else ("", False)
@@ -912,16 +1045,26 @@ def create_agent_compile_task(
 
     content_block = ""
     if path.is_file() and readable:
-        if is_paginated_document_source(path):
+        if is_paginated_document_source(path) or is_image_source(path):
+            # Raw markdown (not code-fenced) so embedded image links render
+            # for the Agent — pages and image sources both rely on this.
             max_preview_chars = 200_000
             preview = readable_content[:max_preview_chars]
-            truncated = (
-                f"\n\n[TRUNCATED: {len(readable_content) - max_preview_chars:,} additional "
-                "characters omitted. Agent should inspect the rendered page images "
-                f"under {_document_images_dir(path).resolve()}.]"
-                if len(readable_content) > len(preview)
-                else ""
-            )
+            if len(readable_content) > len(preview):
+                omitted = len(readable_content) - max_preview_chars
+                if is_paginated_document_source(path):
+                    truncated = (
+                        f"\n\n[TRUNCATED: {omitted:,} additional characters omitted. "
+                        "Agent should inspect the rendered page images under "
+                        f"{_document_images_dir(path).resolve()}.]"
+                    )
+                else:
+                    truncated = (
+                        f"\n\n[TRUNCATED: {omitted:,} additional characters omitted. "
+                        "Agent should read the source image directly.]"
+                    )
+            else:
+                truncated = ""
             content_block = f"""## Source Content Preview
 
 {preview}
@@ -962,6 +1105,7 @@ This task was generated in Agent mode. Do not call the configured LLM API.
 - Force overwrite: `{force}`
 - Dry run: `{dry_run}`
 - Wiki dir: `{WIKI_DIR}`
+- Compile date (set as frontmatter `created_at`): `{datetime.now().strftime("%Y-%m-%d")}`
 
 ## Agent Responsibilities
 
@@ -975,11 +1119,26 @@ This task was generated in Agent mode. Do not call the configured LLM API.
 
 ## Required Page Standard
 
-- YAML frontmatter: `id`, `type`, `name`, `confidence`, `source`, `aliases`, `keywords`.
+- YAML frontmatter: `id`, `type`, `name`, `confidence`, `source`, `aliases`, `keywords`,
+  `created_at`, `published_at`.
+  - `created_at` = the compile date shown above (YYYY-MM-DD).
+  - `published_at` = the source content's own publication date if identifiable
+    (article date, document effective date, paper date, log timestamp). Omit the
+    field entirely if the source has no publication date — never fabricate one.
 - Sections in order: Key Facts/关键事实, Overview/概述, Questions This Page Answers/可回答的问题,
   Key Details/关键细节, Relationships/关联关系, Source Context/来源上下文.
 - IDs and entity types must follow schema.md.
 - Prefer high-quality compiled pages over raw chunks. This is not a RAG ingestion step.
+
+## Data Fidelity (数据保真 — non-negotiable)
+
+- Preserve ALL data verbatim: numbers, dates, amounts, percentages, thresholds,
+  config parameters, table cells, statistics, units, and names. No tampering,
+  omission, rewriting, rounding, unit conversion, or "inferred completion".
+- Never fabricate data not present in the source. If a value is uncertain, keep
+  the original wording verbatim and quote it under Source Context — do not guess.
+- Reproduce tables with their original rows/columns intact; do not merge, drop,
+  reorder, or summarize cells.
 
 ## Schema Context
 
@@ -1408,7 +1567,7 @@ def _compile_chunked(
         ENTITIES_DIR.mkdir(parents=True, exist_ok=True)
         CONCEPTS_DIR.mkdir(parents=True, exist_ok=True)
         for page in all_pages:
-            atomic_write(Path(page["path"]), page.get("_content", ""))
+            atomic_write(Path(page["path"]), _ensure_created_at(page.get("_content", "")))
 
         update_index(all_pages, source_name)
         update_log(source_name, len(all_created), "compile")
@@ -1457,6 +1616,12 @@ def _compile_single_chunk(
     # Build prompts (abbreviated — reuse the same structure as compile_source)
     if lang == "zh":
         system_prompt = f"""你是 Wiki 知识编译引擎。你必须用中文撰写所有内容。
+
+## 数据保真（最高优先级，不可妥协）
+内容中涉及的任何数据——数字、日期、金额、百分比、阈值、配置参数、表格单元格、统计值、单位、名称——必须**逐字原样保留**，不得有任何篡改、省略、改写、四舍五入、单位换算或"联想补全"。
+- 原文没有的数据**绝不编造**；拿不准的数字**保留原文表述**，不要猜测或推断。
+- 表格必须按原行列结构完整复现，不得合并、删除、重排序或概括单元格。
+- 在"来源上下文"附上原文摘录，便于核实。
 
 ## ID 命名规则（防止同名覆盖）
 文档源简称: {source_abbr}
@@ -1539,7 +1704,13 @@ confidence: 0.85
 source: source-name
 aliases: [别名1, 别名2]
 keywords: [关键词1, 关键词2]
+created_at: {datetime.now().strftime("%Y-%m-%d")}
+published_at: ""   # 内容本身的发布日期 YYYY-MM-DD；若来源无可识别的发布时间则删除本行
 ---
+
+> **日期字段（用于后续日期检索，务必填写）**：
+> - `created_at`：本页面的编译创建日期（已填好，原样保留）。
+> - `published_at`：**来源内容本身的发布/发表时间**（如文章发布日、文档生效日、论文发表日、日志时间戳）。从原文中识别；原文没有就**删除本行**，**不要编造**。
 
 然后按以下结构撰写（⚠️ 必须严格遵循此顺序！）：
 # [中文标题]
@@ -1614,6 +1785,16 @@ keywords: [关键词1, 关键词2]
 用 ===PAGE_END=== 分隔每个页面。"""
     else:
         system_prompt = f"""You are a wiki knowledge compiler. Your job is to read a document chunk and write high-quality wiki pages.
+
+## Data Fidelity (highest priority — non-negotiable)
+Any data in the source — numbers, dates, amounts, percentages, thresholds, config
+parameters, table cells, statistics, units, and names — must be preserved
+**verbatim**. No tampering, omission, rewriting, rounding, unit conversion, or
+"inferred completion".
+- Never fabricate data not present in the source. If a value is uncertain, keep
+  the original wording verbatim and quote it under Source Context — do not guess.
+- Reproduce tables with their original rows/columns intact; do not merge, drop,
+  reorder, or summarize cells.
 
 ## Entity vs Concept (CRITICAL — get this right!)
 Karpathy's wiki design distinguishes two page types:
@@ -1781,6 +1962,44 @@ def _content_hash(text: str) -> str:
     return _hashlib.md5(body.strip().encode("utf-8")).hexdigest()
 
 
+def _ensure_created_at(page_content: str, compile_date: str | None = None) -> str:
+    """Ensure a compiled page's frontmatter has a ``created_at`` date.
+
+    Fills in ``compile_date`` (YYYY-MM-DD, defaulting to today) only when the
+    field is missing or empty — existing values are preserved, so updates never
+    overwrite the original creation date. Uses minimal string insertion so the
+    rest of the frontmatter formatting stays intact.
+    """
+    if not page_content or not page_content.startswith("---"):
+        return page_content
+    lines = page_content.split("\n")
+    fm_end = 0
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            fm_end = i
+            break
+    if fm_end == 0:
+        return page_content
+    try:
+        fm = yaml.safe_load("\n".join(lines[1:fm_end])) or {}
+    except Exception:
+        return page_content
+    if not isinstance(fm, dict):
+        return page_content
+    if fm.get("created_at"):
+        return page_content  # already present — preserve original creation date
+
+    date_str = compile_date or datetime.now().strftime("%Y-%m-%d")
+    # Replace an existing empty created_at line in place (avoids duplicate YAML
+    # keys); only insert a new line when the key is entirely absent.
+    for i in range(1, fm_end):
+        if lines[i].startswith("created_at:"):
+            lines[i] = f"created_at: {date_str}"
+            return "\n".join(lines)
+    lines.insert(1, f"created_at: {date_str}")
+    return "\n".join(lines)
+
+
 def _get_source_pages(source_name: str) -> dict[str, dict]:
     """Return all wiki pages previously created by *source_name*.
 
@@ -1889,6 +2108,12 @@ def compile_source(source_path: str, source_type: str = "doc", force: bool = Fal
         source_abbr = _re.sub(r'[^\u4e00-\u9fff\w]', '', source_name)[:8].lower() or "doc"
         system_prompt = f"""你是 Wiki 知识编译引擎。你必须用中文撰写所有内容。
 
+## 数据保真（最高优先级，不可妥协）
+内容中涉及的任何数据——数字、日期、金额、百分比、阈值、配置参数、表格单元格、统计值、单位、名称——必须**逐字原样保留**，不得有任何篡改、省略、改写、四舍五入、单位换算或"联想补全"。
+- 原文没有的数据**绝不编造**；拿不准的数字**保留原文表述**，不要猜测或推断。
+- 表格必须按原行列结构完整复现，不得合并、删除、重排序或概括单元格。
+- 在"来源上下文"附上原文摘录，便于核实。
+
 ## ID 命名规则（防止同名覆盖）
 文档源简称: {source_abbr}
 
@@ -1974,7 +2199,13 @@ confidence: 0.85
 source: source-name
 aliases: [别名1, 别名2]
 keywords: [关键词1, 关键词2]
+created_at: {datetime.now().strftime("%Y-%m-%d")}
+published_at: ""   # 内容本身的发布日期 YYYY-MM-DD；若来源无可识别的发布时间则删除本行
 ---
+
+> **日期字段（用于后续日期检索，务必填写）**：
+> - `created_at`：本页面的编译创建日期（已填好，原样保留）。
+> - `published_at`：**来源内容本身的发布/发表时间**（如文章发布日、文档生效日、论文发表日、日志时间戳）。从原文中识别；原文没有就**删除本行**，**不要编造**。
 
 然后按以下结构撰写（⚠️ 必须严格遵循此顺序！）：
 # [中文标题]
@@ -2022,6 +2253,16 @@ keywords: [关键词1, 关键词2]
 {entity_type_lines}"""
     else:
         system_prompt = f"""You are a wiki knowledge compiler. Your job is to read a document and write high-quality wiki pages.
+
+## Data Fidelity (highest priority — non-negotiable)
+Any data in the source — numbers, dates, amounts, percentages, thresholds, config
+parameters, table cells, statistics, units, and names — must be preserved
+**verbatim**. No tampering, omission, rewriting, rounding, unit conversion, or
+"inferred completion".
+- Never fabricate data not present in the source. If a value is uncertain, keep
+  the original wording verbatim and quote it under Source Context — do not guess.
+- Reproduce tables with their original rows/columns intact; do not merge, drop,
+  reorder, or summarize cells.
 
 ## Entity vs Concept (CRITICAL — get this right!)
 Karpathy's wiki design distinguishes two page types:
@@ -2097,7 +2338,16 @@ confidence: 0.85
 source: source-name
 aliases: [alias1, alias2]
 keywords: [keyword1, keyword2]
+created_at: {datetime.now().strftime("%Y-%m-%d")}
+published_at: ""   # source content publication date YYYY-MM-DD; delete this line if none
 ---
+
+> **Date fields (used for date-based retrieval — fill them in)**:
+> - `created_at`: the compile/creation date of this page (already filled — keep as-is).
+> - `published_at`: **the source content's own publication date** (article publish date,
+>   document effective date, paper publication date, log timestamp, etc.). Extract it
+>   from the source; if the source has no identifiable publication date, **delete this
+>   line** — do **not** fabricate one.
 
 Then the page content (⚠️ MUST follow this exact order!):
 # [Title]
@@ -2318,7 +2568,7 @@ Output pages separated by ===PAGE_END==="""
                         _skipped[0] += 1
                         print(f"  Unchanged: {Path(page_path).name}", file=sys.stderr)
                         continue
-                    atomic_write(page_path, page_content)
+                    atomic_write(page_path, _ensure_created_at(page_content))
                 f_count, r_count = _count_facts(page_content)
                 updated_pages.append({
                     "id": frontmatter.get("id", entity_id),
@@ -2365,7 +2615,7 @@ Output pages separated by ===PAGE_END==="""
                         _skipped[0] += 1
                         print(f"  Unchanged: {Path(page_path).name}", file=sys.stderr)
                         continue
-                    atomic_write(page_path, page_content)
+                    atomic_write(page_path, _ensure_created_at(page_content))
                 f_count, r_count = _count_facts(page_content)
                 updated_pages.append({
                     "id": frontmatter.get("id", entity_id),
@@ -2378,7 +2628,7 @@ Output pages separated by ===PAGE_END==="""
                 print(f"  Updated: {Path(page_path).name} (reinforced)", file=sys.stderr)
         else:
             if not dry_run:
-                atomic_write(page_path, page_content)
+                atomic_write(page_path, _ensure_created_at(page_content))
             f_count, r_count = _count_facts(page_content)
             created_pages.append({
                 "id": frontmatter.get("id", entity_id),
@@ -2440,7 +2690,7 @@ Output pages separated by ===PAGE_END==="""
                 # Append new instances
                 updated_content = existing.rstrip() + "\n\n## 新增实例\n\n" + "\n".join(new_links) + "\n"
                 if not dry_run:
-                    atomic_write(concept_path, updated_content)
+                    atomic_write(concept_path, _ensure_created_at(updated_content))
                 print(f"  Concept updated: {base_name}.md (+{len(new_links)} instances)", file=sys.stderr)
         else:
             # Use LLM to synthesize a concept page from entity instances
@@ -2497,7 +2747,7 @@ source: 跨文档聚合
                     synthesis_prompt,
                 )
                 if not dry_run:
-                    atomic_write(concept_path, concept_content.strip())
+                    atomic_write(concept_path, _ensure_created_at(concept_content.strip()))
                 print(f"  Concept created: {base_name}.md ({len(instances)} instances)", file=sys.stderr)
             except Exception:
                 _log_exc(f"concept synthesis failed for {base_name}")
@@ -2518,7 +2768,7 @@ source: 跨文档聚合
 {instance_links}
 """
                 if not dry_run:
-                    atomic_write(concept_path, fallback)
+                    atomic_write(concept_path, _ensure_created_at(fallback))
                 print(f"  Concept created (fallback): {base_name}.md", file=sys.stderr)
 
     # ── Prune stale pages (from this source but not in new compilation) ──
@@ -2841,10 +3091,37 @@ def update_index(pages: list, source_name: str):
     atomic_write(INDEX_FILE, "\n".join(lines))
 
 
+def _materialize_text_source(text: str, name: str | None = None) -> str:
+    """Write raw text to ``.wiki/source/`` as an immutable source file.
+
+    Direct text/stdin input has no source file, so we persist it under the
+    wiki's immutable source dir (matching the "Raw Sources — immutable"
+    architecture) and return the path. The existing compile pipeline then
+    reads it like any other ``.md`` source.
+    """
+    WIKI_DIR.mkdir(parents=True, exist_ok=True)
+    source_dir = WIKI_DIR / "source"
+    source_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    base = name or f"text-{timestamp}"
+    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "-", base).strip("-") or f"text-{timestamp}"
+    path = source_dir / f"{safe}.md"
+    if path.exists():
+        path = source_dir / f"{safe}-{timestamp}.md"
+    path.write_text(text, encoding="utf-8")
+    return str(path)
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description='Wiki compilation')
-    parser.add_argument('source', help='Source file or directory to compile')
+    parser.add_argument('source', nargs='?', default=None,
+                        help='Source file/dir to compile, or "-" to read text from stdin')
+    parser.add_argument('--text', dest='text', default=None,
+                        help='Compile raw text directly (no source file needed)')
+    parser.add_argument('--name', dest='source_name', default=None,
+                        help='Name for --text / stdin source (default: text-<timestamp>)')
     parser.add_argument('--type', dest='source_type', default='doc',
                         choices=['auto', 'doc', 'article', 'code', 'conversation'],
                         help='Source type; "auto" infers from file extension (Agent mode recommended)')
@@ -2863,8 +3140,19 @@ def main():
         _os.environ["LLM_WIKI_COMPILE_WORKERS"] = str(max(1, args.jobs))
     config_mode = get_config().get("compile", {}).get("mode", "agent")
     mode = args.mode or config_mode or "agent"
+
+    # Resolve the source: raw --text, stdin ("-"), or an existing file/dir.
+    if args.text is not None:
+        source_path = _materialize_text_source(args.text, args.source_name)
+    elif args.source == "-":
+        source_path = _materialize_text_source(sys.stdin.read(), args.source_name)
+    elif args.source is None:
+        parser.error("provide a source file/dir, --text TEXT, or - (stdin)")
+    else:
+        source_path = args.source
+
     result = compile_path(
-        args.source,
+        source_path,
         source_type=args.source_type,
         force=args.force,
         depth=args.depth,

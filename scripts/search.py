@@ -344,6 +344,45 @@ def _as_list(value) -> list[str]:
     return [str(value)]
 
 
+def _normalize_date(value) -> str:
+    """Normalize a frontmatter date to ``YYYY-MM-DD`` for date-based retrieval.
+
+    Accepts date/datetime objects, ISO strings, and ``YYYY/MM/DD`` or
+    ``YYYY-MM-DD`` prefixes. Returns ``""`` for missing/invalid values (including
+    out-of-range months/days like ``2024-13-45``) so the metadata index always
+    has a comparable string field.
+    """
+    import datetime as _dt
+    import re as _re
+
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return ""
+        m = _re.match(r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})", s)
+        if m:
+            y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            try:
+                _dt.date(y, mo, d)  # validates ranges
+            except ValueError:
+                return ""
+            return f"{y:04d}-{mo:02d}-{d:02d}"
+        m = _re.match(r"(\d{4})[-/](\d{1,2})", s)
+        if m:
+            y, mo = int(m.group(1)), int(m.group(2))
+            if 1 <= mo <= 12:
+                return f"{y:04d}-{mo:02d}"
+            return ""
+        return ""
+    # datetime.date / datetime.datetime
+    try:
+        return f"{value.year:04d}-{value.month:02d}-{value.day:02d}"
+    except AttributeError:
+        return ""
+
+
 def build_metadata_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
     """Build a page metadata index from frontmatter search fields."""
     items: list[dict] = []
@@ -360,6 +399,9 @@ def build_metadata_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
             "keywords": _as_list(fm.get("keywords")),
             "questions": _as_list(fm.get("questions")),
             "facts": fm.get("facts", {}),
+            # Date fields for date-based retrieval (compile creation / source publication).
+            "created_at": _normalize_date(fm.get("created_at")),
+            "published_at": _normalize_date(fm.get("published_at")),
         }
         # Build searchable text including facts
         facts_text = ""

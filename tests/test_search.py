@@ -7,6 +7,23 @@ from pathlib import Path
 import search
 
 
+def test_normalize_date_handles_formats_and_rejects_invalid():
+    import datetime as _dt
+
+    assert search._normalize_date("2024-01-15") == "2024-01-15"
+    assert search._normalize_date("2024/1/5") == "2024-01-05"
+    assert search._normalize_date("2024-12") == "2024-12"
+    assert search._normalize_date("2024-01-15T10:30:00") == "2024-01-15"
+    assert search._normalize_date(_dt.date(2024, 3, 9)) == "2024-03-09"
+    assert search._normalize_date(_dt.datetime(2024, 3, 9, 12, 0)) == "2024-03-09"
+    # Out-of-range / garbage → "" (no crash, no invalid date indexed).
+    assert search._normalize_date("2024-13-45") == ""
+    assert search._normalize_date("2024-00-00") == ""
+    assert search._normalize_date("") == ""
+    assert search._normalize_date(None) == ""
+    assert search._normalize_date("not a date") == ""
+
+
 class TestBM25Search:
     def test_returns_results_for_matching_query(self, wiki_dir, sample_entities):
         old = os.getcwd()

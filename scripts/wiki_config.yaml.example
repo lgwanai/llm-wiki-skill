@@ -82,6 +82,9 @@ ocr:
 # Optional image understanding for `wiki compile <image-or-directory>`.
 # When enabled, images are first analyzed by a VL/omni model; OCR can then
 # add dense text extraction for screenshots or document images.
+#
+# NOTE: This Python-side vision API is only used in `--mode llm`. The default
+# agent mode prefers the `vision_skill` below (an Agent-side Claude Code skill).
 image_analysis:
   enabled: false
   api_provider: ""         # siliconflow | openai | deepseek | paddleocr-vl
@@ -90,6 +93,15 @@ image_analysis:
   api_model: ""            # e.g. gpt-4o, qwen-vl, deepseek-vl, PaddleOCR-VL
   ocr_fallback: true
   ocr_min_chars: 800
+
+# vision-skill is the declared dependency for image-source compilation in the
+# default agent mode. Precedence: vision-skill → OCR → Agent's own capability.
+# Set scripts_path to the vision-skill project's scripts dir so the compile
+# task can emit a concrete `vision_cli.py recognize ...` command for the Agent.
+vision_skill:
+  enabled: true                                # set false to skip vision-skill and use OCR first
+  scripts_path: ""                             # dir containing vision_cli.py; empty = invoke skill by name only
+  recognize_format: markdown_note              # vision_cli --format preset (markdown_note | ocr | analysis | ...)
 
 # Optional embeddings for experiments/benchmarks. Not part of the default query path.
 embeddings:

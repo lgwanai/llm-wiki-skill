@@ -61,6 +61,11 @@ DEFAULT_CONFIG = {
         "ocr_fallback": True,
         "ocr_min_chars": 800,
     },
+    "vision_skill": {
+        "enabled": True,
+        "scripts_path": "",
+        "recognize_format": "markdown_note",
+    },
     "query": {
         "llm_synthesis": True,
         "synthesis_mode": "agent",
@@ -380,6 +385,24 @@ def get_image_analysis_config() -> dict:
         "api_prompt": image.get("api_prompt", image.get("prompt", "")),
         "ocr_fallback": image.get("ocr_fallback", True),
         "ocr_min_chars": image.get("ocr_min_chars", 800),
+    }
+
+
+def get_vision_skill_config() -> dict:
+    """Get the vision-skill dependency configuration for image sources.
+
+    Image files prefer the ``vision-skill`` (an Agent-side Claude Code skill)
+    for recognition. OCR is the fallback; the Agent's own image-parsing
+    capability is the last resort. ``scripts_path`` points at the vision-skill
+    CLI (``vision_cli.py``) so the compile task can emit a concrete command.
+    """
+    config = get_config()
+    vs = config.get("vision_skill", {})
+
+    return {
+        "enabled": vs.get("enabled", True),
+        "scripts_path": vs.get("scripts_path", ""),
+        "recognize_format": vs.get("recognize_format", "markdown_note"),
     }
 
 

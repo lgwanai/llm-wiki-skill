@@ -5,6 +5,8 @@ name: [Entity Name]
 status: [active|stale|superseded|archived]
 confidence: 0.0
 sources: []
+created_at: [YYYY-MM-DD]          # compile creation date — set automatically by compile
+published_at: ""                 # source content's own publication date (YYYY-MM-DD); omit if none
 last_confirmed: [YYYY-MM-DD]
 reinforcements: 0
 contradictions: []
