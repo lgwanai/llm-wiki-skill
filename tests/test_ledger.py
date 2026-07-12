@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -460,7 +458,7 @@ def test_update_schema_add_field(ledger_module):
 
     # Verify via DuckDB
     conn = ledger_module._get_conn()
-    cols = conn.execute(f"SELECT column_name FROM information_schema.columns WHERE table_name = ?",
+    cols = conn.execute("SELECT column_name FROM information_schema.columns WHERE table_name = ?",
                         [r["actual_name"]]).fetchall()
     col_names = [c[0] for c in cols]
     assert "备注" in col_names
@@ -476,7 +474,7 @@ def test_update_schema_remove_field(ledger_module):
     assert result["success"]
 
     conn = ledger_module._get_conn()
-    cols = conn.execute(f"SELECT column_name FROM information_schema.columns WHERE table_name = ?",
+    cols = conn.execute("SELECT column_name FROM information_schema.columns WHERE table_name = ?",
                         [r["actual_name"]]).fetchall()
     col_names = [c[0] for c in cols]
     assert "数量" not in col_names
@@ -491,7 +489,7 @@ def test_update_schema_rename_field(ledger_module):
     assert result["success"]
 
     conn = ledger_module._get_conn()
-    cols = conn.execute(f"SELECT column_name FROM information_schema.columns WHERE table_name = ?",
+    cols = conn.execute("SELECT column_name FROM information_schema.columns WHERE table_name = ?",
                         [r["actual_name"]]).fetchall()
     col_names = [c[0] for c in cols]
     assert "数量" not in col_names
@@ -634,6 +632,18 @@ def test_search_ledgers_reads_duckdb_rows(ledger_module):
     assert len(results) == 1
     assert results[0]["id"] == r["actual_name"]
     assert results[0]["preview"][0]["名称"] == "智能系统"
+
+
+def test_search_ledgers_reaches_rows_after_first_fifty(ledger_module):
+    """SQL-side search must not truncate recall to an early Python sample."""
+    r = _create_table(ledger_module, "完整召回台账")
+    for index in range(60):
+        name = "唯一深层记录" if index == 59 else f"普通记录{index}"
+        _insert(ledger_module, r["actual_name"], {"名称": name, "数量": index})
+
+    results = ledger_module.search_ledgers("唯一深层", limit=5)
+
+    assert results[0]["preview"][0]["名称"] == "唯一深层记录"
 
 
 def test_export_csv_from_duckdb(ledger_module, tmp_path):

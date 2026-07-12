@@ -63,7 +63,7 @@ def test_persist_page_tables_keeps_key_facts_and_replaces_other_tables(monkeypat
     assert "| Attribute | Value |" in rendered
     assert "| Quarter | Revenue |" not in rendered
     assert len(stored) == 1
-    assert f"[[table:{stored[0]}|📊 Quarter, Revenue]]" in rendered
+    assert f"[📊 Quarter, Revenue](table://{stored[0]})" in rendered
     assert calls[0][0] == "create"
     assert calls[1] == (
         "insert",

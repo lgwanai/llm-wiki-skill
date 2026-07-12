@@ -48,19 +48,10 @@ def _write_page(path: Path, frontmatter: dict, body: str) -> None:
 # ── page helpers ──────────────────────────────────────────────────────────────
 
 def find_page_path(page_id: str, pages_dir: Path) -> Path | None:
-    """Locate a page file by its ID in the pages directory tree."""
-    for subdir_name in ("concepts", "entities", "models", "techniques",
-                         "frameworks", "benchmarks", "papers", "decisions",
-                         "sessions", "patterns"):
-        subdir = pages_dir / subdir_name
-        if not subdir.is_dir():
-            continue
-        for f in subdir.iterdir():
-            if f.suffix != ".md":
-                continue
-            if f.stem == page_id or f.name == f"{page_id}.md":
-                return f
-    return None
+    """Locate a native OKF concept by Concept ID or unique stem."""
+    from okf import find_concept
+
+    return find_concept(pages_dir, page_id)
 
 
 def extract_paragraphs(body: str) -> list[str]:
@@ -138,8 +129,8 @@ def _mechanical_fallback_merge(
         return None
     merged = surv_body.rstrip() + "\n\n"
     merged += (
-        "<!-- merged from [[{}]] by dream auto-merge (mechanical) -->\n\n"
-        .format(dup_id)
+        f"<!-- merged from [[{dup_id}]] by dream auto-merge (mechanical) -->\n\n"
+
     )
     merged += "\n\n".join(new_paragraphs)
     return merged
@@ -240,8 +231,7 @@ def auto_enrich_pages(
 
     For each candidate page:
     1. Add dream_enrich frontmatter marker
-    2. Extract additional keywords from page body
-    3. Add basic aliases from page name
+    2. Extract additional OKF tags from page body
 
     Returns (enriched_count, modified_paths).
     """
@@ -261,17 +251,12 @@ def auto_enrich_pages(
         frontmatter, body = page
         frontmatter["dream_enrich"] = True
         frontmatter["dream_enrich_date"] = _now()
-        existing_keywords = set(as_list(frontmatter.get("keywords", [])))
+        existing_keywords = set(as_list(frontmatter.get("tags", [])))
         body_terms = extract_key_terms(body)
         new_keywords = body_terms - existing_keywords
         if new_keywords:
             all_keywords = list(existing_keywords) + list(new_keywords)
-            frontmatter["keywords"] = all_keywords[:24]
-        name = candidate.get("name", "")
-        aliases = set(as_list(frontmatter.get("aliases", [])))
-        if name and name not in aliases:
-            aliases.add(name)
-            frontmatter["aliases"] = sorted(aliases)
+            frontmatter["tags"] = all_keywords[:24]
         _write_page(path, frontmatter, body)
         modified.append(path)
         enriched += 1

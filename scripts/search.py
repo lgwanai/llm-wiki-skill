@@ -61,38 +61,43 @@ def _load_jieba_entities():
 
 
 # ── Module-level caches (invalidated when pages change) ──
-_cache_marker: tuple[int, float] | None = None
+_cache_marker: tuple[str, int, int, int] | None = None
 _entities_cache: dict | None = None
 _edges_cache: dict | list | None = None
 _bm25_index: dict | None = None
 _BM25_CACHE_FILE = WIKI_DIR / "graph" / ".bm25_index.json"
 _METADATA_CACHE_FILE = WIKI_DIR / "graph" / ".metadata_index.json"
+_BM25_CACHE_VERSION = 3
+_METADATA_CACHE_VERSION = 3
 
 
-def _pages_changed() -> bool:
-    """Check if any wiki page has been modified since last cache build."""
-    global _cache_marker
-    count = 0
-    latest_mtime = 0.0
-    for subdir in ('concepts', 'entities', 'models', 'techniques', 'frameworks',
-                   'benchmarks', 'papers', 'decisions', 'sessions', 'patterns'):
-        scan_dir = PAGES_DIR / subdir
-        if not scan_dir.is_dir():
+def _pages_signature(pages_dir: str | Path = PAGES_DIR) -> tuple[str, int, int, int]:
+    """Fingerprint every native OKF concept, including arbitrary nesting."""
+    root = Path(pages_dir).resolve()
+    pages = _known_page_paths(root)
+    latest_mtime_ns = 0
+    total_size = 0
+    for path in pages:
+        try:
+            stat = path.stat()
+        except OSError:
             continue
-        for f in scan_dir.iterdir():
-            if f.suffix == '.md':
-                count += 1
-                mtime = f.stat().st_mtime
-                if mtime > latest_mtime:
-                    latest_mtime = mtime
-    marker = (count, latest_mtime)
+        latest_mtime_ns = max(latest_mtime_ns, stat.st_mtime_ns)
+        total_size += stat.st_size
+    return (str(root), len(pages), latest_mtime_ns, total_size)
+
+
+def _pages_changed(pages_dir: str | Path = PAGES_DIR) -> bool:
+    """Return whether the complete OKF concept fingerprint changed."""
+    global _cache_marker
+    marker = _pages_signature(pages_dir)
     if _cache_marker != marker:
         _cache_marker = marker
         return True
     return False
 
 
-def _save_bm25_cache(idx: dict) -> None:
+def _save_bm25_cache(idx: dict, pages_dir: str | Path = PAGES_DIR) -> None:
     """Persist BM25 index to disk."""
     try:
         serializable = {}
@@ -101,27 +106,57 @@ def _save_bm25_cache(idx: dict) -> None:
                 "tokens": data["tokens"],
                 "freqs": dict(data["freqs"]),
                 "length": data["length"],
+                "fields": {
+                    name: {
+                        "freqs": dict(field["freqs"]),
+                        "length": field["length"],
+                    }
+                    for name, field in data.get("fields", {}).items()
+                },
             }
         _BM25_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
         _BM25_CACHE_FILE.write_text(
-            json.dumps(serializable, ensure_ascii=False), encoding="utf-8"
+            json.dumps(
+                {
+                    "version": _BM25_CACHE_VERSION,
+                    "root": str(Path(pages_dir).resolve()),
+                    "signature": list(_pages_signature(pages_dir)),
+                    "docs": serializable,
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
         )
     except OSError:
         pass
 
 
-def _load_bm25_cache() -> dict | None:
+def _load_bm25_cache(pages_dir: str | Path = PAGES_DIR) -> dict | None:
     """Load BM25 index from disk if pages haven't changed."""
-    if _pages_changed() or not _BM25_CACHE_FILE.exists():
+    if not _BM25_CACHE_FILE.exists():
         return None
     try:
-        data = json.loads(_BM25_CACHE_FILE.read_text(encoding="utf-8"))
+        payload = json.loads(_BM25_CACHE_FILE.read_text(encoding="utf-8"))
+        if payload.get("version") != _BM25_CACHE_VERSION:
+            return None
+        if payload.get("root") != str(Path(pages_dir).resolve()):
+            return None
+        if payload.get("signature") != list(_pages_signature(pages_dir)):
+            return None
+        data = payload.get("docs", {})
         result = {}
         for path, d in data.items():
             result[path] = {
                 "tokens": d["tokens"],
                 "freqs": Counter(d["freqs"]),
                 "length": d["length"],
+                "fields": {
+                    name: {
+                        "freqs": Counter(field.get("freqs", {})),
+                        "length": int(field.get("length", 0)),
+                    }
+                    for name, field in d.get("fields", {}).items()
+                },
             }
         return result
     except (json.JSONDecodeError, OSError, KeyError):
@@ -206,33 +241,18 @@ def _read_page_parts(filepath: str) -> tuple[dict, str]:
 
 
 def _page_path_for_id(page_id: str, pages_dir: str | Path = PAGES_DIR) -> str:
-    """Find a wiki page path by page id across known page directories."""
-    base = Path(pages_dir)
-    for subdir in ('concepts', 'entities', 'models', 'techniques', 'frameworks',
-                   'benchmarks', 'papers', 'decisions', 'sessions', 'patterns'):
-        path = base / subdir / f"{page_id}.md"
-        if path.exists():
-            return str(path)
-    return ""
+    """Resolve an OKF Concept ID or unique filename stem."""
+    from okf import find_concept
+
+    path = find_concept(pages_dir, page_id)
+    return str(path) if path else ""
 
 
 def _known_page_paths(pages_dir: str | Path = PAGES_DIR) -> list[Path]:
-    """Return all known wiki page paths."""
-    base = Path(pages_dir)
-    paths: list[Path] = []
-    for subdir in ('concepts', 'entities', 'models', 'techniques', 'frameworks',
-                   'benchmarks', 'papers', 'decisions', 'sessions', 'patterns'):
-        scan_dir = base / subdir
-        if scan_dir.is_dir():
-            paths.extend(sorted(scan_dir.glob("*.md")))
-    okf_dir = base / "okf"
-    if okf_dir.is_dir():
-        paths.extend(
-            path
-            for path in sorted(okf_dir.rglob("*.md"))
-            if path.name not in {"index.md", "log.md"}
-        )
-    return paths
+    """Return all concept documents in the native OKF bundle."""
+    from okf import iter_concepts
+
+    return iter_concepts(pages_dir)
 
 
 def _tokenize(text: str) -> list[str]:
@@ -269,35 +289,53 @@ def _stem(word: str) -> str:
 # ═══════════════════════════════════════════════════════════════════════════
 
 def bm25_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
-    """BM25 keyword search with stemming over wiki pages. Uses index cache."""
+    """Field-weighted BM25F search over native OKF concepts."""
     global _bm25_index
     k1, b = 1.5, 0.75
     query_terms = [_stem(t) for t in _tokenize(query)]
     if not query_terms:
         return []
 
+    if _pages_changed(pages_dir):
+        _bm25_index = None
     if _bm25_index is None:
-        _bm25_index = _load_bm25_cache()
+        _bm25_index = _load_bm25_cache(pages_dir)
     if _bm25_index is None:
         _bm25_index = {}
-        for subdir in ('concepts', 'entities', 'models', 'techniques', 'frameworks',
-                       'benchmarks', 'papers', 'decisions', 'sessions', 'patterns'):
-            scan_dir = os.path.join(pages_dir, subdir)
-            if not os.path.isdir(scan_dir):
-                continue
-            for filename in os.listdir(scan_dir):
-                if not filename.endswith('.md'):
-                    continue
-                filepath = os.path.join(scan_dir, filename)
-                content = _read_page_content(filepath)
-                tokens = [_stem(t) for t in _tokenize(content)]
-                if tokens:
-                    _bm25_index[filepath] = {
-                        "tokens": tokens,
-                        "freqs": Counter(tokens),
-                        "length": len(tokens),
-                    }
-        _save_bm25_cache(_bm25_index)
+        root = Path(pages_dir)
+        for path in _known_page_paths(root):
+            fm, body = _read_page_parts(str(path))
+            headings = " ".join(re.findall(r"^#{1,6}\s+(.+)$", body, re.MULTILINE))
+            facts = " ".join(
+                re.findall(
+                    r"^##\s+(?:Key Facts|关键事实).*?(?=^##\s+|\Z)",
+                    body,
+                    re.MULTILINE | re.DOTALL,
+                )
+            )
+            field_texts = {
+                "concept_id": path.relative_to(root).with_suffix("").as_posix(),
+                "title": str(fm.get("title", path.stem)),
+                "tags": " ".join(_as_list(fm.get("tags"))),
+                "description": str(fm.get("description", "")),
+                "facts": facts,
+                "headings": headings,
+                "body": body,
+            }
+            fields: dict[str, dict] = {}
+            all_tokens: list[str] = []
+            for name, text in field_texts.items():
+                tokens = [_stem(t) for t in _tokenize(text)]
+                fields[name] = {"freqs": Counter(tokens), "length": len(tokens)}
+                all_tokens.extend(tokens)
+            if all_tokens:
+                _bm25_index[str(path)] = {
+                    "tokens": all_tokens,
+                    "freqs": Counter(all_tokens),
+                    "length": len(all_tokens),
+                    "fields": fields,
+                }
+        _save_bm25_cache(_bm25_index, pages_dir)
 
     if not _bm25_index:
         return []
@@ -310,12 +348,29 @@ def bm25_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
     for idx in _bm25_index.values():
         doc_freq.update(set(idx["freqs"].keys()))
 
+    field_weights = {
+        "concept_id": 3.0,
+        "title": 4.0,
+        "tags": 3.0,
+        "description": 2.5,
+        "facts": 2.5,
+        "headings": 1.5,
+        "body": 1.0,
+    }
     scores: list[tuple[str, float]] = []
     for path, idx in _bm25_index.items():
         score = 0.0
         dl = idx["length"]
         for term in query_terms:
-            f = idx["freqs"].get(term, 0)
+            fields = idx.get("fields", {})
+            f = (
+                sum(
+                    field_weights.get(name, 1.0) * field["freqs"].get(term, 0)
+                    for name, field in fields.items()
+                )
+                if fields
+                else idx["freqs"].get(term, 0)
+            )
             if f == 0:
                 continue
             df = doc_freq.get(term, 0)
@@ -327,9 +382,10 @@ def bm25_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
     scores.sort(key=lambda x: -x[1])
     results = []
     for path, score in scores[:limit]:
-        filename = os.path.basename(path)
+        from okf import concept_id
+
         results.append({
-            'file': os.path.splitext(filename)[0],
+            'file': concept_id(path, pages_dir),
             'path': path,
             'score': round(score, 3),
             'stream': 'bm25',
@@ -396,19 +452,21 @@ def build_metadata_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
     for path in _known_page_paths(pages_dir):
         fm, body = _read_page_parts(str(path))
         title_match = re.search(r"^#\s+(.+)$", body, flags=re.MULTILINE)
-        title = title_match.group(1).strip() if title_match else fm.get("name", path.stem)
+        title = title_match.group(1).strip() if title_match else fm.get("title", path.stem)
+        from okf import concept_id
+
         fields = {
-            "id": fm.get("id", path.stem),
-            "name": fm.get("name", title),
+            "id": concept_id(path, pages_dir),
+            "name": fm.get("title", title),
             "type": fm.get("type", ""),
-            "summary": fm.get("summary", ""),
-            "aliases": _as_list(fm.get("aliases")),
-            "keywords": _as_list(fm.get("keywords")),
+            "summary": fm.get("description", ""),
+            "aliases": [],
+            "keywords": _as_list(fm.get("tags")),
             "questions": _as_list(fm.get("questions")),
             "facts": fm.get("facts", {}),
             # Date fields for date-based retrieval (compile creation / source publication).
-            "created_at": _normalize_date(fm.get("created_at")),
-            "published_at": _normalize_date(fm.get("published_at")),
+            "created_at": _normalize_date(fm.get("timestamp")),
+            "published_at": _normalize_date(fm.get("timestamp")),
         }
         # Build searchable text including facts
         facts_text = ""
@@ -429,10 +487,11 @@ def build_metadata_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
             title,
         ])
         items.append({
-            "page_id": path.stem,
+            "page_id": fields["id"],
             "path": str(path),
             "title": title,
             "searchable": searchable,
+            "tokens": [_stem(t) for t in _tokenize(searchable)],
             **fields,
         })
     return items
@@ -440,21 +499,40 @@ def build_metadata_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
 
 def _load_metadata_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
     """Load or rebuild the disk-backed metadata index."""
-    if _pages_changed() or not _METADATA_CACHE_FILE.exists():
-        items = build_metadata_index(pages_dir)
+    root = str(Path(pages_dir).resolve())
+    changed = _pages_changed(pages_dir)
+    if not changed and _METADATA_CACHE_FILE.exists():
         try:
-            _METADATA_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            _METADATA_CACHE_FILE.write_text(
-                json.dumps(items, ensure_ascii=False), encoding="utf-8"
+            data = json.loads(_METADATA_CACHE_FILE.read_text(encoding="utf-8"))
+            valid = (
+                data.get("version") == _METADATA_CACHE_VERSION
+                and data.get("root") == root
+                and data.get("signature") == list(_pages_signature(pages_dir))
+                and isinstance(data.get("items"), list)
             )
-        except OSError:
+            if valid:
+                return data["items"]
+        except (json.JSONDecodeError, OSError):
             pass
-        return items
+
+    items = build_metadata_index(pages_dir)
     try:
-        data = json.loads(_METADATA_CACHE_FILE.read_text(encoding="utf-8"))
-        return data if isinstance(data, list) else []
-    except (json.JSONDecodeError, OSError):
-        return build_metadata_index(pages_dir)
+        _METADATA_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _METADATA_CACHE_FILE.write_text(
+            json.dumps(
+                {
+                    "version": _METADATA_CACHE_VERSION,
+                    "root": root,
+                    "signature": list(_pages_signature(pages_dir)),
+                    "items": items,
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+    return items
 
 
 def metadata_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
@@ -467,7 +545,7 @@ def metadata_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
     scored: list[tuple[dict, float]] = []
     for item in items:
         searchable = item.get("searchable", "")
-        tokens = [_stem(t) for t in _tokenize(searchable)]
+        tokens = item.get("tokens") or [_stem(t) for t in _tokenize(searchable)]
         if not tokens:
             continue
         freqs = Counter(tokens)
@@ -478,6 +556,8 @@ def metadata_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
                 exact_bonus += 2.0
         if any(query_lower == alias.lower() for alias in item.get("aliases", [])):
             exact_bonus += 4.0
+        if any(query_lower == tag.lower() for tag in item.get("keywords", [])):
+            exact_bonus += 3.0
         score = exact_bonus
         for term in query_terms:
             score += freqs.get(term, 0)
@@ -678,9 +758,12 @@ def graph_search(query: str, graph_dir: str, limit: int = 10) -> list[dict]:
 # Reciprocal Rank Fusion
 # ═══════════════════════════════════════════════════════════════════════════
 
-def reciprocal_rank_fusion(results: list[list[dict]], k: int = 60) -> list[dict]:
-    """Fuse multiple search result lists using Reciprocal Rank Fusion."""
+def reciprocal_rank_fusion(
+    results: list[list[dict]], k: int = 60, weights: dict[str, float] | None = None
+) -> list[dict]:
+    """Fuse result lists using weighted Reciprocal Rank Fusion."""
     fused: dict[str, dict] = {}
+    weights = weights or {}
 
     for result_list in results:
         for rank, item in enumerate(result_list, start=1):
@@ -694,7 +777,7 @@ def reciprocal_rank_fusion(results: list[list[dict]], k: int = 60) -> list[dict]
                 fused[key]['stream_scores'] = {}
             else:
                 fused[key]['streams'].add(stream)
-            fused[key]['rrf_score'] += 1.0 / (k + rank)
+            fused[key]['rrf_score'] += weights.get(stream, 1.0) / (k + rank)
             ranks = fused[key].setdefault('stream_ranks', {})
             scores = fused[key].setdefault('stream_scores', {})
             ranks[stream] = min(rank, int(ranks.get(stream, rank)))
@@ -881,19 +964,16 @@ def table_search(query: str, wiki_dir: str, limit: int = 10) -> list[dict]:
 def search_doctor(wiki_dir: str | Path = WIKI_DIR) -> dict:
     """Return retrieval index health diagnostics."""
     wiki = Path(wiki_dir)
-    pages = []
-    for subdir in ('concepts', 'entities', 'models', 'techniques', 'frameworks',
-                   'benchmarks', 'papers', 'decisions', 'sessions', 'patterns'):
-        d = wiki / "pages" / subdir
-        if d.exists():
-            pages.extend(d.glob("*.md"))
+    from okf import concept_id, iter_concepts, validate_bundle
+
+    pages = iter_concepts(wiki / "pages")
 
     metadata_items = build_metadata_index(wiki / "pages")
     entities = _load_json_safe(str(wiki / "graph" / "entities.json"), {})
     edges_data = _load_json_safe(str(wiki / "graph" / "edges.json"), {"edges": []})
     edges = edges_data.get("edges", []) if isinstance(edges_data, dict) else []
 
-    page_ids = {p.stem for p in pages}
+    page_ids = {concept_id(path, wiki / "pages") for path in pages}
     graph_ids = set(entities.keys()) if isinstance(entities, dict) else set()
 
     issues = []
@@ -912,6 +992,7 @@ def search_doctor(wiki_dir: str | Path = WIKI_DIR) -> dict:
         "edges": len(edges),
         "orphan_graph_entities": orphan_graph_ids[:20],
         "issues": issues,
+        "okf": validate_bundle(wiki / "pages"),
         "healthy": not issues,
     }
 

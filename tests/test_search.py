@@ -158,17 +158,13 @@ class TestMetadataSearch:
         page = page_dir / "order-approval-flow.md"
         page.write_text(
             """---
-id: order-approval-flow
 type: concept
-name: Order Approval Flow
-summary: Budget approval process with director threshold.
-aliases:
+title: Order Approval Flow
+description: Budget approval process with director threshold and OAF abbreviation.
+tags:
   - OAF
   - 订单审批
-keywords:
   - budget threshold
-questions:
-  - When is director approval required?
 ---
 
 # Order Approval Flow
@@ -185,15 +181,49 @@ questions:
         results = search.metadata_search("OAF", str(wiki / "pages"), limit=5)
 
         assert results
-        assert results[0]["file"] == "order-approval-flow"
+        assert results[0]["file"] == "concepts/order-approval-flow"
         assert results[0]["path"] == str(page)
-        assert "OAF" in results[0]["aliases"]
+        assert "OAF" in results[0]["keywords"]
+
+    def test_nested_okf_change_invalidates_bm25_and_metadata_caches(
+        self, tmp_path, monkeypatch
+    ):
+        wiki = tmp_path / ".wiki"
+        pages = wiki / "pages"
+        first = pages / "concepts" / "first.md"
+        first.parent.mkdir(parents=True)
+        first.write_text(
+            "---\ntype: Concept\ntitle: First\n---\n# First\n\nalpha",
+            encoding="utf-8",
+        )
+        graph = wiki / "graph"
+        monkeypatch.setattr(search, "_BM25_CACHE_FILE", graph / ".bm25_index.json")
+        monkeypatch.setattr(search, "_METADATA_CACHE_FILE", graph / ".metadata_index.json")
+        monkeypatch.setattr(search, "_cache_marker", None)
+        monkeypatch.setattr(search, "_bm25_index", None)
+
+        assert search.bm25_search("alpha", str(pages))
+        assert search.metadata_search("First", str(pages))
+
+        nested = pages / "legal" / "regional" / "second.md"
+        nested.parent.mkdir(parents=True)
+        nested.write_text(
+            "---\ntype: Regulation\ntitle: Zephyr Rule\n---\n# Zephyr Rule\n\nquasar",
+            encoding="utf-8",
+        )
+
+        assert search.bm25_search("quasar", str(pages))[0]["file"] == "legal/regional/second"
+        assert search.metadata_search("Zephyr Rule", str(pages))[0]["file"] == (
+            "legal/regional/second"
+        )
 
     def test_search_doctor_reports_metadata_items(self, tmp_path, monkeypatch):
         wiki = tmp_path / ".wiki"
         page_dir = wiki / "pages" / "concepts"
         page_dir.mkdir(parents=True)
-        (page_dir / "x.md").write_text("---\nid: x\n---\n# X\n\nBody", encoding="utf-8")
+        (page_dir / "x.md").write_text(
+            "---\ntype: Reference\ntitle: X\n---\n# X\n\nBody", encoding="utf-8"
+        )
         (wiki / "graph").mkdir(parents=True)
         (wiki / "graph" / "entities.json").write_text("{}", encoding="utf-8")
         (wiki / "graph" / "edges.json").write_text('{"edges":[]}', encoding="utf-8")
@@ -239,7 +269,13 @@ class TestEvalRetrieval:
         (wiki / "graph" / "edges.json").write_text('{"edges":[]}', encoding="utf-8")
         eval_file = tmp_path / "retrieval.jsonl"
         eval_file.write_text(
-            json.dumps({"query": "threshold 10000", "expected_pages": ["approval-flow"]}) + "\n",
+            json.dumps(
+                {
+                    "query": "threshold 10000",
+                    "expected_pages": ["concepts/approval-flow"],
+                }
+            )
+            + "\n",
             encoding="utf-8",
         )
         monkeypatch.setattr(search, "WIKI_DIR", wiki)

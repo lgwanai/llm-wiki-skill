@@ -71,11 +71,27 @@ DEFAULT_CONFIG = {
         "synthesis_mode": "agent",
         "default_format": "markdown",
         "max_results": 5,
+        "parallel_search": True,
         "search_streams": "metadata,bm25,graph,ledger",
         "llm_query_expansion": False,
+        "verify_answers": True,
     },
     "compile": {
         "mode": "agent",
+    },
+    "embeddings": {
+        "enabled": False,
+        "backend": "zvec",
+        "model_source": "modelscope",
+        "dimension": None,
+        "index_path": "graph/zvec",
+        "optimize": True,
+    },
+    "reranker": {
+        "enabled": False,
+        "backend": "flagembedding",
+        "model": "BAAI/bge-reranker-v2-m3",
+        "candidate_count": 20,
     },
     "logging": {
         "level": "INFO",
@@ -350,6 +366,16 @@ def get_query_config() -> dict:
     })
 
 
+def get_embeddings_config() -> dict:
+    """Get optional semantic-index configuration."""
+    return get_config().get("embeddings", {}) or {}
+
+
+def get_reranker_config() -> dict:
+    """Get optional cross-encoder reranker configuration."""
+    return get_config().get("reranker", {}) or {}
+
+
 def get_ocr_config() -> dict:
     """Get unified OCR configuration."""
     config = get_config()
@@ -475,6 +501,9 @@ def validate_config(config: dict) -> list[str]:
     if isinstance(query, dict):
         _v.check_type("query.max_results", query.get("max_results"), int, "query")
         _v.check_positive("query.max_results", query.get("max_results"), "query")
+        _v.check_type(
+            "query.parallel_search", query.get("parallel_search", True), bool, "query"
+        )
         streams = query.get("search_streams", "")
         if isinstance(streams, str) and streams not in ("all", "*"):
             for s in streams.split(","):
@@ -482,6 +511,22 @@ def validate_config(config: dict) -> list[str]:
                 if s and s not in _VALID_SEARCH_STREAMS:
                     issues.append(f"query.search_streams: unknown stream '{s}' "
                                   f"(valid: {', '.join(sorted(_VALID_SEARCH_STREAMS))})")
+
+    embeddings = config.get("embeddings", {})
+    if isinstance(embeddings, dict):
+        _v.check_type("embeddings.enabled", embeddings.get("enabled", False), bool, "embeddings")
+        _v.check_enum("embeddings.backend", embeddings.get("backend"), ("zvec",), "embeddings")
+        _v.check_positive("embeddings.dimension", embeddings.get("dimension"), "embeddings")
+
+    reranker = config.get("reranker", {})
+    if isinstance(reranker, dict):
+        _v.check_type("reranker.enabled", reranker.get("enabled", False), bool, "reranker")
+        _v.check_enum(
+            "reranker.backend", reranker.get("backend"), ("flagembedding",), "reranker"
+        )
+        _v.check_positive(
+            "reranker.candidate_count", reranker.get("candidate_count", 20), "reranker"
+        )
 
     # ── OCR ──
     ocr = config.get("ocr", {})

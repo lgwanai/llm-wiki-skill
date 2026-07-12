@@ -2,7 +2,7 @@
 
 The compiler keeps the page's Key Facts table in Markdown because the retrieval
 pipeline reads it directly. Other GitHub-flavored Markdown tables are persisted
-to DuckDB and replaced with a navigable ``[[table:<name>|...]]`` link.
+to DuckDB and replaced with a standard Markdown ``table://`` resource link.
 """
 
 from __future__ import annotations
@@ -138,7 +138,7 @@ def table_link(name: str, headers: list[str]) -> str:
     label = ", ".join(headers[:3]) or name
     if len(headers) > 3:
         label += ", ..."
-    return f"[[table:{name}|📊 {label}]]"
+    return f"[📊 {label}](table://{name})"
 
 
 def persist_page_tables(content: str, source_name: str, page_id: str) -> tuple[str, list[str]]:

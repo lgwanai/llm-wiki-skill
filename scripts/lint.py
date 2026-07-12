@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
 """lint.py — Wiki Quality Linter for llm-wiki."""
 
 import argparse
 import json
 import math
 import os
-import sys
-from pathlib import Path
 import re
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from config import get_wiki_dir
@@ -121,33 +122,33 @@ def find_stale_claims() -> list[dict]:
 
 
 def find_broken_links() -> list[dict]:
-    """Find wikilinks pointing to nonexistent pages or entities."""
-    entities_data = _load_json(_get_entities_file())
-    valid_ids = set(entities_data.keys()) if isinstance(entities_data, dict) else set()
+    """Report unresolved OKF links as non-fatal maintenance findings."""
+    from okf import find_concept, iter_concepts
 
     broken = []
-    for subdir in ('entities', 'decisions', 'sessions', 'patterns'):
-        scan_dir = os.path.join(_get_pages_dir(), subdir)
-        if not os.path.isdir(scan_dir):
+    pages_dir = _get_pages_dir()
+    for path in iter_concepts(pages_dir):
+        try:
+            content = path.read_text(encoding="utf-8")
+        except OSError:
             continue
-        for filename in os.listdir(scan_dir):
-            if not filename.endswith('.md'):
+        for match in re.finditer(r"\[[^\]]+\]\(([^)]+\.md)(?:#[^)]+)?\)", content):
+            target = match.group(1)
+            if target.startswith(("http://", "https://")):
                 continue
-            filepath = os.path.join(scan_dir, filename)
-            try:
-                with open(filepath, encoding='utf-8') as f:
-                    content = f.read()
-            except OSError:
-                continue
-            for match in re.finditer(r'\[\[([^\]]+)\]\]', content):
-                target = match.group(1)
-                target_slug = target.split('|')[0].strip()
-                if target_slug and target_slug not in valid_ids:
-                    broken.append({
-                        'file': filepath,
-                        'target': target_slug,
-                        'line': content[:match.start()].count('\n') + 1,
-                    })
+            if target.startswith("/"):
+                resolved = find_concept(pages_dir, target)
+            else:
+                candidate = (path.parent / target).resolve()
+                resolved = candidate if candidate.exists() else None
+            if resolved is None:
+                broken.append(
+                    {
+                        "file": str(path),
+                        "target": target,
+                        "line": content[: match.start()].count("\n") + 1,
+                    }
+                )
     return broken
 
 

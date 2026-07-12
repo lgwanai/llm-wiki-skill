@@ -20,7 +20,7 @@ Usage:
     wiki lint --auto-heal
     wiki config
     wiki init
-    
+
 Environment Variables:
     LLM_WIKI_DIR     Override wiki directory path
     LLM_WIKI_CONFIG  Override config file path
@@ -211,8 +211,10 @@ def cmd_status() -> dict:
     wiki_dir = get_wiki_dir()
     pages_dir = wiki_dir / "pages"
     graph_dir = wiki_dir / "graph"
-    concepts = list((pages_dir / "concepts").glob("*.md")) if (pages_dir / "concepts").exists() else []
-    entities = list((pages_dir / "entities").glob("*.md")) if (pages_dir / "entities").exists() else []
+    from okf import iter_concepts, validate_bundle
+
+    concept_files = iter_concepts(pages_dir)
+    okf_report = validate_bundle(pages_dir)
 
     graph_file = graph_dir / "entities.json"
     entities_count = 0
@@ -230,9 +232,7 @@ def cmd_status() -> dict:
 
     return {
         "pages": {
-            "concepts": len(concepts),
-            "entities": len(entities),
-            "total": len(concepts) + len(entities),
+            "total": len(concept_files),
         },
         "graph": {
             "entities": entities_count,
@@ -240,9 +240,10 @@ def cmd_status() -> dict:
         },
         "files": {
             "index": (pages_dir / "index.md").exists(),
-            "log": (wiki_dir / "log.md").exists(),
+            "log": (pages_dir / "log.md").exists(),
             "audit": (wiki_dir / "audit.json").exists(),
-        }
+        },
+        "okf": okf_report,
     }
 
 
@@ -270,7 +271,11 @@ def cmd_init() -> dict:
 
     index_file = pages_dir / "index.md"
     if not index_file.exists():
-        index_file.write_text("# Wiki Index\n\nWelcome to your knowledge base.\n")
+        index_file.write_text(
+            '---\nokf_version: "0.1"\n---\n# Wiki Index\n\n'
+            "Welcome to your OKF knowledge bundle.\n",
+            encoding="utf-8",
+        )
 
     schema_src = Path(__file__).parent.parent / "templates" / "schema.md"
     schema_dest = wiki_dir / "schema.md"
@@ -278,11 +283,14 @@ def cmd_init() -> dict:
         import shutil
         shutil.copy2(schema_src, schema_dest)
 
-    log_file = wiki_dir / "log.md"
+    log_file = pages_dir / "log.md"
     if not log_file.exists():
         from datetime import datetime, timezone
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-        log_file.write_text(f"# Wiki Log\n\nChronological record of all wiki operations.\n\n## [{now}] init | wiki initialized\n")
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        log_file.write_text(
+            f"# Wiki Log\n\n## {now}\n* **Initialization**: Wiki initialized.\n",
+            encoding="utf-8",
+        )
 
     return {"success": True, "created": len(dirs), "wiki_dir": str(wiki_dir)}
 
@@ -343,7 +351,7 @@ Environment:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    init_parser = subparsers.add_parser("init", help="Initialize wiki structure")
+    subparsers.add_parser("init", help="Initialize wiki structure")
 
     config_parser = subparsers.add_parser("config", help="Show or create configuration")
     config_parser.add_argument("--init", action="store_true", help="Create default config file")
@@ -432,6 +440,8 @@ Environment:
     okf_export = okf_sub.add_parser("export", help="Export wiki as an OKF bundle")
     okf_export.add_argument("destination")
     okf_export.add_argument("--force", action="store_true")
+    okf_migrate = okf_sub.add_parser("migrate", help="Migrate legacy pages to native OKF")
+    okf_migrate.add_argument("bundle", nargs="?", default=None)
 
     bulk_parser = subparsers.add_parser("bulk", help="Bulk operations")
     bulk_sub = bulk_parser.add_subparsers(dest="bulk_cmd", required=True)
@@ -624,8 +634,10 @@ Environment:
         okf_args = [args.okf_cmd]
         if args.okf_cmd in {"validate", "import"}:
             okf_args.append(args.bundle)
-        else:
+        elif args.okf_cmd == "export":
             okf_args.append(args.destination)
+        elif args.bundle:
+            okf_args.append(args.bundle)
         if getattr(args, "force", False):
             okf_args.append("--force")
         code, output = run_script("okf.py", okf_args)

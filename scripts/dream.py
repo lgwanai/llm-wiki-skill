@@ -26,7 +26,6 @@ import yaml
 from _dream_auto import (
     auto_enrich_pages,
     auto_merge_duplicates,
-    find_page_path,
 )
 from _experience import Experience, ExperienceStore
 from _quality import (
@@ -308,7 +307,7 @@ def phase_light_sleep() -> list[dict]:
         item["_density"] = _page_density(body)
 
         added = _append_unique(frontmatter, "questions", [item["examples"][0], item["query"]], 12)
-        added += _append_unique(frontmatter, "keywords", _terms(item["query"]), 24)
+        added += _append_unique(frontmatter, "tags", _terms(item["query"]), 24)
         fact = f"Dream observed query intent '{item['query']}' {item['count']} time(s)"
         added += _append_unique(frontmatter, "facts", [fact], 16)
         frontmatter["dream_last_touched"] = _now()
@@ -735,7 +734,7 @@ def phase_enrich(
     1. Identify enrichment targets
     2. Create git snapshot of target pages
     3. Run baseline quality queries
-    4. Enrich page metadata (keywords, aliases) mechanically
+    4. Enrich OKF tags mechanically
     5. Run post-modification quality queries
     6. Compute QualityReport → keep / warn / rollback
     7. Record experience if rollback or warning
@@ -815,8 +814,8 @@ def phase_enrich(
 
 For each candidate below:
 1. Search the web for supplementary information about the topic.
-2. Compile findings with `wiki compile` — use `confidence: low` and
-   `source: web-research` in frontmatter.
+2. Compile findings with `wiki compile` — use `status: draft` and
+   `provenance: web-research` as OKF extension fields.
 3. Do NOT modify existing pages — write NEW draft pages instead.
 
 {chr(10).join(task_blocks)}

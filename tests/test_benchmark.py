@@ -19,20 +19,33 @@ def test_retrieval_metrics_hit(monkeypatch):
             {"id": "page-b", "path": "y", "score": 0.5},
         ],
     )
-    cases = [{"query": "q", "expected_pages": ["page-b"]}]
+    cases = [
+        {
+            "query": "q",
+            "expected_pages": ["page-b"],
+            "forbidden_pages": ["page-z"],
+            "scenario": "exact",
+        }
+    ]
 
     result = benchmark.run_retrieval_benchmark(cases, k=2)
 
     assert result["metrics"]["hit_rate_at_k"] == 1.0
     assert result["metrics"]["recall_at_k"] == 1.0
     assert result["metrics"]["mrr_at_k"] == 0.5
+    assert result["metrics"]["complete_recall_rate"] == 1.0
+    assert result["metrics"]["forbidden_leakage_rate"] == 0.0
+    assert result["metrics"]["latency_p95_ms"] >= 0
+    assert result["scenario_metrics"]["exact"]["hit_rate"] == 1.0
 
 
 def test_ragas_lite_metrics(monkeypatch):
     monkeypatch.setattr(
         benchmark,
         "search_wiki",
-        lambda query, limit=5: [{"id": "page-a", "path": "x", "text": "Budget threshold is 10000."}],
+        lambda query, limit=5: [
+            {"id": "page-a", "path": "x", "text": "Budget threshold is 10000."}
+        ],
     )
     monkeypatch.setattr(
         benchmark,

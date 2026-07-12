@@ -11,7 +11,7 @@
   <img src="docs/benchmark_chart.png" alt="RAGAS Benchmark: llm-wiki vs Industry" width="100%">
 </p>
 
-> **Faithfulness 1.00** · **Answer Relevance 1.00** · **Answer Correctness 0.91** · **Context Recall 0.94**. Wiki-native pipeline (compile → search → synthesize). No embeddings, no chunks, no cross-encoders. [Full benchmark →](docs/BENCHMARK.md)
+> **Faithfulness 1.00** · **Answer Relevance 1.00** · **Answer Correctness 0.91** · **Context Recall 0.94**. Wiki-native pipeline (compile → search → synthesize). The default path needs no embedding model; Zvec and cross-encoder reranking are optional high-recall layers. [Full benchmark →](docs/BENCHMARK.md)
 
 ---
 
@@ -56,7 +56,8 @@ Compiling deepseek-v4.md (262,658 chars)...
 $ wiki query "How does DeepSeek-V4 reduce inference memory?"
 **Answer**: Uses Multi-head Latent Attention (MLA) to compress KV-cache 8x and
 DeepSeekMoE with 256 experts (8 active per token), achieving 37B active params.
-**Sources**: [[multi-head-latent-attention]], [[deepseek-moe]]
+**Sources**: [Multi-head Latent Attention](/concepts/multi-head-latent-attention.md),
+[DeepSeekMoE](/concepts/deepseek-moe.md)
 ```
 
 ## Install as Claude Code Skill
@@ -83,15 +84,55 @@ wiki init
 
 ## Search Performance
 
-llm-wiki's wiki-native architecture delivers sub-50ms search latency — no embedding calls, no vector DB round-trips:
+llm-wiki keeps a fast lexical/graph baseline with no embedding calls or remote vector DB round-trips. Optional local Zvec retrieval and reranking trade extra latency for semantic recall:
 
 | Pipeline | Search Latency | Components |
 |----------|---------------|------------|
-| **llm-wiki** | **~41ms avg** | BM25 + metadata + graph (in-process) |
+| **llm-wiki baseline** | **~41ms avg*** | BM25F + metadata + graph + DuckDB (in-process) |
+| **llm-wiki semantic** | machine/model dependent | Baseline + embedded Zvec HNSW + optional reranker |
 | RAG (chunk+embed) | 200–500ms | Embedding API + vector DB |
 | GraphRAG | 500ms–2s | Community detection + LLM summarization |
 
-> ⚡ **41ms search latency** — 5–50× faster than embedding-based RAG. Compiled once, queried instantly. [Full benchmark →](docs/BENCHMARK.md)
+> \*The historical 41ms result is retained as a baseline, not a guarantee. Run the included benchmark on your own wiki; it now reports P50/P95 latency alongside recall and leakage metrics.
+
+### Retrieval completeness and accuracy
+
+Query uses field-weighted BM25F over Concept ID, title, tags, description, key facts,
+headings, and body. Metadata, BM25F, graph, ledger, and optional vector results are
+combined with intent-aware weighted reciprocal-rank fusion. Each stream over-fetches
+candidates before scope/status filtering, so filtering does not silently starve the
+final result count. Long concepts remain intact in OKF storage; only the most relevant
+sections are selected when assembling answer evidence.
+
+DuckDB ledger matching executes over all declared columns and all rows instead of a
+fixed Python sample. Independent graph, ledger, and vector streams run concurrently.
+Search indexes are content-aware and invalidate when any nested OKF concept changes.
+
+Optional local semantic retrieval and reranking:
+
+```yaml
+query:
+  max_results: 8
+  parallel_search: true
+  search_streams: metadata,bm25,graph,ledger,vector
+  verify_answers: true
+
+embeddings:
+  enabled: true
+  backend: zvec
+  model_source: modelscope
+  index_path: graph/zvec
+
+reranker:
+  enabled: false
+  backend: flagembedding
+  model: BAAI/bge-reranker-v2-m3
+  candidate_count: 20
+```
+
+Install only the optional layer you use: `pip install -e '.[vector]'` or
+`pip install -e '.[rerank]'`. If it is disabled or unavailable, query falls back to
+the native retrieval path.
 
 ## Self-Looping Maintenance & Doctor
 
@@ -139,34 +180,38 @@ conditions. Academic documents retain definitions, formulas, assumptions, deriva
 evidence, limitations, and citations. Mixed or unfamiliar sources can combine lenses
 or infer a more suitable specialist dynamically.
 
-## Open Knowledge Format (OKF)
+## Native Open Knowledge Format (OKF) Storage
 
-llm-wiki supports Google Knowledge Catalog's
+llm-wiki stores knowledge natively as Google Knowledge Catalog's
 [Open Knowledge Format v0.1 Draft](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
-for portable Markdown knowledge bundles.
+bundle. `.wiki/pages/` is the bundle root; every non-reserved Markdown file is
+an OKF concept, and its bundle-relative path is its Concept ID.
 
 ```bash
 # Validate an OKF bundle
 wiki okf validate path/to/bundle
 
-# Import it into .wiki/pages/okf/ and make concepts searchable
+# Merge another OKF bundle directly into the native bundle
 wiki okf import path/to/bundle
 wiki okf import path/to/bundle --force
 
-# Export the current wiki as a conformant OKF bundle
+# Copy the native bundle for distribution (no format conversion)
 wiki okf export path/to/output-bundle
 wiki okf export path/to/output-bundle --force
+
+# One-time in-place migration from legacy llm-wiki metadata
+wiki okf migrate
 ```
 
-Import preserves the directory hierarchy (OKF Concept IDs), Markdown bodies, standard
-links, reserved `index.md`/`log.md` files, unknown concept types, and producer-defined
-frontmatter extensions. Export maps native metadata to OKF `type`, `title`,
-`description`, `resource`, `tags`, and `timestamp`, generates directory indexes and an
-ISO-dated log, then validates the generated bundle.
+Compile writes OKF `type`, `title`, `description`, optional `resource`, `tags`, and
+`timestamp` directly. Search and query derive identity from paths and read those fields
+without a compatibility mapping. Relationships use standard Markdown links. Import
+preserves hierarchy, bodies, reserved files, unknown types, broken links, and extension
+fields. Export validates and copies the bundle as-is.
 
 ## Benchmark
 
-We evaluate the **complete product pipeline** (compile → search → synthesize), not components. **No embeddings, no chunks, no cross-encoders** — pure wiki-native architecture. Industry baselines from published RAGAS/RGB/GraphRAG papers.
+We evaluate the **complete product pipeline** (compile → search → synthesize), not only components. The published baseline is the pure wiki-native path; optional Zvec and reranker configurations should be measured separately. Industry baselines come from published RAGAS/RGB/GraphRAG papers.
 
 | System | Faithfulness | Answer Relevance | Context Recall | Answer Correctness |
 |--------|-------------|-----------------|----------------|-------------------|
@@ -186,8 +231,8 @@ We evaluate the **complete product pipeline** (compile → search → synthesize
 |-----------|-------------|
 | **Compile** | Agent reads sources, decides source type, writes schema-compliant wiki pages and graph |
 | **Domain Experts** | Content-driven multi-expert compilation for legal, finance, operations, product, academic, training, and other domains |
-| **Query** | Wiki-native search (metadata + BM25 + graph + ledger) + entity linking + 3-signal ranking → Agent synthesis |
-| **OKF v0.1** | Validate, import, search, and export portable Google Open Knowledge Format bundles |
+| **Query** | BM25F + metadata + graph + complete DuckDB ledger search + optional Zvec/reranker → evidence-selected Agent synthesis |
+| **Native OKF v0.1** | Compile, store, search, validate, merge, migrate, and distribute one canonical OKF bundle |
 | **Lint** | Health scanning + auto-heal: contradictions, stale claims, orphans, broken links |
 | **Lifecycle** | Ebbinghaus decay, confidence scoring, contradiction detection, supersession |
 | **Memory Tiers** | Working → Episodic → Semantic → Procedural, automatic consolidation |
@@ -217,7 +262,9 @@ llm-wiki-skill/
 │   ├── wiki.py        # Unified CLI
 │   ├── compile_v2.py  # LLM source → wiki compiler
 │   ├── query.py       # Wiki-native search + answer synthesis
-│   ├── search.py      # Metadata/BM25/graph search; vector paths are opt-in
+│   ├── search.py      # Metadata/BM25F/graph search and weighted fusion
+│   ├── zvec_backend.py # Optional embedded vector index over OKF concepts
+│   ├── rerank.py      # Optional cross-encoder reranking
 │   ├── lint.py        # Health scan + auto-heal
 │   ├── dream.py       # Self-looping maintenance (4-phase, auto mode)
 │   ├── doctor.py       # User feedback diagnosis + auto-repair
@@ -225,7 +272,7 @@ llm-wiki-skill/
 │   ├── ledger.py      # Structured table management (DuckDB)
 │   └── ...
 ├── .wiki/             # Wiki data (LLM-generated)
-│   ├── pages/         # Structured markdown pages
+│   ├── pages/         # Native OKF bundle root (concepts + index.md + log.md)
 │   ├── graph/         # entities.json, edges.json, optional embeddings
 │   ├── ledger/        # ledger.duckdb database
 │   └── source/        # Original source files (immutable)

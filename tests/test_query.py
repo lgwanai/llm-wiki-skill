@@ -38,6 +38,18 @@ def test_default_search_streams_are_wiki_native(monkeypatch):
     assert query.enabled_search_streams() == {"metadata", "bm25", "graph", "ledger"}
 
 
+def test_enabling_embeddings_adds_vector_stream(monkeypatch):
+    monkeypatch.delenv("LLM_WIKI_SEARCH_STREAMS", raising=False)
+    monkeypatch.setattr(
+        query,
+        "get_query_config",
+        lambda: {"search_streams": "metadata,bm25,graph,ledger"},
+    )
+    monkeypatch.setattr(query, "get_embeddings_config", lambda: {"enabled": True})
+
+    assert "vector" in query.enabled_search_streams()
+
+
 def test_rewrite_query_returns_lexical_variants_only(monkeypatch):
     """LLM expansion is removed — rewrite_query only does string transforms."""
     plan = query.plan_query("personal knowledge base")
@@ -146,6 +158,23 @@ def test_filter_by_excluded_statuses_reads_frontmatter(tmp_path):
     assert [r["id"] for r in results] == ["current"]
 
 
+def test_lexical_candidates_refills_after_scope_filter(tmp_path):
+    candidates = []
+    for index, scope in enumerate(("private", "private", "public", "public")):
+        page = tmp_path / f"{index}.md"
+        page.write_text(f"---\ntype: Concept\nscope: {scope}\n---\n# {index}\n")
+        candidates.append({"file": str(index), "path": str(page), "score": 4 - index})
+
+    def fake_search(_variant, fetch_limit):
+        return candidates[:fetch_limit]
+
+    results = query._lexical_candidates(
+        fake_search, ["query"], 2, 2, {"public"}, set()
+    )
+
+    assert [item["file"] for item in results] == ["2", "3"]
+
+
 def test_search_wiki_debug_returns_trace(monkeypatch):
     monkeypatch.setattr(query, "PAGES_DIR", Path("/nonexistent/pages"))
     monkeypatch.setattr(query, "WIKI_DIR", Path("/nonexistent/.wiki"))
@@ -163,7 +192,8 @@ def test_search_wiki_debug_returns_trace(monkeypatch):
 def test_query_wiki_agent_mode_does_not_call_configured_llm(monkeypatch, tmp_path):
     page = tmp_path / "concept.md"
     page.write_text(
-        "---\nid: concept\nname: Concept\n---\n# Concept\n\n## Key Details\n- value: 42\n",
+        "---\ntype: Concept\ntitle: Concept\n---\n"
+        "# Concept\n\n## Key Details\n- value: 42\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(
@@ -188,8 +218,30 @@ def test_query_wiki_agent_mode_does_not_call_configured_llm(monkeypatch, tmp_pat
 
     assert result["mode"] == "agent"
     assert "Agent Query Synthesis Task" in result["answer"]
-    assert "[[concept]]" in result["answer"]
+    assert "[concept](/concept.md)" in result["answer"]
     assert result["source_details"][0]["path"] == str(page)
+
+
+def test_query_wiki_fast_mode_uses_okf_markdown_link(monkeypatch, tmp_path):
+    page = tmp_path / "concept.md"
+    page.write_text("# Concept\n\nAnswer source.", encoding="utf-8")
+    monkeypatch.setattr(
+        query,
+        "search_wiki",
+        lambda *_args, **_kwargs: [
+            {
+                "id": "concepts/concept",
+                "type": "Concept",
+                "path": str(page),
+                "score": 1.0,
+            }
+        ],
+    )
+
+    result = query.query_wiki("concept", synthesis=False)
+
+    assert "[concepts/concept](/concepts/concept.md)" in result["answer"]
+    assert "[[concepts/concept]]" not in result["answer"]
 
 
 def test_query_wiki_llm_mode_calls_configured_llm(monkeypatch, tmp_path):
@@ -208,3 +260,29 @@ def test_query_wiki_llm_mode_calls_configured_llm(monkeypatch, tmp_path):
 
     assert result["mode"] == "llm"
     assert result["answer"] == "LLM answer"
+
+
+def test_select_evidence_sections_prefers_query_and_key_facts():
+    content = (
+        "# Policy\n\n## Background\n" + "background " * 500
+        + "\n## Key Facts\nApproval threshold is 10000.\n"
+        + "\n## Region\nApplicable in APAC.\n"
+    )
+
+    selected = query.select_evidence_sections(content, "APAC approval threshold", 500)
+
+    assert "Approval threshold is 10000" in selected
+    assert "Applicable in APAC" in selected
+
+
+def test_verify_answer_evidence_rejects_unverified_number(tmp_path):
+    page = tmp_path / "policy.md"
+    page.write_text("# Policy\n\nThreshold is 10000.", encoding="utf-8")
+    pages = [{"id": "concepts/policy", "path": str(page)}]
+
+    report = query.verify_answer_evidence(
+        "The threshold is 20000 [Policy](/concepts/policy.md).", pages
+    )
+
+    assert report["status"] == "warning"
+    assert report["unverified_values"][0]["value"] == "20000"

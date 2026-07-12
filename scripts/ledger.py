@@ -18,12 +18,10 @@ import argparse
 import csv
 import hashlib
 import json
-import os
 import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 import duckdb
 
@@ -279,7 +277,7 @@ def _migrate_from_index_json(conn: duckdb.DuckDBPyConnection) -> None:
 def _load_json_legacy(path: Path, default=None):
     """Load a JSON file, returning *default* if missing."""
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return default
@@ -335,14 +333,14 @@ def _coerce_value(value, field_type: str):
         return str(value), None
     if field_type == "integer":
         if isinstance(value, bool):
-            return value, f"Expected integer, got boolean"
+            return value, "Expected integer, got boolean"
         try:
             return int(value), None
         except (ValueError, TypeError):
             return value, f"Expected integer, got '{value}'"
     if field_type == "number":
         if isinstance(value, bool):
-            return value, f"Expected number, got boolean"
+            return value, "Expected number, got boolean"
         try:
             return float(value), None
         except (ValueError, TypeError):
@@ -1008,7 +1006,7 @@ def _next_display_name(display_name: str, conn: duckdb.DuckDBPyConnection) -> st
         suffix += 1
 
 
-def cmd_import(filepath: str, table_name: Optional[str] = None) -> dict:
+def cmd_import(filepath: str, table_name: str | None = None) -> dict:
     """Import CSV/Excel data into the DuckDB ledger backend."""
     raw_rows = _read_tabular_file(filepath)
     if not raw_rows or len(raw_rows) < 2:
@@ -1074,7 +1072,7 @@ def cmd_import(filepath: str, table_name: Optional[str] = None) -> dict:
     return result
 
 
-def cmd_export(table: str, output_path: Optional[str] = None) -> dict:
+def cmd_export(table: str, output_path: str | None = None) -> dict:
     """Export a DuckDB ledger table as CSV."""
     try:
         conn = _get_conn(read_only=True)
@@ -1136,23 +1134,33 @@ def search_ledgers(query: str, limit: int = 10) -> list[dict]:
                 matched_fields.append(f"{fname} ({field.get('type', 'text')})")
 
         preview = []
+        field_names = [field["name"] for field in fields]
         try:
-            rows = conn.execute(f'SELECT * FROM {_q(actual)} LIMIT 50').fetchall()
-            col_names = [d[0] for d in conn.description]
+            if field_names and q:
+                predicates = " OR ".join(
+                    f"CAST({_q(name)} AS VARCHAR) ILIKE ?" for name in field_names
+                )
+                params = [f"%{q}%"] * len(field_names)
+                rows = conn.execute(
+                    f"SELECT * FROM {_q(actual)} WHERE {predicates} LIMIT 3", params
+                ).fetchall()
+                col_names = [d[0] for d in conn.description]
+            else:
+                rows = []
+                col_names = []
         except duckdb.Error:
             rows = []
             col_names = []
-
-        content_matches = []
-        for row in rows:
-            row_dict = dict(zip(col_names, row))
-            if any(q in str(v).lower() for v in row_dict.values() if v is not None):
-                score += 1
-                content_matches.append(row_dict)
-        if content_matches:
-            preview = content_matches[:3]
+        if rows:
+            score += 1
+            preview = [dict(zip(col_names, row)) for row in rows]
         elif score > 0:
-            preview = [dict(zip(col_names, row)) for row in rows[:3]]
+            try:
+                rows = conn.execute(f"SELECT * FROM {_q(actual)} LIMIT 3").fetchall()
+                col_names = [d[0] for d in conn.description]
+                preview = [dict(zip(col_names, row)) for row in rows]
+            except duckdb.Error:
+                preview = []
 
         if score > 0:
             results.append({

@@ -18,15 +18,19 @@ import os
 import re
 import sys
 import traceback
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _llm_utils import call_llm
 from config import (
+    get_embeddings_config,
     get_query_config,
+    get_reranker_config,
     get_wiki_dir,
 )
+
 
 def _log_exc(msg: str = ""):
     """Log exception traceback to stderr for debugging."""
@@ -47,11 +51,17 @@ def enabled_search_streams() -> set[str]:
     """Return enabled retrieval streams from env/config."""
     env_value = os.environ.get("LLM_WIKI_SEARCH_STREAMS", "").strip()
     configured = env_value or str(get_query_config().get("search_streams", "") or "")
+    defaults = set(DEFAULT_SEARCH_STREAMS)
+    if get_embeddings_config().get("enabled"):
+        defaults.add("vector")
     if not configured:
-        return set(DEFAULT_SEARCH_STREAMS)
+        return defaults
     if configured.lower() in {"all", "*"}:
-        return set(DEFAULT_SEARCH_STREAMS)
-    return {stream.strip() for stream in configured.split(",") if stream.strip()}
+        return defaults
+    streams = {stream.strip() for stream in configured.split(",") if stream.strip()}
+    if not env_value and get_embeddings_config().get("enabled"):
+        streams.add("vector")
+    return streams
 
 
 def _allowed_scopes_from_env() -> set[str]:
@@ -139,6 +149,19 @@ def plan_query(query: str) -> dict:
         "preferred_streams": preferred,
         "keywords": [t for t in re.split(r"\s+", query.strip()) if t],
     }
+
+
+def _stream_weights(plan: dict) -> dict[str, float]:
+    """Intent-aware retrieval weights for weighted RRF."""
+    base = {"metadata": 1.2, "bm25": 1.2, "graph": 1.0, "ledger": 1.0, "vector": 1.0}
+    intent = plan.get("intent")
+    if intent == "ledger_filter":
+        base.update({"ledger": 2.2, "metadata": 1.0, "bm25": 0.9})
+    elif intent == "relationship":
+        base.update({"graph": 2.0, "metadata": 1.2})
+    elif intent == "comparison":
+        base.update({"bm25": 1.3, "vector": 1.3, "graph": 1.2})
+    return base
 
 
 def rewrite_query(query: str, plan: dict) -> list[str]:
@@ -387,7 +410,10 @@ def rerank_results(
         # ── Entity type micro-adjustment (±5%) ──
         type_w = _entity_type_weight(etype, intent)
 
-        total = (signal_bm25 + signal_meta + signal_graph) * type_w
+        signal_rrf = min(float(result.get("score", 0) or 0) * 8.0, 1.0) * 0.25
+        stream_names = set(str(result.get("stream", "")).split(","))
+        signal_special = 0.15 if stream_names & {"ledger", "vector"} else 0.0
+        total = (signal_rrf + signal_bm25 + signal_meta + signal_graph + signal_special) * type_w
         return total
 
     ranked = [dict(r) for r in results]
@@ -650,6 +676,29 @@ def _infer_type(eid: str) -> str:
     return "concept"
 
 
+def _lexical_candidates(
+    search_function,
+    query_variants: list[str],
+    initial_limit: int,
+    required_count: int,
+    scope_filter: set[str],
+    status_filter: set[str],
+) -> list[dict]:
+    """Over-fetch and refill after access/lifecycle filters until exhausted."""
+    fetch_limit = initial_limit
+    while True:
+        batches = [search_function(variant, fetch_limit) for variant in query_variants]
+        merged = reciprocal_rank_merge(
+            [item for batch in batches for item in batch], limit=fetch_limit
+        )
+        filtered = _filter_by_allowed_scopes(merged, scope_filter)
+        filtered = _filter_by_excluded_statuses(filtered, status_filter)
+        exhausted = all(len(batch) < fetch_limit for batch in batches)
+        if len(filtered) >= required_count or exhausted or fetch_limit >= 10_000:
+            return filtered
+        fetch_limit = min(fetch_limit * 2, 10_000)
+
+
 def search_wiki(
     query: str,
     limit: int = 5,
@@ -665,6 +714,7 @@ def search_wiki(
     relationships.
     """
     all_streams: list[list[dict]] = []
+    candidate_limit = max(limit * 8, 20)
     plan = plan_query(query)
     query_variants = rewrite_query(query, plan)
     enabled_streams = enabled_search_streams()
@@ -679,17 +729,55 @@ def search_wiki(
         "exclude_statuses": sorted(status_filter),
         "streams": {},
     }
+    futures: dict[str, Future] = {}
+    executor: ThreadPoolExecutor | None = None
+    if get_query_config().get("parallel_search", True):
+        executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix="wiki-search")
+        if "graph" in enabled_streams:
+            try:
+                from search import graph_search
+
+                futures["graph"] = executor.submit(
+                    graph_search, query, str(WIKI_DIR / "graph"), candidate_limit
+                )
+            except Exception as e:
+                trace["streams"]["graph_error"] = str(e)
+        if "ledger" in enabled_streams:
+            try:
+                from ledger import search_ledgers as ledger_search
+
+                futures["ledger"] = executor.submit(ledger_search, query, candidate_limit)
+            except Exception as e:
+                trace["streams"]["ledger_error"] = str(e)
+        if "vector" in enabled_streams:
+            try:
+                from zvec_backend import vector_search
+
+                futures["vector"] = executor.submit(
+                    vector_search,
+                    query,
+                    PAGES_DIR,
+                    WIKI_DIR,
+                    get_embeddings_config(),
+                    candidate_limit,
+                )
+            except Exception as e:
+                trace["streams"]["vector_error"] = str(e)
 
     # Stream 1: Metadata search (aliases, keywords, questions, summary)
     if "metadata" in enabled_streams:
         try:
             from search import metadata_search
-            metadata_results = []
-            for variant in query_variants:
-                metadata_results.extend(
-                    metadata_search(variant, str(PAGES_DIR), limit=limit * 4)
-                )
-            metadata_results = reciprocal_rank_merge(metadata_results, limit=limit * 4)
+            metadata_results = _lexical_candidates(
+                lambda variant, fetch_limit: metadata_search(
+                    variant, str(PAGES_DIR), limit=fetch_limit
+                ),
+                query_variants,
+                candidate_limit,
+                limit,
+                scope_filter,
+                status_filter,
+            )
             trace["streams"]["metadata"] = metadata_results
             if metadata_results:
                 all_streams.append(metadata_results)
@@ -701,12 +789,16 @@ def search_wiki(
     if "bm25" in enabled_streams:
         try:
             from search import bm25_search
-            bm25_results = []
-            for variant in query_variants:
-                bm25_results.extend(
-                    bm25_search(variant, str(PAGES_DIR), limit=limit * 4)
-                )
-            bm25_results = reciprocal_rank_merge(bm25_results, limit=limit * 4)
+            bm25_results = _lexical_candidates(
+                lambda variant, fetch_limit: bm25_search(
+                    variant, str(PAGES_DIR), limit=fetch_limit
+                ),
+                query_variants,
+                candidate_limit,
+                limit,
+                scope_filter,
+                status_filter,
+            )
             trace["streams"]["bm25"] = bm25_results
             if bm25_results:
                 all_streams.append(bm25_results)
@@ -717,10 +809,14 @@ def search_wiki(
     # Stream 3: Graph entity search (symbolic name matching + traversal)
     if "graph" in enabled_streams:
         try:
-            from search import graph_search
-            graph_results = graph_search(
-                query, str(WIKI_DIR / "graph"), limit=limit * 3
-            )
+            if "graph" in futures:
+                graph_results = futures["graph"].result()
+            else:
+                from search import graph_search
+
+                graph_results = graph_search(
+                    query, str(WIKI_DIR / "graph"), limit=candidate_limit
+                )
             trace["streams"]["graph_raw"] = graph_results
             if graph_results:
                 converted = []
@@ -729,12 +825,10 @@ def search_wiki(
                     path_value = g.get("path", "")
                     page_path = Path(path_value) if path_value else Path("")
                     if not page_path.exists():
-                        page_dir = (
-                            "concepts"
-                            if g.get("type") in ("concept", "technique", "model")
-                            else "entities"
-                        )
-                        page_path = PAGES_DIR / page_dir / f"{eid}.md"
+                        from search import _page_path_for_id
+
+                        resolved = _page_path_for_id(eid, PAGES_DIR)
+                        page_path = Path(resolved) if resolved else Path("")
                     if page_path.exists():
                         converted.append({
                             "file": eid,
@@ -753,20 +847,27 @@ def search_wiki(
     # Stream 4: Ledger search (structured tables)
     if "ledger" in enabled_streams:
         try:
-            from ledger import search_ledgers as ledger_search
-            ledger_results = ledger_search(query, limit=limit)
+            if "ledger" in futures:
+                ledger_results = futures["ledger"].result()
+            else:
+                from ledger import search_ledgers as ledger_search
+
+                ledger_results = ledger_search(query, limit=candidate_limit)
             trace["streams"]["ledger_raw"] = ledger_results
             if ledger_results:
                 converted = []
                 for lr in ledger_results:
                     converted.append({
                         "file": lr["id"],
-                        "path": str(WIKI_DIR / "ledger" / lr["id"]),
+                        "path": f"table://{lr['id']}",
                         "score": lr.get("score", 1),
                         "stream": "ledger",
                         "ledger_name": lr["name"],
+                        "display_name": lr["name"],
+                        "table_name": lr["id"],
                         "ledger_fields": lr.get("fields", []),
                         "ledger_preview": lr.get("preview", []),
+                        "row_data": (lr.get("preview") or [{}])[0],
                     })
                 all_streams.append(converted)
                 trace["streams"]["ledger"] = converted
@@ -774,11 +875,38 @@ def search_wiki(
             trace["streams"]["ledger_error"] = str(e)
             _log_exc("stream failed")
 
+    # Stream 5: Optional Zvec semantic search over compiled OKF concepts
+    if "vector" in enabled_streams:
+        try:
+            if "vector" in futures:
+                vector_results = futures["vector"].result()
+            else:
+                from zvec_backend import vector_search
+
+                vector_results = vector_search(
+                    query,
+                    PAGES_DIR,
+                    WIKI_DIR,
+                    get_embeddings_config(),
+                    limit=candidate_limit,
+                )
+            vector_results = _filter_by_allowed_scopes(vector_results, scope_filter)
+            vector_results = _filter_by_excluded_statuses(vector_results, status_filter)
+            trace["streams"]["vector"] = vector_results
+            if vector_results:
+                all_streams.append(vector_results)
+        except Exception as e:
+            trace["streams"]["vector_error"] = str(e)
+            _log_exc("vector stream failed")
+
+    if executor is not None:
+        executor.shutdown(wait=True)
+
     # Fuse streams with RRF
     if len(all_streams) >= 2:
         try:
             from search import reciprocal_rank_fusion
-            fused = reciprocal_rank_fusion(all_streams)
+            fused = reciprocal_rank_fusion(all_streams, weights=_stream_weights(plan))
             trace["fused"] = fused
             results = []
             seen = set()
@@ -811,6 +939,9 @@ def search_wiki(
                 results = _cross_link_wiki_ledger(results)
                 results = _filter_by_allowed_scopes(results, scope_filter)
                 results = _filter_by_excluded_statuses(results, status_filter)
+                from rerank import rerank
+
+                results = rerank(query, results, get_reranker_config(), limit)
                 trace["reranked"] = results
                 return (results[:limit], trace) if debug else results[:limit]
         except Exception as e:
@@ -844,6 +975,9 @@ def search_wiki(
             results = _cross_link_wiki_ledger(results)
             results = _filter_by_allowed_scopes(results, scope_filter)
             results = _filter_by_excluded_statuses(results, status_filter)
+            from rerank import rerank
+
+            results = rerank(query, results, get_reranker_config(), limit)
             trace["reranked"] = results
             return (results[:limit], trace) if debug else results[:limit]
 
@@ -861,11 +995,10 @@ def search_wiki(
                 qt in name for qt in query_lower.split() if len(qt) >= 2
             ):
                 etype = data.get("type", "")
-                concept_types = (
-                    "concept", "technique", "model", "framework", "benchmark", "paper",
-                )
-                page_dir = "concepts" if etype in concept_types else "entities"
-                page_path = PAGES_DIR / page_dir / f"{eid}.md"
+                from search import _page_path_for_id
+
+                resolved = _page_path_for_id(eid, PAGES_DIR)
+                page_path = Path(resolved) if resolved else Path("")
                 if page_path.exists():
                     seen.add(eid)
                     results.append({
@@ -903,7 +1036,52 @@ def read_page_content(page_path: str) -> str:
         return ""
 
 
-def _format_page_context(page: dict, index: int) -> str:
+def select_evidence_sections(content: str, query: str, max_chars: int = 2800) -> str:
+    """Select high-value sections from a compiled OKF concept without raw chunking."""
+    if len(content) <= max_chars:
+        return _reorder_for_facts(content)
+    terms = {term.lower() for term in re.findall(r"[\w一-鿿]+", query) if len(term) >= 2}
+    matches = list(re.finditer(r"^#{1,6}\s+.+$", content, re.MULTILINE))
+    sections: list[tuple[float, int, str]] = []
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(content)
+        section = content[match.start() : end].strip()
+        lowered = section.lower()
+        heading = match.group(0).lower()
+        score = sum(2.0 if term in heading else 1.0 for term in terms if term in lowered)
+        if any(
+            label in heading
+            for label in (
+                "key facts",
+                "关键事实",
+                "schema",
+                "法条",
+                "formula",
+                "公式",
+                "citations",
+                "来源",
+            )
+        ):
+            score += 2.5
+        sections.append((score, index, section))
+    if not sections:
+        return content[:max_chars]
+    selected = sorted(sections, key=lambda item: (-item[0], item[1]))
+    output: list[tuple[int, str]] = []
+    used = 0
+    for score, index, section in selected:
+        if score <= 0 and output:
+            continue
+        remaining = max_chars - used
+        if remaining <= 120:
+            break
+        excerpt = section[:remaining]
+        output.append((index, excerpt))
+        used += len(excerpt) + 2
+    return "\n\n".join(section for _, section in sorted(output))
+
+
+def _format_page_context(page: dict, index: int, query: str = "") -> str:
     """Format a wiki page as structured context for the synthesis LLM.
 
     Reorders content to put Key Details / 关键细节 section FIRST (before Overview),
@@ -920,7 +1098,7 @@ def _format_page_context(page: dict, index: int) -> str:
             return ""
 
     # Reorder: Key Details section first, then Overview, then rest
-    reordered = _reorder_for_facts(content)
+    reordered = select_evidence_sections(content, query)
 
     header = f"[{ptype.upper()}] {pname}"
 
@@ -960,7 +1138,7 @@ def _format_page_context(page: dict, index: int) -> str:
     return (
         f"## DOC {index}: {header}{score_info}\n"
         f"**Type**: {ptype} | **ID**: {pid}\n\n"
-        f"{reordered[:2800]}"  # Slightly shorter to make room for ledger block
+        f"{reordered}"
         f"{ledger_block}"
     )
 
@@ -1011,7 +1189,7 @@ def synthesize_answer(query: str, pages: list[dict], fmt: str = "markdown") -> s
     contexts = []
     for i, page in enumerate(pages[:8]):
         # Handle table/ledger results with wiki cross-links
-        if page.get("stream") in ("table", "table_vector"):
+        if set(str(page.get("stream", "")).split(",")) & {"table", "table_vector", "ledger"}:
             table_name = page.get("display_name", page.get("table_name", "unknown"))
             row_id = page.get("row_id", "")
             row_data = page.get("row_data", {})
@@ -1030,7 +1208,7 @@ def synthesize_answer(query: str, pages: list[dict], fmt: str = "markdown") -> s
                 )
             continue
 
-        ctx = _format_page_context(page, i + 1)
+        ctx = _format_page_context(page, i + 1, query)
         if ctx:
             contexts.append(ctx)
 
@@ -1116,6 +1294,7 @@ Output ONLY valid JSON (no markdown, no explanation):
     }
 
     is_chinese = any('一' <= c <= '鿿' for c in query)
+    contexts_text = "\n".join(contexts)
 
     if is_chinese:
         system_prompt = f"""你是一个精确的维基查询引擎。
@@ -1130,7 +1309,7 @@ Output ONLY valid JSON (no markdown, no explanation):
 只有确认所有文档都没有相关信息时，才能说"不知道"。漏读文档中的数值是最严重的错误！
 1. **禁止使用外部知识**:
 你绝对不能使用未在提供的维基文档中明确说明的信息。
-2. **每条声明必须引用**: 每个事实性声明后面必须跟上来源 [[page-id]]。
+2. **每条声明必须引用**: 每个事实性声明后面必须跟上 OKF 概念链接 `[标题](/concept-id.md)`。
 3. **说"不知道"**（仅在所有文档确实没有信息时）:
 先逐行读完所有文档。如果仍然没有足够信息回答，说："维基文档中没有足够信息来回答此问题。"
 然后列出文档中已有的相关信息（即使不完整）。
@@ -1143,10 +1322,10 @@ Output ONLY valid JSON (no markdown, no explanation):
 {query}
 
 ## 维基文档（你唯一的知识来源）
-{"\n".join(contexts)}
+{contexts_text}
 
 ## 任务
-只使用上面维基文档中的信息回答问题。每个事实都要标明来源 [[id]]。
+只使用上面维基文档中的信息回答问题。每个事实都要标明 OKF 概念链接。
 如果文档中缺少答案，明确说明——不要猜测或使用外部知识。"""
     else:
         system_prompt = f"""You are a precise wiki query engine.
@@ -1164,7 +1343,7 @@ present in a document is the worst possible error!
 You MUST NOT use any information that is not explicitly stated in the provided wiki documents.
 2. **CITE EVERY CLAIM**:
 Every factual claim MUST be followed by its source [[page-id]] inline.
-Example: "Transformers use self-attention [[transformer-paper]]."
+Example: "Transformers use self-attention [Transformer paper](/papers/transformer.md)."
 3. **SAY "I DON'T KNOW"** (only after exhausting all documents):
 Read every document line by line first. If after thorough reading you still lack the
 answer, state: "The wiki does not contain sufficient information to answer this question."
@@ -1185,11 +1364,11 @@ Answer the query directly. Don't add background context unless directly relevant
 {query}
 
 ## Wiki Documents (YOUR ONLY KNOWLEDGE SOURCE)
-{"\n".join(contexts)}
+{contexts_text}
 
 ## Task
 Answer the query using ONLY information from the wiki documents above. For each fact,
-cite the source [[id]] inline immediately after the claim. If the documents lack the
+cite the source as an OKF concept link inline immediately after the claim. If the documents lack the
 answer, say so explicitly — do NOT guess or use outside knowledge."""
 
     return call_llm(system_prompt, user_prompt)
@@ -1206,7 +1385,7 @@ def synthesize_answer_agent(query: str, pages: list[dict], fmt: str = "markdown"
 
     contexts = []
     for i, page in enumerate(pages[:8]):
-        if page.get("stream") in ("table", "table_vector"):
+        if set(str(page.get("stream", "")).split(",")) & {"table", "table_vector", "ledger"}:
             table_name = page.get("display_name", page.get("table_name", "unknown"))
             row_id = page.get("row_id", "")
             row_data = page.get("row_data", {})
@@ -1220,23 +1399,25 @@ def synthesize_answer_agent(query: str, pages: list[dict], fmt: str = "markdown"
                 )
             continue
 
-        ctx = _format_page_context(page, i + 1)
+        ctx = _format_page_context(page, i + 1, query)
         if ctx:
             contexts.append(ctx)
 
     if not contexts:
         return "Wiki pages found but content could not be read."
+    contexts_text = "\n".join(contexts)
 
     source_links = ", ".join(
-        f"[[{page.get('id', 'unknown')}]]" for page in pages[:8]
+        f"[{page.get('id', 'unknown')}](/"
+        f"{page.get('id', 'unknown')}.md)" for page in pages[:8]
     )
     output_hint = {
-        "markdown": "Answer in concise Markdown with inline citations like [[page-id]].",
+        "markdown": "Answer in concise Markdown with inline OKF concept links.",
         "table": "Answer with a Markdown comparison table and cite sources.",
         "timeline": "Answer with a Markdown timeline and cite sources.",
         "slides": "Answer as a Marp slide outline and cite sources.",
         "json": "Answer as valid JSON with answer, sources, related, and confidence.",
-    }.get(fmt, "Answer in concise Markdown with inline citations like [[page-id]].")
+    }.get(fmt, "Answer in concise Markdown with inline OKF concept links.")
 
     return f"""# Agent Query Synthesis Task
 
@@ -1250,7 +1431,7 @@ This task was generated in Agent mode. Do not call the configured LLM API.
 
 {output_hint}
 
-Use ONLY the wiki documents below. Cite every factual claim with `[[id]]`.
+Use ONLY the wiki documents below. Cite every factual claim with its OKF concept link.
 If the documents do not contain enough information, say so and summarize the
 partial information that is available. Do not use outside knowledge.
 
@@ -1258,7 +1439,7 @@ Available source IDs: {source_links}
 
 ## Retrieved Wiki Documents
 
-{"\n".join(contexts)}
+{contexts_text}
 """
 
 
@@ -1273,13 +1454,19 @@ def file_answer_back(query: str, answer: str, sources: list[dict]) -> str:
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
+    source_links = [
+        f"[{item.get('id', Path(item.get('path', '')).stem)}]"
+        f"(/{Path(item.get('path', '')).relative_to(PAGES_DIR).as_posix()})"
+        for item in sources
+        if item.get("path") and Path(item["path"]).is_relative_to(PAGES_DIR)
+    ]
     frontmatter = f"""---
-id: {slug}
-type: concept
-name: "{query[:50]}"
-confidence: 0.80
-source: query-generated
-created: {now}
+type: Query Answer
+title: "{query[:50]}"
+description: "Answer generated from compiled OKF concepts."
+tags: [query-generated]
+timestamp: {now}T00:00:00Z
+provenance: query
 ---
 
 """
@@ -1291,6 +1478,10 @@ created: {now}
         .replace("**Sources**:", "\n## Sources\n\n")
         .replace("**Related**:", "\n## Related\n\n")
     )
+    if source_links:
+        content += "\n# Citations\n\n" + "\n".join(
+            f"[{index}] {link}" for index, link in enumerate(source_links, 1)
+        )
 
     page_path.write_text(content, encoding="utf-8")
 
@@ -1316,6 +1507,54 @@ created: {now}
     )
 
     return str(page_path)
+
+
+def verify_answer_evidence(answer: str, pages: list[dict]) -> dict:
+    """Check citation coverage, source identity, and exact values against evidence."""
+    available = {str(page.get("id", "")) for page in pages}
+    evidence = {
+        str(page.get("id", "")): read_page_content(str(page.get("path", "")))
+        or str(page.get("text", ""))
+        for page in pages
+    }
+    cited = set(re.findall(r"\]\(/([^)#]+)\.md(?:#[^)]+)?\)", answer))
+    cited.update(re.findall(r"\[\[([^\]|]+)", answer))
+    unsupported = sorted(identifier for identifier in cited if identifier not in available)
+    claim_lines = [
+        line.strip()
+        for line in answer.splitlines()
+        if line.strip()
+        and not line.lstrip().startswith(("#", "|", "```"))
+        and (re.search(r"\d", line) or len(line.strip()) >= 40)
+    ]
+    cited_claims = sum(
+        1
+        for line in claim_lines
+        if re.search(r"\]\(/[^)]+\.md", line) or "[[" in line
+    )
+    coverage = cited_claims / len(claim_lines) if claim_lines else 1.0
+    unverified_values = []
+    for line in claim_lines:
+        line_citations = set(re.findall(r"\]\(/([^)#]+)\.md(?:#[^)]+)?\)", line))
+        line_citations.update(re.findall(r"\[\[([^\]|]+)", line))
+        if not line_citations:
+            continue
+        source_text = "\n".join(evidence.get(identifier, "") for identifier in line_citations)
+        for value in re.findall(r"(?<!\w)\d[\d,.%:/-]*", line):
+            if value not in source_text:
+                unverified_values.append({"value": value, "claim": line[:240]})
+    return {
+        "status": (
+            "pass"
+            if not unsupported and not unverified_values and coverage >= 0.8
+            else "warning"
+        ),
+        "citation_coverage": round(coverage, 4),
+        "cited_concepts": sorted(cited),
+        "unsupported_citations": unsupported,
+        "unverified_values": unverified_values,
+        "claims_checked": len(claim_lines),
+    }
 
 
 def _read_snippet(path: str, query: str, max_len: int = 120) -> str:
@@ -1578,7 +1817,7 @@ def _format_debug_table(trace: dict) -> str:
             lines.append("| " + " | ".join(cols) + " |")
 
         if len(reranked) > 20:
-            lines.append(f"| ... | ... | ... |")
+            lines.append("| ... | ... | ... |")
             lines.append("")
             lines.append(f"*{len(reranked) - 20} more results not shown*")
         lines.append("")
@@ -1612,10 +1851,11 @@ def query_wiki(
     elif "llm_synthesis" in query_cfg:
         synthesis = query_cfg.get("llm_synthesis", True)
 
+    max_results = max(1, int(query_cfg.get("max_results", 5) or 5))
     if debug_search:
-        pages, trace = search_wiki(query, debug=True)
+        pages, trace = search_wiki(query, limit=max_results, debug=True)
     else:
-        pages = search_wiki(query)
+        pages = search_wiki(query, limit=max_results)
         trace = {}
 
     # ── Graph intent routing ──
@@ -1650,7 +1890,8 @@ def query_wiki(
         for i, p in enumerate(pages[:10], 1):
             snippet = _read_snippet(p["path"], query)
             lines.append(
-                f"{i}. **[[{p['id']}]]** ({p['type']}) — score: {p['score']:.2f}"
+                f"{i}. **[{p['id']}](/"
+                f"{p['id']}.md)** ({p['type']}) — score: {p['score']:.2f}"
             )
             if snippet:
                 lines.append(f"   > {snippet}")
@@ -1700,6 +1941,12 @@ def query_wiki(
             for p in pages
         ],
     }
+    if query_cfg.get("verify_answers", True):
+        result["verification"] = (
+            verify_answer_evidence(answer, pages)
+            if synthesis_mode == "llm"
+            else {"status": "pending_agent_synthesis"}
+        )
     if debug_search:
         result["debug_search"] = trace
 

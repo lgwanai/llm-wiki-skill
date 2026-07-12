@@ -139,7 +139,7 @@ python scripts/compile_v2.py source.md --mode llm  # optional legacy path using 
 
 ### `/wiki-query <question>` — Search & Answer
 
-Wiki-native search (metadata + page BM25 + compiled graph + ledger), then the
+Wiki-native search (metadata + page BM25F + compiled graph + complete DuckDB ledger), then the
 current Agent synthesizes from already-compiled pages with citations. No
 configured model/API key is required by default.
 
@@ -150,6 +150,7 @@ python scripts/query.py "What is X?" --mode llm   # optional legacy path using c
 python scripts/search.py --doctor
 python scripts/search.py --eval .wiki/evals/retrieval.jsonl
 python scripts/benchmark.py evals/rag_benchmark_smoke.jsonl --method both -k 5
+# reports Hit/Recall/MRR/NDCG, complete recall, forbidden leakage, and P50/P95
 
 # Fast mode — skip synthesis (0.5s)
 python scripts/query.py "专家评审组" --no-synthesis
@@ -174,14 +175,16 @@ Search index cached to disk (`.wiki/graph/.bm25_index.json`), auto-invalidated o
 
 Default retrieval quality features:
 
-- Metadata search indexes `aliases`, `keywords`, `questions`, and `summary`.
-- Page BM25 searches compiled wiki pages, not raw source chunks.
+- Metadata search indexes OKF `title`, `description`, `tags`, `type`, and Concept ID.
+- Page BM25F weights Concept ID, title, tags, description, key facts, headings, and body.
+- Candidate streams over-fetch before scope/status filters and use intent-aware weighted RRF.
+- Ledger search runs in DuckDB across all declared fields and rows; graph/ledger/vector can run concurrently.
 - Graph search anchors natural-language questions to compiled entities and relationships.
 - Query planning prioritizes ledger/graph/page streams by intent.
 - Query rewriting adds only lightweight lexical variants by default.
 - `python scripts/search.py --doctor` reports page, metadata, graph, and optional embedding health.
 - `python scripts/search.py --eval <cases.jsonl>` measures Recall@K and MRR from jsonl eval cases.
-- Vector streams and rerankers are opt-in tools for experiments/benchmarks,
+- Embedded Zvec vector search and FlagEmbedding reranking are opt-in layers,
   not the default product path.
 
 ### `/wiki-lint` — Health Check
@@ -193,7 +196,7 @@ python scripts/lint.py --auto-heal  # Check + fix
 
 Checks: contradictions, stale claims, orphan pages, broken links, missing concepts.
 
-### `/wiki-okf` — Open Knowledge Format v0.1 Interoperability
+### `/wiki-okf` — Native Open Knowledge Format v0.1 Storage
 
 Validate, import, and export [Google Knowledge Catalog OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
 knowledge bundles:
@@ -203,12 +206,13 @@ python scripts/wiki.py okf validate path/to/bundle
 python scripts/wiki.py okf import path/to/bundle
 python scripts/wiki.py okf import path/to/bundle --force
 python scripts/wiki.py okf export path/to/output-bundle
+python scripts/wiki.py okf migrate
 ```
 
-Imported concepts preserve producer-defined frontmatter fields, hierarchy, body Markdown,
-standard links, reserved `index.md`/`log.md`, and become searchable under `.wiki/pages/okf/`.
-Export maps native Wiki metadata to OKF `type`, `title`, `description`, `resource`, `tags`, and
-`timestamp`, generates progressive-disclosure indexes and an ISO-dated log, then validates the bundle.
+`.wiki/pages/` is the canonical OKF bundle, not a compatibility namespace. Compile writes
+OKF fields directly; search/query derive Concept IDs from relative paths. Import merges
+another bundle without metadata translation, export validates and copies the native bundle,
+and `migrate` rewrites legacy page metadata in place.
 
 ### `/wiki-status` — Wiki Overview
 
@@ -494,7 +498,7 @@ Query "A的专家组有谁?" → exact hit on `专家评审组.md`.
 
 `uses` | `depends_on` | `extends` | `improves_upon` | `contradicts` | `supersedes` | `caused_by` | `fixed_by` | `replaces` | `relates_to` | `part_of` | `implemented_by`
 
-Extracted from wikilinks via 41 Chinese keywords + 12 English regex patterns.
+Extracted from standard Markdown concept links and their surrounding relationship prose.
 LLM prompt enforces explicit relationship keyword prefix.
 
 ### Schema-Driven Types

@@ -4,8 +4,6 @@ import json
 import os
 from pathlib import Path
 
-import pytest
-
 import lint
 
 
@@ -38,7 +36,10 @@ class TestFindBrokenLinks:
         try:
             page = Path(".wiki") / "pages" / "entities" / "test.md"
             page.parent.mkdir(parents=True, exist_ok=True)
-            page.write_text("---\nid: test\n---\n\nLink to [[nonexistent-page]]")
+            page.write_text(
+                "---\ntype: Reference\ntitle: Test\n---\n\n"
+                "Link to [missing](/entities/nonexistent-page.md)"
+            )
 
             graph_dir = Path(".wiki") / "graph"
             graph_dir.mkdir(parents=True, exist_ok=True)
@@ -49,7 +50,7 @@ class TestFindBrokenLinks:
 
             broken = lint.find_broken_links()
             assert len(broken) > 0
-            assert broken[0]["target"] == "nonexistent-page"
+            assert broken[0]["target"] == "/entities/nonexistent-page.md"
         finally:
             os.chdir(old)
 

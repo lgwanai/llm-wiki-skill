@@ -1273,7 +1273,7 @@ This task was generated in Agent mode. Do not call the configured LLM API.
 - Force overwrite: `{force}`
 - Dry run: `{dry_run}`
 - Wiki dir: `{WIKI_DIR}`
-- Compile date (set as frontmatter `created_at`): `{datetime.now().strftime("%Y-%m-%d")}`
+- Compile timestamp (set as frontmatter `timestamp`): `{datetime.now(timezone.utc).isoformat()}`
 
 ## Agent Responsibilities
 
@@ -1281,24 +1281,25 @@ This task was generated in Agent mode. Do not call the configured LLM API.
 2. Decide the document's actual domain and purpose; `doc`, `article`, `code`, or
    `conversation` is only a storage hint, not the compilation strategy.
 3. Apply the matched expert lens below, then compile according to `.wiki/schema.md`.
-4. Write pages under `.wiki/pages/concepts/` or `.wiki/pages/entities/`.
-5. Update `.wiki/pages/index.md`, `.wiki/graph/entities.json`, `.wiki/graph/edges.json`,
-   `.wiki/log.md`, and `.wiki/audit.json`.
+4. Treat `.wiki/pages/` as the native OKF v0.1 bundle. Write concept documents
+   under meaningful subdirectories and use their relative paths as Concept IDs.
+5. Update `.wiki/pages/index.md`, `.wiki/pages/log.md`, graph files, and audit files.
 6. If the source cannot be read, stop and ask the user for readable content.
 
 {expert_guidance}
 
-## Required Page Standard
+## Required OKF v0.1 Concept Standard
 
-- YAML frontmatter: `id`, `type`, `name`, `confidence`, `source`, `aliases`, `keywords`,
-  `created_at`, `published_at`.
-  - `created_at` = the compile date shown above (YYYY-MM-DD).
-  - `published_at` = the source content's own publication date if identifiable
-    (article date, document effective date, paper date, log timestamp). Omit the
-    field entirely if the source has no publication date — never fabricate one.
-- Sections in order: Key Facts/关键事实, Overview/概述, Questions This Page Answers/可回答的问题,
-  Key Details/关键细节, Relationships/关联关系, Source Context/来源上下文.
-- IDs and entity types must follow schema.md.
+- Every non-reserved Markdown file starts with YAML frontmatter containing a
+  non-empty `type` field.
+- Use OKF fields directly: `type`, `title`, `description`, optional `resource`,
+  `tags`, and ISO 8601 `timestamp`. Use `provenance` only for the source identity.
+- Do not store legacy `id`, `name`, `summary`, `keywords`, `created_at`, or
+  `published_at` fields. Concept ID is the bundle-relative file path without `.md`.
+- Use structural Markdown suited to the matched domain. `# Schema`, `# Examples`,
+  and `# Citations` have their OKF conventional meanings when applicable.
+- Cross-concept relationships use standard Markdown links, preferably absolute
+  bundle-relative links such as `[Orders](/tables/orders.md)`. Do not use wikilinks.
 - Prefer high-quality compiled pages over raw chunks. This is not a RAG ingestion step.
 
 ## Data Fidelity (数据保真 — non-negotiable)
@@ -1338,6 +1339,22 @@ This task was generated in Agent mode. Do not call the configured LLM API.
 
 
 def extract_edge_type(line: str) -> str:
+    lowered = line.lower()
+    prose_rules = [
+        (("依赖", "取决于", "depends on", "requires"), "depends_on"),
+        (("使用", "采用", "uses", "employs"), "uses"),
+        (("扩展", "基于", "extends", "based on"), "extends"),
+        (("改进", "优化", "improves", "enhances"), "improves_upon"),
+        (("矛盾", "冲突", "contradicts", "conflicts"), "contradicts"),
+        (("取代", "替代", "supersedes", "replaces"), "supersedes"),
+        (("导致", "引起", "caused by", "triggered by"), "caused_by"),
+        (("修复", "解决", "fixed by", "resolved by"), "fixed_by"),
+        (("属于", "组成部分", "part of", "component of"), "part_of"),
+        (("负责", "实现", "implemented by", "executed by"), "implemented_by"),
+    ]
+    for keywords, relationship in prose_rules:
+        if any(keyword in lowered for keyword in keywords):
+            return relationship
     for pattern, rel_type in KEYWORD_RELATION_MAP:
         if re.search(pattern, line):
             return rel_type
@@ -1424,6 +1441,54 @@ INDEX_FILE = PAGES_DIR / "index.md"
 SCHEMA_PATH = WIKI_DIR / "schema.md"
 GRAPH_DIR = WIKI_DIR / "graph"
 SOURCE_IMAGES_DIR = WIKI_DIR / "source" / "images"
+
+
+def _slugify_okf_title(value: str) -> str:
+    slug = re.sub(r"[^\w\u4e00-\u9fff.-]+", "-", value.strip().lower()).strip("-.")
+    return slug or "concept"
+
+
+def _okf_page_from_model(
+    page_content: str, source_name: str
+) -> tuple[str, dict, str, Path] | None:
+    """Normalize model output to native OKF metadata and derive its Concept ID."""
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", page_content, re.DOTALL)
+    if not match:
+        return None
+    try:
+        raw = yaml.safe_load(match.group(1)) or {}
+    except yaml.YAMLError:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    page_type = str(raw.get("type") or "Reference").strip()
+    title = str(raw.get("title") or raw.get("name") or raw.get("id") or "").strip()
+    if not title:
+        return None
+    slug = _slugify_okf_title(str(raw.get("slug") or raw.get("id") or title))
+    directory = "concepts" if page_type.lower() in CONCEPT_LIKE_TYPES else "entities"
+    concept_identifier = f"{directory}/{slug}"
+    metadata: dict = {
+        "type": page_type,
+        "title": title,
+        "description": str(raw.get("description") or raw.get("summary") or "").strip(),
+        "tags": raw.get("tags") or raw.get("keywords") or [],
+        "timestamp": raw.get("timestamp")
+        or raw.get("published_at")
+        or datetime.now(timezone.utc).isoformat(),
+        "provenance": source_name,
+    }
+    if raw.get("resource"):
+        metadata["resource"] = raw["resource"]
+    metadata = {key: value for key, value in metadata.items() if value not in (None, "", [])}
+    body = match.group(2).lstrip()
+    normalized = (
+        "---\n"
+        + yaml.safe_dump(metadata, allow_unicode=True, sort_keys=False).strip()
+        + "\n---\n"
+        + body
+    )
+    return normalized, metadata, concept_identifier, PAGES_DIR / f"{concept_identifier}.md"
 
 
 def atomic_write(path: Path, content: str):
@@ -1795,22 +1860,18 @@ def _compile_single_chunk(
 - 表格必须按原行列结构完整复现，不得合并、删除、重排序或概括单元格。
 - 在"来源上下文"附上原文摘录，便于核实。
 
-## ID 命名规则（防止同名覆盖）
-文档源简称: {source_abbr}
-
-- **实体页 ID**: `{source_abbr}-{{{{实体名}}}}` — 确保不同来源的同名实体不覆盖
-- **概念页 ID**: 直接使用概念名 — 跨文档共享
+## OKF 概念标识
+不要输出 `id` 字段。系统根据 `type` 和 `title` 生成 bundle 相对路径作为
+Concept ID。关系必须使用标准 Markdown 链接，不使用双中括号 wikilink。
 
 ## 实体 vs 概念（这是最重要的分类！）
 - **实体 (entity/role/rule/process/event/tool/system/product)**:
   文档中具体出现的东西。某个特定组织、某个具体角色、某条明确规则、某个特定流程步骤。
-  特征：可以指向"一个具体实例"。**必须带 {source_abbr} 前缀**。
+  特征：可以指向"一个具体实例"。
 
 - **概念 (concept/technique/model/framework/benchmark/paper)**:
   跨文档的抽象知识。通用思想、方法论、技术模式、评估标准。
-  特征：可以在多个文档中讨论，不依附于单一来源。**不带前缀**。
-
-**比例**: 文档中约 65% 实体, 35% 概念。绝大多数具体内容都是实体！
+  特征：可以在多个文档中讨论，不依附于单一来源。
 
 ## 提取策略（逐段扫描，不要遗漏！）
 1. **从头到尾扫描文档的每个章节**——不要只提取开头部分
@@ -1852,37 +1913,26 @@ def _compile_single_chunk(
 
 ## 关系关键词（每条关系必须用以下关键词之一开头）
 关系关键词 -> 对应类型:
-- 使用 [[X]] / 采用 [[X]] / 利用 [[X]] -> uses
-- 依赖 [[X]] / 取决于 [[X]] -> depends_on
-- 扩展 [[X]] / 基于 [[X]] -> extends
-- 改进 [[X]] / 优化 [[X]] / 增强 [[X]] -> improves_upon
-- 关联 [[X]] / 相关 [[X]] / 协作 [[X]] -> relates_to
-- 属于 [[X]] / 组成部分 [[X]] -> part_of
-- 负责 [[X]] / 实现 [[X]] / 执行 [[X]] -> implemented_by
-- 导致 [[X]] / 引起 [[X]] -> caused_by
-- 修复 [[X]] / 解决 [[X]] -> fixed_by
-- 取代 [[X]] / 替换 [[X]] -> supersedes
-- 矛盾 [[X]] / 冲突 [[X]] -> contradicts
+- 使用/采用 [X](/path/to/x.md) -> uses
+- 依赖/取决于 [X](/path/to/x.md) -> depends_on
+- 扩展/基于 [X](/path/to/x.md) -> extends
+- 改进/优化 [X](/path/to/x.md) -> improves_upon
+- 关联/属于/负责/导致/修复/取代/矛盾 [X](/path/to/x.md) -> 对应关系类型
 
 ## Output Format
 用 ===PAGE_END=== 分隔每个页面。
 
 每个页面必须包含 YAML frontmatter：
 ---
-id: 实体ID或概念ID
 type: {entity_type_str}
-name: 中文名称
-confidence: 0.85
-source: source-name
-aliases: [别名1, 别名2]
-keywords: [关键词1, 关键词2]
-created_at: {datetime.now().strftime("%Y-%m-%d")}
-published_at: ""   # 内容本身的发布日期 YYYY-MM-DD；若来源无可识别的发布时间则删除本行
+title: 中文名称
+description: 一句话摘要
+tags: [关键词1, 关键词2]
+timestamp: {datetime.now(timezone.utc).isoformat()}
+provenance: source-name
 ---
 
-> **日期字段（用于后续日期检索，务必填写）**：
-> - `created_at`：本页面的编译创建日期（已填好，原样保留）。
-> - `published_at`：**来源内容本身的发布/发表时间**（如文章发布日、文档生效日、论文发表日、日志时间戳）。从原文中识别；原文没有就**删除本行**，**不要编造**。
+> `timestamp` 使用 ISO 8601，表示该概念最后一次有意义的更新；原文发布日期应保留在正文来源上下文中，不得编造。
 
 然后按以下结构撰写（⚠️ 必须严格遵循此顺序！）：
 # [中文标题]
@@ -1945,9 +1995,8 @@ published_at: ""   # 内容本身的发布日期 YYYY-MM-DD；若来源无可识
 3. 识别跨文档通用概念（方法论、技术模式、评估框架）
 4. 为每个实体/概念建立关联关系链接
 
-## 实体 ID 规则（重要！）
-- entity/role/rule/process/event/tool/system/product → ID 必须带 {source_abbr} 前缀
-- concept/technique/model/framework/benchmark/paper → ID 不带前缀
+## OKF 链接规则
+关系使用 bundle 相对的标准 Markdown 链接；不要输出 `id` 字段或 wikilink。
 
 ## 关注点
 {focus_desc}。核心概念、组织结构、流程机制、评估标准、具体规则。
@@ -1973,9 +2022,9 @@ parameters, table cells, statistics, units, and names — must be preserved
 ## Entity vs Concept (CRITICAL — get this right!)
 Karpathy's wiki design distinguishes two page types:
 - **entity** (entity/role/rule/process/event/tool/system/product):
-  Concrete instances in the document. ~65% of pages.
+  Concrete instances in the document.
 - **concept** (concept/technique/model/framework/benchmark/paper):
-  Abstract knowledge reusable across documents. ~35% of pages.
+  Abstract knowledge reusable across documents.
 
 ## Extraction Strategy
 1. Scan EVERY section of this chunk — don't stop after the first few sections
@@ -1990,17 +2039,11 @@ Karpathy's wiki design distinguishes two page types:
 - **Relationships**: Minimum 2-4 per page, use exact keywords below
 
 ## Relationship Keywords
-- uses [[X]] / employs [[X]] → uses
-- depends on [[X]] → depends_on
-- extends [[X]] / based on [[X]] → extends
-- improves [[X]] / enhances [[X]] → improves_upon
-- relates to [[X]] → relates_to
-- part of [[X]] → part_of
-- implemented by [[X]] → implemented_by
-- caused by [[X]] → caused_by
-- fixed by [[X]] → fixed_by
-- supersedes [[X]] → supersedes
-- contradicts [[X]] → contradicts
+- uses/employs [X](/path/to/x.md) → uses
+- depends on/requires [X](/path/to/x.md) → depends_on
+- extends/based on [X](/path/to/x.md) → extends
+- improves/relates to/part of/implemented by/caused by/fixed by/supersedes/contradicts
+  [X](/path/to/x.md) → the corresponding relationship type
 
 ## Output Format
 ===PAGE_END=== separated. YAML frontmatter required.
@@ -2036,9 +2079,7 @@ Page structure (⚠️ MUST follow this order!):
 ## Quality Rules
 - 🔴 **Key Facts table is MANDATORY! Pages without it = INVALID.**
 - Scan EVERY section
-- entity/role/rule/process/event/tool/system/product → lowercase-hyphenated IDs
-- concept/technique/model/framework/benchmark/paper → lowercase-hyphenated IDs
-- ~65% entity, ~35% concept
+- Concept IDs are derived from bundle-relative paths; do not emit an `id` field
 - Min 150 words per page, 2-4 relationships
 - Target: appropriate number for this chunk's content
 
@@ -2076,40 +2117,22 @@ Output pages separated by ===PAGE_END==="""
     created_pages: list[dict] = []
     updated_pages: list[dict] = []
 
-    concept_types = CONCEPT_LIKE_TYPES
     for page_content in pages:
         page_content = page_content.strip()
         if not page_content or not page_content.startswith("---"):
             continue
 
-        lines = page_content.split("\n")
-        frontmatter_end = 0
-        for i, line in enumerate(lines):
-            if i > 0 and line.strip() == "---":
-                frontmatter_end = i
-                break
-        if frontmatter_end == 0:
+        parsed = _okf_page_from_model(page_content, chunk_name)
+        if parsed is None:
             continue
-
-        frontmatter_text = "\n".join(lines[1:frontmatter_end])
-        try:
-            frontmatter = yaml.safe_load(frontmatter_text)
-        except Exception:
-            continue
-
-        entity_id = frontmatter.get("id", "")
-        entity_type = frontmatter.get("type", "concept")
-        if not entity_id:
-            continue
-
-        target_dir = CONCEPTS_DIR if entity_type in concept_types else ENTITIES_DIR
-        page_path = target_dir / f"{entity_id}.md"
+        page_content, frontmatter, entity_id, page_path = parsed
+        entity_type = frontmatter["type"]
         f_count, r_count = _count_facts(page_content)
 
         created_pages.append({
             "id": entity_id,
             "type": entity_type,
-            "name": frontmatter.get("name", entity_id),
+            "name": frontmatter["title"],
             "path": str(page_path),
             "facts": f_count,
             "relationships": r_count,
@@ -2137,7 +2160,7 @@ def _content_hash(text: str) -> str:
 
 
 def _ensure_created_at(page_content: str, compile_date: str | None = None) -> str:
-    """Ensure a compiled page's frontmatter has a ``created_at`` date.
+    """Ensure a compiled OKF concept has an ISO ``timestamp``.
 
     Fills in ``compile_date`` (YYYY-MM-DD, defaulting to today) only when the
     field is missing or empty — existing values are preserved, so updates never
@@ -2160,17 +2183,16 @@ def _ensure_created_at(page_content: str, compile_date: str | None = None) -> st
         return page_content
     if not isinstance(fm, dict):
         return page_content
-    if fm.get("created_at"):
-        return page_content  # already present — preserve original creation date
+    if fm.get("timestamp"):
+        return page_content
 
     date_str = compile_date or datetime.now().strftime("%Y-%m-%d")
-    # Replace an existing empty created_at line in place (avoids duplicate YAML
-    # keys); only insert a new line when the key is entirely absent.
+    # Keep the historical function name because it is used by the compile pipeline.
     for i in range(1, fm_end):
-        if lines[i].startswith("created_at:"):
-            lines[i] = f"created_at: {date_str}"
+        if lines[i].startswith("timestamp:"):
+            lines[i] = f"timestamp: {date_str}T00:00:00Z"
             return "\n".join(lines)
-    lines.insert(1, f"created_at: {date_str}")
+    lines.insert(1, f"timestamp: {date_str}T00:00:00Z")
     return "\n".join(lines)
 
 
@@ -2178,33 +2200,30 @@ def _get_source_pages(source_name: str) -> dict[str, dict]:
     """Return all wiki pages previously created by *source_name*.
 
     Returns dict of {page_id: {path, content_hash, source}} by scanning
-    entities/ and concepts/ directories for pages with matching source field.
+    the native OKF bundle for pages with matching provenance.
     """
     result: dict[str, dict] = {}
-    for scan_dir in (ENTITIES_DIR, CONCEPTS_DIR):
-        if not scan_dir.exists():
+    from okf import concept_id, iter_concepts
+
+    for md_file in iter_concepts(PAGES_DIR):
+        try:
+            text = md_file.read_text(encoding="utf-8")
+        except OSError:
             continue
-        for md_file in scan_dir.glob("*.md"):
-            try:
-                text = md_file.read_text(encoding="utf-8")
-            except OSError:
-                continue
-            # Check source in frontmatter
-            source_match = re.search(r'^source:\s*(.+)$', text, re.MULTILINE)
-            if not source_match:
-                continue
-            page_source = source_match.group(1).strip()
-            if page_source != source_name:
-                continue
-            # Check for manual protection
-            is_manual = bool(re.search(r'^source:\s*manual$', text, re.MULTILINE))
-            page_id = md_file.stem
-            result[page_id] = {
-                "path": md_file,
-                "content_hash": _content_hash(text),
-                "source": page_source,
-                "manual": is_manual,
-            }
+        source_match = re.search(r"^provenance:\s*(.+)$", text, re.MULTILINE)
+        if not source_match:
+            continue
+        page_source = source_match.group(1).strip()
+        if page_source != source_name:
+            continue
+        is_manual = page_source == "manual"
+        page_id = concept_id(md_file, PAGES_DIR)
+        result[page_id] = {
+            "path": md_file,
+            "content_hash": _content_hash(text),
+            "source": page_source,
+            "manual": is_manual,
+        }
     return result
 
 
@@ -2291,26 +2310,20 @@ def compile_source(source_path: str, source_type: str = "doc", force: bool = Fal
 - 表格必须按原行列结构完整复现，不得合并、删除、重排序或概括单元格。
 - 在"来源上下文"附上原文摘录，便于核实。
 
-## ID 命名规则（防止同名覆盖）
-文档源简称: {source_abbr}
-
-- **实体页 ID**: `{source_abbr}-{{实体名}}` — 确保不同来源的同名实体不覆盖
-  例: `{source_abbr}-专家评审组`, `{source_abbr}-评分标准`
-- **概念页 ID**: 直接使用概念名 — 跨文档共享
-  例: `专家评审组机制`, `AI赋能理念`
+## OKF 概念标识
+不要输出 `id` 字段。系统根据 `type` 和 `title` 生成 bundle 相对路径作为
+Concept ID。关系必须使用标准 Markdown 链接，不使用双中括号 wikilink。
 
 ## 实体 vs 概念（这是最重要的分类！）
 - **实体 (entity/role/rule/process/event/tool/system/product)**:
   文档中具体出现的东西。某个特定组织、某个具体角色、某条明确规则、某个特定流程步骤。
-  特征：可以指向"一个具体实例"。**必须带 {source_abbr} 前缀**。
+  特征：可以指向"一个具体实例"。
   例: "XX公司的评审委员会"是 entity，"XX项目2025年预算"是 entity
 
 - **概念 (concept/technique/model/framework/benchmark/paper)**:
   跨文档的抽象知识。通用思想、方法论、技术模式、评估标准。
-  特征：可以在多个文档中讨论，不依附于单一来源。**不带前缀**。
+  特征：可以在多个文档中讨论，不依附于单一来源。
   例: "MoE架构"是 concept，"数字化转型方法论"是 concept
-
-**比例**: 文档中约 65% 实体, 35% 概念。绝大多数具体内容都是实体！
 
 ## 提取策略（逐段扫描，不要遗漏！）
 1. **从头到尾扫描文档的每个章节**——不要只提取开头部分
@@ -2352,37 +2365,25 @@ def compile_source(source_path: str, source_type: str = "doc", force: bool = Fal
 
 ## 关系关键词（每条关系必须用以下关键词之一开头）
 关系关键词 -> 对应类型:
-- 使用 [[X]] / 采用 [[X]] / 利用 [[X]] -> uses
-- 依赖 [[X]] / 取决于 [[X]] -> depends_on
-- 扩展 [[X]] / 基于 [[X]] -> extends
-- 改进 [[X]] / 优化 [[X]] / 增强 [[X]] -> improves_upon
-- 关联 [[X]] / 相关 [[X]] / 协作 [[X]] -> relates_to
-- 属于 [[X]] / 组成部分 [[X]] -> part_of
-- 负责 [[X]] / 实现 [[X]] / 执行 [[X]] -> implemented_by
-- 导致 [[X]] / 引起 [[X]] -> caused_by
-- 修复 [[X]] / 解决 [[X]] -> fixed_by
-- 取代 [[X]] / 替换 [[X]] -> supersedes
-- 矛盾 [[X]] / 冲突 [[X]] -> contradicts
+- 使用/采用 [X](/path/to/x.md) -> uses
+- 依赖/取决于 [X](/path/to/x.md) -> depends_on
+- 扩展/基于 [X](/path/to/x.md) -> extends
+- 改进/关联/属于/负责/导致/修复/取代/矛盾 [X](/path/to/x.md) -> 对应关系类型
 
 ## Output Format
 用 ===PAGE_END=== 分隔每个页面。
 
 每个页面必须包含 YAML frontmatter：
 ---
-id: 实体ID或概念ID
 type: {entity_type_str}
-name: 中文名称
-confidence: 0.85
-source: source-name
-aliases: [别名1, 别名2]
-keywords: [关键词1, 关键词2]
-created_at: {datetime.now().strftime("%Y-%m-%d")}
-published_at: ""   # 内容本身的发布日期 YYYY-MM-DD；若来源无可识别的发布时间则删除本行
+title: 中文名称
+description: 一句话摘要
+tags: [关键词1, 关键词2]
+timestamp: {datetime.now(timezone.utc).isoformat()}
+provenance: source-name
 ---
 
-> **日期字段（用于后续日期检索，务必填写）**：
-> - `created_at`：本页面的编译创建日期（已填好，原样保留）。
-> - `published_at`：**来源内容本身的发布/发表时间**（如文章发布日、文档生效日、论文发表日、日志时间戳）。从原文中识别；原文没有就**删除本行**，**不要编造**。
+> `timestamp` 使用 ISO 8601，表示该概念最后一次有意义的更新；原文发布日期应保留在正文来源上下文中，不得编造。
 
 然后按以下结构撰写（⚠️ 必须严格遵循此顺序！）：
 # [中文标题]
@@ -2424,7 +2425,7 @@ published_at: ""   # 内容本身的发布日期 YYYY-MM-DD；若来源无可识
 - 实体:概念比例约 65:35
 - 每个页面至少 150 字实质性内容
 - 每个页面至少 2-4 条关联关系
-- 目标: 10-25 个高质量页面
+- 页面数量由文档内容和后续查询任务决定
 
 ## 实体类型参考
 {entity_type_lines}"""
@@ -2447,10 +2448,10 @@ parameters, table cells, statistics, units, and names — must be preserved
 Karpathy's wiki design distinguishes two page types:
 - **entity** (entity/role/rule/process/event/tool/system/product):
   Concrete instances in the document. A specific organization, person, rule, or process step.
-  Think: "Can I point to this as one specific instance?" → entity. ~65% of pages.
+  Think: "Can I point to this as one specific instance?" → entity.
 - **concept** (concept/technique/model/framework/benchmark/paper):
   Abstract knowledge reusable across documents. Methodologies, patterns, evaluation criteria.
-  Think: "Could this be discussed in multiple independent documents?" → concept. ~35% of pages.
+  Think: "Could this be discussed in multiple independent documents?" → concept.
 
 **Default bias**: If unsure, prefer entity. Most document content is concrete, not abstract.
 
@@ -2493,40 +2494,27 @@ Rules:
 - For Chinese documents, use Chinese attribute names
 
 ## Relationship Keywords (every relationship MUST start with one of these)
-- uses [[X]] / employs [[X]] → uses
-- depends on [[X]] / requires [[X]] → depends_on
-- extends [[X]] / based on [[X]] → extends
-- improves [[X]] / enhances [[X]] → improves_upon
-- relates to [[X]] / associated with [[X]] → relates_to
-- part of [[X]] / component of [[X]] → part_of
-- implemented by [[X]] / executed by [[X]] → implemented_by
-- caused by [[X]] / triggered by [[X]] → caused_by
-- fixed by [[X]] / resolved by [[X]] → fixed_by
-- supersedes [[X]] / replaces [[X]] → supersedes
-- contradicts [[X]] / conflicts with [[X]] → contradicts
+- uses/employs [X](/path/to/x.md) → uses
+- depends on/requires [X](/path/to/x.md) → depends_on
+- extends/based on [X](/path/to/x.md) → extends
+- improves/relates to/part of/implemented by/caused by/fixed by/supersedes/contradicts
+  [X](/path/to/x.md) → the corresponding relationship type
 
 ## Output Format
 Write pages separated by exactly this marker: ===PAGE_END===
 
 Each page must start with YAML frontmatter:
 ---
-id: entity-slug
 type: {entity_type_str}
-name: Display Name
-confidence: 0.85
-source: source-name
-aliases: [alias1, alias2]
-keywords: [keyword1, keyword2]
-created_at: {datetime.now().strftime("%Y-%m-%d")}
-published_at: ""   # source content publication date YYYY-MM-DD; delete this line if none
+title: Display Name
+description: One-sentence summary
+tags: [keyword1, keyword2]
+timestamp: {datetime.now(timezone.utc).isoformat()}
+provenance: source-name
 ---
 
-> **Date fields (used for date-based retrieval — fill them in)**:
-> - `created_at`: the compile/creation date of this page (already filled — keep as-is).
-> - `published_at`: **the source content's own publication date** (article publish date,
->   document effective date, paper publication date, log timestamp, etc.). Extract it
->   from the source; if the source has no identifiable publication date, **delete this
->   line** — do **not** fabricate one.
+> `timestamp` is the ISO 8601 time of the last meaningful concept update. Preserve the
+> source publication date in Source Context when present; never fabricate it.
 
 Then the page content (⚠️ MUST follow this exact order!):
 # [Title]
@@ -2563,14 +2551,12 @@ Then the page content (⚠️ MUST follow this exact order!):
 ## Quality Rules
 - 🔴 **Key Facts table is MANDATORY! Pages without it = INVALID.**
 - Scan EVERY section — don't miss content in later parts of the document
-- entity/role/rule/process/event/tool/system/product → lowercase-hyphenated IDs
-- concept/technique/model/framework/benchmark/paper → lowercase-hyphenated IDs
-- ~65% entity, ~35% concept ratio
+- Concept IDs are derived from bundle-relative paths; do not emit an `id` field
 - Minimum 150 words of substantive content per page
 - At least 2-4 typed relationships per page
 - Merge obvious variants: "DeepSeek-V3.2" and "DeepSeek-V3-2" → single page "deepseek-v3.2"
 - Title Case names: "Muon Optimizer", "KV Cache"
-- Target: 10-25 high-quality pages
+- Page count is determined by the source and downstream retrieval tasks
 
 ## Entity Types
 {entity_type_lines}"""
@@ -2589,15 +2575,14 @@ Then the page content (⚠️ MUST follow this exact order!):
 3. 识别跨文档通用概念（方法论、技术模式、评估框架）
 4. 为每个实体/概念建立关联关系链接
 
-## 实体 ID 规则（重要！）
-- entity/role/rule/process/event/tool/system/product → ID 必须带 {source_abbr} 前缀
-- concept/technique/model/framework/benchmark/paper → ID 不带前缀
+## OKF 链接规则
+关系使用 bundle 相对的标准 Markdown 链接；不要输出 `id` 字段或 wikilink。
 
 ## 关注点
 {focus_desc}。核心概念、组织结构、流程机制、评估标准、具体规则。
 
 ## 目标
-10-25 个高质量中文页面，内容详实且相互关联，每个至少 2-4 条关系。
+生成与内容复杂度匹配的高质量中文概念文档。
 用 ===PAGE_END=== 分隔每个页面。"""
     else:
         user_prompt = f"""Document: {source_name}
@@ -2617,7 +2602,7 @@ Scan this document section by section and extract all important entities and con
 {focus_desc}. Architecture innovations, model variants, techniques, benchmarks, key findings.
 
 ## Target
-10-25 high-quality pages with substantive content, minimum 2-4 relationships each.
+Generate the number of high-quality concepts justified by the source.
 Output pages separated by ===PAGE_END==="""
     print("Calling LLM...", file=sys.stderr)
     response = call_llm(system_prompt, user_prompt)
@@ -2646,28 +2631,12 @@ Output pages separated by ===PAGE_END==="""
         if not page_content or not page_content.startswith("---"):
             continue
 
-        lines = page_content.split("\n")
-        frontmatter_end = 0
-        for i, line in enumerate(lines):
-            if i > 0 and line.strip() == "---":
-                frontmatter_end = i
-                break
-
-        if frontmatter_end == 0:
+        parsed = _okf_page_from_model(page_content, source_name)
+        if parsed is None:
+            print("  WARNING: page is missing valid OKF metadata", file=sys.stderr)
             continue
-
-        frontmatter_text = "\n".join(lines[1:frontmatter_end])
-        try:
-            frontmatter = yaml.safe_load(frontmatter_text)
-        except Exception as e:
-            print(f"  WARNING: YAML parse failed — {e}", file=sys.stderr)
-            continue
-
-        entity_id = frontmatter.get("id", "")
-        entity_type = frontmatter.get("type", "concept")
-
-        if not entity_id:
-            continue
+        page_content, frontmatter, entity_id, page_path = parsed
+        entity_type = frontmatter["type"]
 
         # Persist regular Markdown tables as queryable DuckDB data. Key Facts
         # remains in the page because the retrieval pipeline reads it directly.
@@ -2678,11 +2647,7 @@ Output pages separated by ===PAGE_END==="""
             if stored_tables:
                 print(f"  Extracted tables: {', '.join(stored_tables)}", file=sys.stderr)
 
-        # Determine target directory
-        target_dir = CONCEPTS_DIR if entity_type in concept_types else ENTITIES_DIR
-        target_dir.mkdir(parents=True, exist_ok=True)
-
-        page_path = target_dir / f"{entity_id}.md"
+        page_path.parent.mkdir(parents=True, exist_ok=True)
 
         # ── 同名异实保护：如果已存在同名实体页（非 concept 类型），自动加前缀 ──
         # 即使 force 模式也检测——force 只允许覆盖同源页面，不能覆盖跨源实体
@@ -2690,25 +2655,23 @@ Output pages separated by ===PAGE_END==="""
             existing_content = page_path.read_text(encoding="utf-8")
             existing_source = ""
             for line in existing_content.split("\n"):
-                if line.startswith("source:"):
-                    existing_source = line.replace("source:", "").strip()
+                if line.startswith("provenance:"):
+                    existing_source = line.replace("provenance:", "").strip()
                     break
             # If existing page is from a DIFFERENT source, prefix the new one
             if existing_source and existing_source != source_name:
-                prefixed_id = f"{source_abbr}-{entity_id}"
-                page_path = ENTITIES_DIR / f"{prefixed_id}.md"
-                frontmatter["id"] = prefixed_id
-                page_lines = page_content.split("\n")
-                fm_start = page_lines.index("---")
-                fm_end = page_lines.index("---", fm_start + 1)
-                new_fm = yaml.dump(frontmatter, allow_unicode=True, default_flow_style=False).strip()
-                page_content = "---\n" + new_fm + "\n---\n" + "\n".join(page_lines[fm_end + 1:])
+                slug = Path(entity_id).name
+                prefixed_id = f"entities/{source_abbr}-{slug}"
+                page_path = PAGES_DIR / f"{prefixed_id}.md"
+                entity_id = prefixed_id
 
                 # Register for concept aggregation
-                base_name = entity_id
+                base_name = slug
                 if base_name not in concept_groups:
                     concept_groups[base_name] = []
-                concept_groups[base_name].append({"id": prefixed_id, "type": entity_type, "name": frontmatter.get("name", entity_id)})
+                concept_groups[base_name].append(
+                    {"id": prefixed_id, "type": entity_type, "name": frontmatter["title"]}
+                )
                 print(f"  Conflict → prefixed: {prefixed_id}.md", file=sys.stderr)
 
         if page_path.exists() and not force:
@@ -2742,7 +2705,7 @@ Output pages separated by ===PAGE_END==="""
                 if not dry_run:
                     # Incremental: skip if content unchanged
                     new_hash = _content_hash(page_content)
-                    old_hash = existing_source_pages.get(frontmatter.get("id", entity_id), {}).get("content_hash", "")
+                    old_hash = existing_source_pages.get(entity_id, {}).get("content_hash", "")
                     if new_hash == old_hash:
                         _skipped[0] += 1
                         print(f"  Unchanged: {Path(page_path).name}", file=sys.stderr)
@@ -2750,9 +2713,9 @@ Output pages separated by ===PAGE_END==="""
                     atomic_write(page_path, _ensure_created_at(page_content))
                 f_count, r_count = _count_facts(page_content)
                 updated_pages.append({
-                    "id": frontmatter.get("id", entity_id),
+                    "id": entity_id,
                     "type": entity_type,
-                    "name": frontmatter.get("name", entity_id),
+                    "name": frontmatter["title"],
                     "path": str(page_path),
                     "contradictions": len(contradictions),
                     "resolutions": len(resolutions),
@@ -2789,7 +2752,7 @@ Output pages separated by ===PAGE_END==="""
                 if not dry_run:
                     # Incremental: skip if content unchanged
                     new_hash = _content_hash(page_content)
-                    old_hash = existing_source_pages.get(frontmatter.get("id", entity_id), {}).get("content_hash", "")
+                    old_hash = existing_source_pages.get(entity_id, {}).get("content_hash", "")
                     if new_hash == old_hash:
                         _skipped[0] += 1
                         print(f"  Unchanged: {Path(page_path).name}", file=sys.stderr)
@@ -2797,9 +2760,9 @@ Output pages separated by ===PAGE_END==="""
                     atomic_write(page_path, _ensure_created_at(page_content))
                 f_count, r_count = _count_facts(page_content)
                 updated_pages.append({
-                    "id": frontmatter.get("id", entity_id),
+                    "id": entity_id,
                     "type": entity_type,
-                    "name": frontmatter.get("name", entity_id),
+                    "name": frontmatter["title"],
                     "path": str(page_path),
                     "facts": f_count,
                     "relationships": r_count,
@@ -2810,9 +2773,9 @@ Output pages separated by ===PAGE_END==="""
                 atomic_write(page_path, _ensure_created_at(page_content))
             f_count, r_count = _count_facts(page_content)
             created_pages.append({
-                "id": frontmatter.get("id", entity_id),
+                "id": entity_id,
                 "type": entity_type,
-                "name": frontmatter.get("name", entity_id),
+                "name": frontmatter["title"],
                 "path": str(page_path),
                 "facts": f_count,
                 "relationships": r_count,
@@ -2847,7 +2810,7 @@ Output pages separated by ===PAGE_END==="""
     for base_name, instances in concept_groups.items():
         concept_path = CONCEPTS_DIR / f"{base_name}.md"
         instance_links = "\n".join(
-            f"- [[{inst['id']}]] — {inst.get('name', inst['id'])}（来源: {source_name}）"
+            f"- [{inst.get('name', inst['id'])}](/{inst['id']}.md)（来源: {source_name}）"
             for inst in instances
         )
         # Also find existing non-prefixed entities with the same base name
@@ -2855,10 +2818,12 @@ Output pages separated by ===PAGE_END==="""
         if existing_entity.exists():
             existing_source = ""
             for line in existing_entity.read_text(encoding="utf-8").split("\n"):
-                if line.startswith("source:"):
-                    existing_source = line.replace("source:", "").strip()
+                if line.startswith("provenance:"):
+                    existing_source = line.replace("provenance:", "").strip()
                     break
-            existing_link = f"- [[{base_name}]] — {base_name}（来源: {existing_source}）"
+            existing_link = (
+                f"- [{base_name}](/entities/{base_name}.md)（来源: {existing_source}）"
+            )
             if existing_link not in instance_links:
                 instance_links = existing_link + "\n" + instance_links
 
@@ -2875,7 +2840,7 @@ Output pages separated by ===PAGE_END==="""
             # Use LLM to synthesize a concept page from entity instances
             entity_summaries = []
             for inst in instances:
-                ep_path = ENTITIES_DIR / f"{inst['id']}.md"
+                ep_path = PAGES_DIR / f"{inst['id']}.md"
                 if ep_path.exists():
                     ep_content = ep_path.read_text(encoding="utf-8")
                     overview_lines = []
@@ -2899,13 +2864,14 @@ Output pages separated by ===PAGE_END==="""
 实例详情:
 {chr(10).join(entity_summaries[:3])}
 
-输出（YAML frontmatter + 中文内容）：
+输出原生 OKF v0.1 概念文档（YAML frontmatter + 中文内容）：
 ---
-id: {base_name}
 type: concept
-name: {base_name}
-confidence: 0.85
-source: 跨文档聚合
+title: {base_name}
+description: 跨文档聚合概念
+tags: [跨文档聚合]
+timestamp: {datetime.now(timezone.utc).isoformat()}
+provenance: 跨文档聚合
 ---
 
 # {base_name}
@@ -2925,17 +2891,21 @@ source: 跨文档聚合
                     "你是 Wiki 知识聚合助手，综合多个来源的同类实体，生成概念页。",
                     synthesis_prompt,
                 )
+                normalized = _okf_page_from_model(concept_content.strip(), "跨文档聚合")
+                if normalized is not None:
+                    concept_content = normalized[0]
                 if not dry_run:
                     atomic_write(concept_path, _ensure_created_at(concept_content.strip()))
                 print(f"  Concept created: {base_name}.md ({len(instances)} instances)", file=sys.stderr)
             except Exception:
                 _log_exc(f"concept synthesis failed for {base_name}")
                 fallback = f"""---
-id: {base_name}
 type: concept
-name: {base_name}
-confidence: 0.80
-source: 跨文档聚合
+title: {base_name}
+description: 跨文档聚合概念
+tags: [跨文档聚合]
+timestamp: {datetime.now(timezone.utc).isoformat()}
+provenance: 跨文档聚合
 ---
 
 # {base_name}
@@ -3122,20 +3092,19 @@ def compile_path(
 
 
 def update_log(source_name: str, pages_count: int, operation: str = "compile"):
-    """Update log.md with new operation."""
-    log_file = WIKI_DIR / "log.md"
+    """Update the OKF bundle log with a newest-first ISO date entry."""
+    log_file = PAGES_DIR / "log.md"
     log_file.parent.mkdir(parents=True, exist_ok=True)
 
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-
-    entry = f"\n## [{now}] {operation} | {source_name}\n- Pages created: {pages_count}\n"
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    entry = f"## {now}\n* **{operation.title()}**: {source_name}; {pages_count} concepts changed.\n\n"
 
     if log_file.exists():
         content = log_file.read_text(encoding="utf-8")
     else:
-        content = "# Wiki Log\n\nChronological record of all wiki operations.\n"
-
-    content += entry
+        content = "# Wiki Log\n\n"
+    heading, _, rest = content.partition("\n\n")
+    content = f"{heading}\n\n{entry}{rest}"
     log_file.write_text(content, encoding="utf-8")
 
 
@@ -3166,6 +3135,7 @@ def update_graph(pages: list, source_name: str):
                 "id": eid,
                 "type": page["type"],
                 "name": page["name"],
+                "path": page.get("path", ""),
                 "sources": [source_name],
                 "confidence": 0.85,
                 "created": now,
@@ -3184,10 +3154,12 @@ def update_graph(pages: list, source_name: str):
         page_path = Path(page.get("path", ""))
         if page_path.exists():
             content = page_path.read_text(encoding="utf-8")
-            wikilinks = re.findall(r'\[\[([^\]|]+)', content)
+            markdown_links = re.findall(r"\[[^\]]+\]\(([^)]+\.md)(?:#[^)]+)?\)", content)
 
-            for target in wikilinks:
+            for target in markdown_links:
                 target = target.strip().lower().replace(" ", "-")
+                if target.endswith(".md"):
+                    target = target.lstrip("/")[:-3]
                 if target and target != page["id"]:
                     line_context = ""
                     for line in content.split("\n"):
@@ -3217,56 +3189,30 @@ def update_graph(pages: list, source_name: str):
 
 
 def update_index(pages: list, source_name: str):
+    """Regenerate the OKF progressive-disclosure root index."""
+    from okf import concept_id, iter_concepts, read_markdown
+
     INDEX_FILE.parent.mkdir(parents=True, exist_ok=True)
-
-    grouped = {
-        "concept": {},
-        "technique": {},
-        "model": {},
-        "framework": {},
-        "benchmark": {},
-        "paper": {},
-    }
-
-    # Merge existing index entries
-    if INDEX_FILE.exists():
-        for line in INDEX_FILE.read_text(encoding="utf-8").split("\n"):
-            match = re.match(r'- \[\[([^\]|]+)(?:\|[^\]]+)?\]\] — (.+)', line)
-            if match:
-                eid, ptype = match.group(1), match.group(2)
-                if ptype in grouped:
-                    grouped[ptype][eid] = True
-
-    for p in pages:
-        ptype = p.get("type", "concept")
-        if ptype in grouped:
-            grouped[ptype][p.get("id", "")] = True
-
-    lines = [
-        "# Wiki Index",
-        "",
-        f"> Last compiled: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC",
-        f"> Source: {source_name}",
-        "",
-    ]
-
-    type_labels = {
-        "concept": "Concepts",
-        "technique": "Techniques",
-        "model": "Models",
-        "framework": "Frameworks",
-        "benchmark": "Benchmarks",
-        "paper": "Papers",
-    }
-
-    for ptype, label in type_labels.items():
-        items = grouped[ptype]
-        if items:
-            lines.extend(["", f"## {label}", ""])
-            for eid in sorted(items):
-                name = eid.replace("-", " ").title()
-                lines.append(f"- [[{eid}|{name}]] — {ptype}")
-
+    grouped: dict[str, list[tuple[str, str, str]]] = {}
+    for path in iter_concepts(PAGES_DIR):
+        metadata, _, error = read_markdown(path)
+        if error:
+            continue
+        page_type = str(metadata.get("type") or "Reference")
+        grouped.setdefault(page_type, []).append(
+            (
+                concept_id(path, PAGES_DIR),
+                str(metadata.get("title") or path.stem),
+                str(metadata.get("description") or ""),
+            )
+        )
+    lines = ['---', 'okf_version: "0.1"', '---', '# Wiki Index', '']
+    for page_type in sorted(grouped):
+        lines.extend([f"## {page_type}", ""])
+        for identifier, title, description in sorted(grouped[page_type]):
+            suffix = f" - {description}" if description else ""
+            lines.append(f"* [{title}](/{identifier}.md){suffix}")
+        lines.append("")
     atomic_write(INDEX_FILE, "\n".join(lines))
 
 

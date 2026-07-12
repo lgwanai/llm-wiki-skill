@@ -45,12 +45,12 @@ def test_import_preserves_extensions_and_is_searchable(tmp_path, monkeypatch):
     wiki = tmp_path / ".wiki"
     monkeypatch.setattr(okf, "get_wiki_dir", lambda: wiki)
     result = okf.import_bundle(_bundle(tmp_path))
-    imported = wiki / "pages" / "okf" / "tables" / "orders.md"
+    imported = wiki / "pages" / "tables" / "orders.md"
     metadata, _, error = okf.read_markdown(imported)
     assert result["imported"] == 1
     assert error is None
     assert metadata["custom_field"] == "preserved"
-    assert metadata["okf_concept_id"] == "tables/orders"
+    assert okf.concept_id(imported, wiki / "pages") == "tables/orders"
     assert imported in search._known_page_paths(wiki / "pages")
 
 
@@ -60,13 +60,12 @@ def test_export_produces_conformant_bundle(tmp_path, monkeypatch):
     page.parent.mkdir(parents=True)
     page.write_text(
         """---
-id: revenue
 type: Metric
-name: Revenue
-summary: Recognized revenue.
-keywords: [finance]
-source: https://example.com/revenue
-created_at: 2026-07-11
+title: Revenue
+description: Recognized revenue.
+tags: [finance]
+resource: https://example.com/revenue
+timestamp: 2026-07-11T00:00:00Z
 ---
 # Revenue
 
@@ -82,3 +81,19 @@ Revenue definition.
     assert error is None
     assert metadata["title"] == "Revenue"
     assert metadata["tags"] == ["finance"]
+
+
+def test_migrate_legacy_page_to_native_okf(tmp_path):
+    pages = tmp_path / "pages"
+    page = pages / "concepts" / "legacy.md"
+    page.parent.mkdir(parents=True)
+    page.write_text(
+        "---\nid: legacy\ntype: concept\nname: Legacy\n"
+        "summary: Old metadata\nkeywords: [old]\ncreated_at: 2024-01-01\n---\nBody\n"
+    )
+    result = okf.migrate_native_bundle(pages)
+    metadata, _, _ = okf.read_markdown(page)
+    assert result["valid"] is True
+    assert result["migrated"] == 1
+    assert metadata["title"] == "Legacy"
+    assert "id" not in metadata

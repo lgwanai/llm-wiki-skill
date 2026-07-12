@@ -287,24 +287,24 @@ def test_process_type_is_not_concept_like():
 def test_ensure_created_at_fills_missing(tmp_path):
     page = "---\nid: foo\ntype: concept\nname: Foo\n---\n\n# Foo\nbody"
     out = compile_v2._ensure_created_at(page, "2026-07-05")
-    assert "created_at: 2026-07-05" in out
+    assert "timestamp: 2026-07-05T00:00:00Z" in out
     # Inserted as a frontmatter key, not into the body.
-    assert out.index("created_at:") < out.index("---", 3)
+    assert out.index("timestamp:") < out.index("---", 3)
 
 
 def test_ensure_created_at_preserves_existing_date():
-    page = "---\nid: bar\ncreated_at: 2020-01-01\ntype: concept\n---\n\nbody"
+    page = "---\ntitle: Bar\ntimestamp: 2020-01-01T00:00:00Z\ntype: concept\n---\n\nbody"
     out = compile_v2._ensure_created_at(page, "2026-07-05")
-    assert "created_at: 2020-01-01" in out
+    assert "timestamp: 2020-01-01T00:00:00Z" in out
     assert "2026-07-05" not in out  # not overwritten on update
 
 
 def test_ensure_created_at_replaces_empty_value_without_duplicate():
-    """Empty created_at must be filled in place — no duplicate YAML keys."""
-    page = "---\nid: baz\ncreated_at:\ntype: concept\n---\n\nbody"
+    """Empty timestamp must be filled in place — no duplicate YAML keys."""
+    page = "---\ntitle: Baz\ntimestamp:\ntype: concept\n---\n\nbody"
     out = compile_v2._ensure_created_at(page, "2026-07-05")
-    assert out.count("created_at:") == 1  # no duplicate key
-    assert "created_at: 2026-07-05" in out
+    assert out.count("timestamp:") == 1
+    assert "timestamp: 2026-07-05T00:00:00Z" in out
 
 
 def test_ensure_created_at_handles_no_frontmatter():

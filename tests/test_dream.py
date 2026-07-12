@@ -22,7 +22,7 @@ def test_light_sleep_logs_query_and_optimizes_retrieved_page(wiki_dir, monkeypat
     wiki = Path(wiki_dir) / ".wiki"
     page = wiki / "pages" / "concepts" / "retrieval.md"
     page.write_text(
-        "---\nid: retrieval\ntype: concept\nname: Retrieval\n---\n\n# Retrieval\n",
+        "---\ntype: Concept\ntitle: Retrieval\ntags: []\n---\n\n# Retrieval\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(dream, "_today", lambda: "20260626")
@@ -44,7 +44,7 @@ def test_light_sleep_logs_query_and_optimizes_retrieved_page(wiki_dir, monkeypat
     metadata = _frontmatter(page)
     assert len(items) == 1
     assert "How does retrieval work?" in metadata["questions"]
-    assert "retrieval" in metadata["keywords"]
+    assert "retrieval" in metadata["tags"]
     assert metadata["dream_query_count"] == 1
 
 

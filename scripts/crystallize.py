@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-from __future__ import annotations
 """crystallize.py — Session → Digest Pipeline for llm-wiki."""
+
+from __future__ import annotations
 
 import argparse
 import json
@@ -59,9 +60,11 @@ def _auto_digest(topic: str, date: str) -> str | None:
     now = _now()
 
     digest = f"""---
-id: {digest_id}
-type: session
-date: {date}
+type: Session Digest
+title: Session Digest — {date} — {topic}
+description: Auto-crystallized knowledge from the {topic} session.
+tags: [session, crystallized]
+timestamp: {now}
 topic: {topic}
 entities: []
 quality_score: 0.5
@@ -145,9 +148,11 @@ def create_digest(session_file: str, topic: str, date: str) -> str:
             findings.append(line[2:].strip())
 
     digest = f"""---
-id: {digest_id}
-type: session
-date: {date}
+type: Session Digest
+title: Session Digest — {date} — {topic}
+description: Crystallized knowledge from the {topic} session.
+tags: [session, crystallized]
+timestamp: {_now()}
 topic: {topic}
 entities: {json.dumps(entities[:10])}
 quality_score: 0.7
@@ -176,7 +181,7 @@ Auto-crystallized from working session.
 
 """
     for e in list(set(entities))[:10]:
-        digest += f'| [[{e}]] | unknown | identified | 0.5 |\n'
+        digest += f'| [{e}](/concepts/{_slugify(e)}.md) | unknown | identified | 0.5 |\n'
 
     if entities:
         digest = digest[:digest.rfind('\n')] + '\n'

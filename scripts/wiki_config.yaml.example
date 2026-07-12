@@ -51,11 +51,13 @@ query:
   synthesis_mode: agent             # agent (default, no configured LLM) | llm
   default_format: markdown
   max_results: 5
+  parallel_search: true
   # Default is wiki-native: frontmatter metadata + page BM25 + compiled graph + ledgers.
   # Optional legacy/RAG-like streams can be enabled explicitly:
   # metadata,bm25,graph,ledger,chunk,vector,chunk_vector
   search_streams: metadata,bm25,graph,ledger
   llm_query_expansion: false
+  verify_answers: true
 
 # OCR is optional. Local mode uses one backend; API mode uses an
 # OpenAI-compatible vision endpoint or a provider preset.
@@ -103,20 +105,13 @@ vision_skill:
   scripts_path: ""                             # dir containing vision_cli.py; empty = invoke skill by name only
   recognize_format: markdown_note              # vision_cli --format preset (markdown_note | ocr | analysis | ...)
 
-# Optional embeddings for experiments/benchmarks. Not part of the default query path.
+# Optional Zvec semantic stream. Install with: pip install -e '.[vector]'
 embeddings:
-  mode: local
-  model: Qwen/Qwen3-Embedding-8B
-  model_backend: modelscope       # modelscope | huggingface
-  dimension: 4096                  # auto-detected from model
-  backend: faiss
-  device: auto                     # auto | mps | cuda | cpu
-  batch_size: 16
-  cache_path: graph/embeddings.json
-  # API mode (set mode: api):
-  # api_url: http://localhost:12345/v1/embeddings
-  # api_key: ""
-  # api_model: text-embedding-3-small
+  enabled: false
+  backend: zvec
+  model_source: modelscope       # Chinese-friendly local default; dimension auto-detected
+  index_path: graph/zvec
+  optimize: true
 
 quality:
   auto_heal: true
