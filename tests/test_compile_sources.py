@@ -52,12 +52,16 @@ def test_paginated_documents_are_supported_sources(tmp_path):
 
 def test_paginated_document_without_ocr_preserves_every_page_for_agent(tmp_path, monkeypatch):
     source = tmp_path / "deck.pdf"
-    source.write_bytes(b"%PDF fake")
+    original_bytes = b"%PDF fake"
+    source.write_bytes(original_bytes)
     wiki_dir = tmp_path / ".wiki"
     monkeypatch.setattr(compile_v2, "WIKI_DIR", wiki_dir)
 
-    def fake_render(path):
-        assert path == source
+    def fake_render(path, storage_source_path=None):
+        assert path != source
+        assert path.name == source.name
+        assert path.read_bytes() == original_bytes
+        assert storage_source_path == source
         output_dir = wiki_dir / "source" / "document_images" / "deck-test"
         output_dir.mkdir(parents=True)
         page_1 = output_dir / "page-001.png"
@@ -79,6 +83,7 @@ def test_paginated_document_without_ocr_preserves_every_page_for_agent(tmp_path,
     assert "page-001.png" in content
     assert "page-002.png" in content
     assert "Agent must read this rendered page image" in content
+    assert source.read_bytes() == original_bytes
 
 
 def test_paginated_document_ocr_runs_for_every_page(tmp_path, monkeypatch):
@@ -100,7 +105,7 @@ def test_paginated_document_ocr_runs_for_every_page(tmp_path, monkeypatch):
     monkeypatch.setattr(
         compile_v2,
         "_render_paginated_document_to_images",
-        lambda path: (pages, "pdf-pages"),
+        lambda path, storage_source_path=None: (pages, "pdf-pages"),
     )
     monkeypatch.setattr(compile_v2, "_ocr_backend_available", lambda: True)
     monkeypatch.setattr(

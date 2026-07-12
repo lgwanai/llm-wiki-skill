@@ -225,6 +225,13 @@ def _known_page_paths(pages_dir: str | Path = PAGES_DIR) -> list[Path]:
         scan_dir = base / subdir
         if scan_dir.is_dir():
             paths.extend(sorted(scan_dir.glob("*.md")))
+    okf_dir = base / "okf"
+    if okf_dir.is_dir():
+        paths.extend(
+            path
+            for path in sorted(okf_dir.rglob("*.md"))
+            if path.name not in {"index.md", "log.md"}
+        )
     return paths
 
 

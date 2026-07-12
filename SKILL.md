@@ -7,7 +7,7 @@ description: >
   this", "file away", "add to wiki", "second brain", "build knowledge base", "set
   up wiki", accumulating and structuring information that compounds over time.
 COMMANDS: >
-  /wiki-compile, /wiki-query, /wiki-lint, /wiki-embed, /wiki-bulk,
+  /wiki-compile, /wiki-query, /wiki-lint, /wiki-bulk,
   /wiki-consolidate, /wiki-status, /wiki-init, /wiki-update, /wiki-ledger.
 ---
 
@@ -42,17 +42,17 @@ Schema (schema.md + wiki_config.yaml) — single source of truth for types & rul
 
 ### `vision-skill` (optional, recommended for image sources)
 
-Image-source compilation (`wiki compile diagram.png`) recognizes images with
+Image-source compilation (`python scripts/compile_v2.py diagram.png`) recognizes images with
 this precedence:
 
 1. **vision-skill (preferred)** — the Agent invokes the `vision-skill` skill,
    which provides vision recognition (OCR, object detection, image
    description) via an OpenAI-compatible VL model. If `vision_skill.scripts_path`
-   is set in `wiki_config.yaml`, the compile task also emits a concrete CLI
-   command for the Agent:
+   is set in `wiki_config.yaml`, the compile task also emits a concrete Python
+   script command for the Agent:
 
    ```bash
-   python3 <vision_skill.scripts_path>/vision_cli.py recognize \
+   python <vision_skill.scripts_path>/vision_cli.py recognize \
      "<image>" --format markdown_note --wait
    ```
 
@@ -72,7 +72,19 @@ is reserved for `--mode llm`, where no Agent is in the loop to invoke a skill.
 
 ## Commands
 
-Use the installed shell CLI (`wiki ...`, or the alias `llm-wiki ...`) for all commands.
+Run commands from the skill repository with Python scripts directly. Do **not**
+assume the `wiki` / `llm-wiki` console scripts are installed; on Windows they
+are often unavailable unless the user has completed CLI installation.
+
+Use:
+
+```bash
+python scripts/<script>.py ...
+```
+
+On systems where `python` is not on PATH, use the platform launcher for the
+same script, e.g. `py -3 scripts\<script>.py ...` on Windows or `python3
+scripts/<script>.py ...` on Unix.
 
 ### `/wiki-compile <source>` — Ingest Source
 
@@ -81,14 +93,14 @@ decides the document type, and writes wiki pages according to `schema.md` and
 the compile standard. No configured model/API key is required.
 
 ```bash
-wiki compile source.md
-wiki compile docs/                 # recursively compile supported files
-wiki compile docs/ --depth 1       # only direct files + one directory level
-wiki compile diagram.png           # vision-skill → OCR → Agent native (see Dependencies)
-wiki compile handbook.pdf          # every page rendered; OCR/vision/Agent fallback
-wiki compile slides.pptx           # every slide rendered; never first-slide-only
-wiki compile source.md --force     # re-compile + detect contradictions
-wiki compile source.md --mode llm  # optional legacy path using configured model
+python scripts/compile_v2.py source.md
+python scripts/compile_v2.py docs/                 # recursively compile supported files
+python scripts/compile_v2.py docs/ --depth 1       # only direct files + one directory level
+python scripts/compile_v2.py diagram.png           # vision-skill → OCR → Agent native (see Dependencies)
+python scripts/compile_v2.py handbook.pdf          # every page rendered; OCR/vision/Agent fallback
+python scripts/compile_v2.py slides.pptx           # every slide rendered; never first-slide-only
+python scripts/compile_v2.py source.md --force     # re-compile + detect contradictions
+python scripts/compile_v2.py source.md --mode llm  # optional legacy path using configured model
 ```
 
 **What happens:**
@@ -102,7 +114,21 @@ wiki compile source.md --mode llm  # optional legacy path using configured model
     and require the Agent to inspect them or ask the user
   - Never trust first-page-only extraction; every rendered page/slide must appear in the task output
 - Other Office/document files use MarkItDown when available, otherwise Agent must inspect or ask for readable content
-- Agent chooses source type (`doc`, `article`, `code`, `conversation`) by reading the content
+- Agent reads the content and dynamically routes it to one or more domain-expert lenses;
+  source type (`doc`, `article`, `code`, `conversation`) is only a storage hint
+- Legal/regulatory sources preserve article numbering and operative language, and organize
+  applicability, exceptions, procedure, consequences, effective dates, and cross-references
+- Sales/marketing policies preserve region, audience, product/channel, time window, thresholds,
+  stacking/exclusions, approval, settlement, and expiry conditions as applicability matrices
+- Academic sources preserve definitions, formulas, symbols, assumptions, derivations, evidence,
+  limitations, citations, and concept/logic relationships
+- Course outlines become reusable course knowledge maps linking audience, prerequisites,
+  learning objectives, modules, knowledge points, activities, exercises, timing, and assessment
+- Mixed or unfamiliar documents may combine lenses or infer a more suitable expert; compilation
+  uses content-driven granularity rather than fixed page counts, fact quotas, or entity ratios
+- The built-in expert catalog also covers finance/accounting, operations, product management,
+  software architecture, project management, HR, procurement/supply chain, manufacturing/quality,
+  risk/audit, healthcare, education, customer service, corporate strategy, and data/metric governance
 - Agent generates structured Wiki pages (YAML frontmatter + Key Facts/Overview/Questions/Details/Relationships/Source Context)
 - If the Agent cannot read the source, it must stop and ask the user for readable content
 - **Cross-document entity protection**: same-named entities from different sources auto-prefixed (e.g., `coursepl-专家评审组`), concept aggregation pages auto-created
@@ -118,23 +144,23 @@ current Agent synthesizes from already-compiled pages with citations. No
 configured model/API key is required by default.
 
 ```bash
-wiki query "What is X?"
-wiki query "What is X?" --debug-search
-wiki query "What is X?" --mode llm   # optional legacy path using configured model
-wiki search doctor
-wiki search eval .wiki/evals/retrieval.jsonl
-wiki benchmark evals/rag_benchmark_smoke.jsonl --method both -k 5
+python scripts/query.py "What is X?"
+python scripts/query.py "What is X?" --debug-search
+python scripts/query.py "What is X?" --mode llm   # optional legacy path using configured model
+python scripts/search.py --doctor
+python scripts/search.py --eval .wiki/evals/retrieval.jsonl
+python scripts/benchmark.py evals/rag_benchmark_smoke.jsonl --method both -k 5
 
 # Fast mode — skip synthesis (0.5s)
-wiki query "专家评审组" --no-synthesis
+python scripts/query.py "专家评审组" --no-synthesis
 
 # Output formats
-wiki query "compare" --format table
-wiki query "history" --format timeline
-wiki query "export" --format json
+python scripts/query.py "compare" --format table
+python scripts/query.py "history" --format timeline
+python scripts/query.py "export" --format json
 
 # File answer back as new wiki page
-wiki query "Explain X" --file-back
+python scripts/query.py "Explain X" --file-back
 ```
 
 | Mode | Flag | Time | Output |
@@ -153,30 +179,47 @@ Default retrieval quality features:
 - Graph search anchors natural-language questions to compiled entities and relationships.
 - Query planning prioritizes ledger/graph/page streams by intent.
 - Query rewriting adds only lightweight lexical variants by default.
-- `wiki search doctor` reports page, metadata, graph, and optional embedding health.
-- `wiki search eval` measures Recall@K and MRR from jsonl eval cases.
-- `wiki embed`, vector streams, and rerankers are opt-in tools for experiments/benchmarks,
+- `python scripts/search.py --doctor` reports page, metadata, graph, and optional embedding health.
+- `python scripts/search.py --eval <cases.jsonl>` measures Recall@K and MRR from jsonl eval cases.
+- Vector streams and rerankers are opt-in tools for experiments/benchmarks,
   not the default product path.
 
 ### `/wiki-lint` — Health Check
 
 ```bash
-wiki lint              # Check only
-wiki lint --auto-heal  # Check + fix
+python scripts/lint.py              # Check only
+python scripts/lint.py --auto-heal  # Check + fix
 ```
 
 Checks: contradictions, stale claims, orphan pages, broken links, missing concepts.
 
+### `/wiki-okf` — Open Knowledge Format v0.1 Interoperability
+
+Validate, import, and export [Google Knowledge Catalog OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
+knowledge bundles:
+
+```bash
+python scripts/wiki.py okf validate path/to/bundle
+python scripts/wiki.py okf import path/to/bundle
+python scripts/wiki.py okf import path/to/bundle --force
+python scripts/wiki.py okf export path/to/output-bundle
+```
+
+Imported concepts preserve producer-defined frontmatter fields, hierarchy, body Markdown,
+standard links, reserved `index.md`/`log.md`, and become searchable under `.wiki/pages/okf/`.
+Export maps native Wiki metadata to OKF `type`, `title`, `description`, `resource`, `tags`, and
+`timestamp`, generates progressive-disclosure indexes and an ISO-dated log, then validates the bundle.
+
 ### `/wiki-status` — Wiki Overview
 
 ```bash
-wiki status
+python scripts/wiki.py status
 ```
 
 ### `/wiki-init` — Initialize
 
 ```bash
-wiki init
+python scripts/wiki.py init
 ```
 
 Creates `.wiki/` directory structure.
@@ -184,7 +227,7 @@ Creates `.wiki/` directory structure.
 ### `/wiki-update` — Update Skill
 
 ```bash
-wiki update
+python scripts/update.py
 ```
 
 Pulls latest code from GitHub, backs up old files to `backup/` (compressed with date stamp).
@@ -197,10 +240,9 @@ Pulls latest code from GitHub, backs up old files to `backup/` (compressed with 
 ### Other Commands
 
 ```bash
-wiki embed --force          # Regenerate vector embeddings
-wiki bulk stats             # Wiki analytics
-wiki bulk clean --dry-run   # Preview orphan cleanup
-python3 scripts/consolidate.py                 # Memory tier promotion + decay
+python scripts/bulk.py stats                  # Wiki analytics
+python scripts/bulk.py clean --dry-run        # Preview orphan cleanup
+python scripts/consolidate.py                 # Memory tier promotion + decay
 ```
 
 ### `/wiki-ledger` — 台账管理 (Ledger, DuckDB 后端)
@@ -217,7 +259,7 @@ Claude 会在创建前逐一确认：
 
 ```bash
 # 创建表格
-wiki ledger create "项目台账" \
+python scripts/ledger.py create "项目台账" \
   --fields '[{"name":"项目名称","type":"string","required":true},{"name":"负责人","type":"string","required":true},{"name":"预算","type":"number"}]' \
   --unique "项目名称" \
   --auto-increment \
@@ -236,45 +278,45 @@ wiki ledger create "项目台账" \
 
 ```bash
 # 单行插入
-wiki ledger insert "项目台账" \
+python scripts/ledger.py insert "项目台账" \
   --data '{"项目名称":"智能系统","负责人":"张三","预算":50}'
 
 # 批量插入
-wiki ledger insert "项目台账" \
+python scripts/ledger.py insert "项目台账" \
   --data '[{"项目名称":"项目A","负责人":"李四"},{"项目名称":"项目B","负责人":"王五"}]'
 
 # 容错模式（跳过错误行，继续处理）
-wiki ledger insert "项目台账" --data '[...]' --batch
+python scripts/ledger.py insert "项目台账" --data '[...]' --batch
 ```
 
 **查询和管理：**
 
 ```bash
-wiki ledger list                # 列出所有表
-wiki ledger show "项目台账"      # 查看表结构 + 前20行数据
-wiki ledger stats               # 所有表统计
-wiki ledger stats "项目台账"     # 单表统计
+python scripts/ledger.py list                # 列出所有表
+python scripts/ledger.py show "项目台账"      # 查看表结构 + 前20行数据
+python scripts/ledger.py stats               # 所有表统计
+python scripts/ledger.py stats "项目台账"     # 单表统计
 ```
 
 **修改表结构：**
 
 ```bash
 # 添加字段
-wiki ledger update-schema "项目台账" \
+python scripts/ledger.py update-schema "项目台账" \
   --add '[{"name":"备注","type":"text"}]'
 
 # 删除字段
-wiki ledger update-schema "项目台账" --remove "旧字段"
+python scripts/ledger.py update-schema "项目台账" --remove "旧字段"
 
 # 重命名字段
-wiki ledger update-schema "项目台账" --rename "旧名:新名"
+python scripts/ledger.py update-schema "项目台账" --rename "旧名:新名"
 
 # 修改字段类型（自动迁移数据）
-wiki ledger update-schema "项目台账" \
+python scripts/ledger.py update-schema "项目台账" \
   --modify '[{"name":"预算","type":"integer"}]'
 
 # 删除表格
-wiki ledger delete "项目台账"
+python scripts/ledger.py delete "项目台账"
 ```
 
 **支持的数据类型：**
@@ -302,12 +344,12 @@ wiki ledger delete "项目台账"
 ```
 
 **表格数据参与 Wiki 检索：**
-创建表格并插入数据后，`wiki query` 会自动搜索表格中的结构化数据，与 Wiki 页面结果合并返回。支持 BM25 关键词检索和向量语义检索两种模式。
+创建表格并插入数据后，`python scripts/query.py` 会自动搜索表格中的结构化数据，与 Wiki 页面结果合并返回。支持 BM25 关键词检索和向量语义检索两种模式。
 
 ```bash
-# 生成表格向量嵌入（启用语义检索）
-wiki ledger embed "项目台账"
-wiki ledger embed   # 所有表
+# 表格检索 / 自然语言问答
+python scripts/ledger.py search "项目"
+python scripts/wiki.py ledger ask "项目台账" "预算最高的是哪个项目？"
 ```
 
 **典型工作流：**
@@ -316,11 +358,11 @@ wiki ledger embed   # 所有表
 用户: 帮我创建一个项目台账
 Claude: [询问字段、唯一键、是否需要编号]
 用户: 需要项目名称、负责人、开始日期、预算。项目名称唯一，要自动编号。
-Claude: [调用 wiki ledger create]
+Claude: [调用 python scripts/ledger.py create]
 用户: 帮我加一条，智能系统开发项目，张三负责，1月15开始，50万预算
-Claude: [解析自然语言 → 结构化JSON → 调用 wiki ledger insert]
+Claude: [解析自然语言 → 结构化JSON → 调用 python scripts/ledger.py insert]
 用户: 再加一个备注字段
-Claude: [调用 wiki ledger update-schema --add]
+Claude: [调用 python scripts/ledger.py update-schema --add]
 ```
 
 ## Configuration
@@ -331,7 +373,7 @@ Single config file: `wiki_config.yaml` (copy from `.example`). Config is gitigno
 compile:
   mode: agent                  # default; no configured LLM required
 
-# Optional only for `wiki compile --mode llm` or query synthesis
+# Optional only for `python scripts/compile_v2.py --mode llm` or query synthesis
 # model:
 #   provider: deepseek
 #   model: "deepseek-v4-flash"
@@ -378,15 +420,15 @@ Pluggable backends, default via `ocr.backend` config.
 
 ```bash
 # Default (from config)
-python3 scripts/ocr.py document.pdf
+python scripts/ocr.py document.pdf
 
 # Explicit backend
-python3 scripts/ocr.py document.pdf --backend paddle
-python3 scripts/ocr.py document.pdf --backend deepseek
+python scripts/ocr.py document.pdf --backend paddle
+python scripts/ocr.py document.pdf --backend deepseek
 
 # PDF → Wiki full pipeline
-python3 scripts/ocr.py paper.pdf -o .wiki/source/paper/
-wiki compile .wiki/source/paper/paper/auto/paper.md
+python scripts/ocr.py paper.pdf -o .wiki/source/paper/
+python scripts/compile_v2.py .wiki/source/paper/paper/auto/paper.md
 ```
 
 | Backend | Engine | Strengths | GPU |
@@ -419,7 +461,7 @@ wiki compile .wiki/source/paper/paper/auto/paper.md
 
 | Script | Purpose |
 |--------|---------|
-| `wiki.py` | Unified CLI |
+| `wiki.py` | Unified script entry for init/status and grouped commands |
 | `compile_v2.py` | Source → wiki pages + graph |
 | `query.py` | Search + synthesize + file-back (6 formats) |
 | `search.py` | Hybrid search: BM25 + graph + RRF |
@@ -478,8 +520,8 @@ It's an unattended self-looping system with git snapshots, quality gating,
 auto-rollback, and experience accumulation:
 
 ```bash
-wiki dream --foreground   # Run synchronously
-wiki dream                # Run in background
+python scripts/dream.py --foreground   # Run synchronously
+python scripts/dream.py                # Run in background
 ```
 
 ### What happens
@@ -521,18 +563,18 @@ Report issues and trigger automatic diagnosis + repair:
 
 ```bash
 # Natural language feedback (primary interface)
-wiki doctor "专家评审组的信息不完整，缺少成员名单和评审流程"
+python scripts/doctor.py "专家评审组的信息不完整，缺少成员名单和评审流程"
 
 # Targeted diagnosis
-wiki doctor --check coursepl-专家评审组
+python scripts/doctor.py --check coursepl-专家评审组
 
 # Direct repair actions
-wiki doctor --recompile .wiki/source/doc.md
-wiki doctor --re-ocr .wiki/source/slides.pptx
+python scripts/doctor.py --recompile .wiki/source/doc.md
+python scripts/doctor.py --re-ocr .wiki/source/slides.pptx
 
 # Issue tracking
-wiki doctor --list                        # List outstanding issues
-wiki doctor --resolve iss-20260627-001    # Mark resolved
+python scripts/doctor.py --list                        # List outstanding issues
+python scripts/doctor.py --resolve iss-20260627-001    # Mark resolved
 ```
 
 ### Issue types and repair strategies

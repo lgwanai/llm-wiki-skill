@@ -34,11 +34,13 @@
 ```bash
 pip install -e .
 wiki config --init        # create wiki_config.yaml
-vim wiki_config.yaml      # set your API key
 wiki init                 # initialize .wiki/
 wiki compile paper.md     # Agent reads source → structured pages
 wiki query "What is X?"   # search → synthesize → answer with citations
 ```
+
+Agent compile/query mode is the default and does not require an API key. Configure a
+provider only when you explicitly want the optional `--mode llm` path.
 
 **One source → 15+ structured pages with typed relationships:**
 
@@ -115,6 +117,53 @@ wiki doctor --list                                 # outstanding issues
 | **Experience store** | SHA256-deduped lessons learned → loaded as context in future runs |
 | **Doctor workflow** | classify (regex) → diagnose (wiki search) → repair (8 strategies) → verify → persist |
 
+## Content-Aware Domain Experts
+
+Compile does not force every source through a fixed chunking recipe. It reads the
+document first, identifies its domain and intended retrieval tasks, then combines up
+to three relevant expert lenses. Page count, fact count, and entity/concept ratio are
+driven by the source rather than fixed quotas.
+
+Built-in expert coverage includes:
+
+- Legal/regulatory compliance, sales and marketing policy, finance/accounting
+- Operations, product management, software architecture, and project management
+- HR, procurement/supply chain, manufacturing/quality, risk/internal audit
+- Academic research, curriculum design, education, healthcare, and customer service
+- Corporate strategy and data/metric governance
+
+For example, regulations retain article numbering, operative language, applicability,
+exceptions, effective dates, and cross-references. Commercial policies retain region,
+audience, channel, time window, thresholds, exclusions, approvals, and settlement
+conditions. Academic documents retain definitions, formulas, assumptions, derivations,
+evidence, limitations, and citations. Mixed or unfamiliar sources can combine lenses
+or infer a more suitable specialist dynamically.
+
+## Open Knowledge Format (OKF)
+
+llm-wiki supports Google Knowledge Catalog's
+[Open Knowledge Format v0.1 Draft](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
+for portable Markdown knowledge bundles.
+
+```bash
+# Validate an OKF bundle
+wiki okf validate path/to/bundle
+
+# Import it into .wiki/pages/okf/ and make concepts searchable
+wiki okf import path/to/bundle
+wiki okf import path/to/bundle --force
+
+# Export the current wiki as a conformant OKF bundle
+wiki okf export path/to/output-bundle
+wiki okf export path/to/output-bundle --force
+```
+
+Import preserves the directory hierarchy (OKF Concept IDs), Markdown bodies, standard
+links, reserved `index.md`/`log.md` files, unknown concept types, and producer-defined
+frontmatter extensions. Export maps native metadata to OKF `type`, `title`,
+`description`, `resource`, `tags`, and `timestamp`, generates directory indexes and an
+ISO-dated log, then validates the generated bundle.
+
 ## Benchmark
 
 We evaluate the **complete product pipeline** (compile → search → synthesize), not components. **No embeddings, no chunks, no cross-encoders** — pure wiki-native architecture. Industry baselines from published RAGAS/RGB/GraphRAG papers.
@@ -136,7 +185,9 @@ We evaluate the **complete product pipeline** (compile → search → synthesize
 | Capability | Description |
 |-----------|-------------|
 | **Compile** | Agent reads sources, decides source type, writes schema-compliant wiki pages and graph |
+| **Domain Experts** | Content-driven multi-expert compilation for legal, finance, operations, product, academic, training, and other domains |
 | **Query** | Wiki-native search (metadata + BM25 + graph + ledger) + entity linking + 3-signal ranking → Agent synthesis |
+| **OKF v0.1** | Validate, import, search, and export portable Google Open Knowledge Format bundles |
 | **Lint** | Health scanning + auto-heal: contradictions, stale claims, orphans, broken links |
 | **Lifecycle** | Ebbinghaus decay, confidence scoring, contradiction detection, supersession |
 | **Memory Tiers** | Working → Episodic → Semantic → Procedural, automatic consolidation |
@@ -170,6 +221,7 @@ llm-wiki-skill/
 │   ├── lint.py        # Health scan + auto-heal
 │   ├── dream.py       # Self-looping maintenance (4-phase, auto mode)
 │   ├── doctor.py       # User feedback diagnosis + auto-repair
+│   ├── okf.py          # OKF v0.1 validation, import, and export
 │   ├── ledger.py      # Structured table management (DuckDB)
 │   └── ...
 ├── .wiki/             # Wiki data (LLM-generated)
@@ -178,7 +230,7 @@ llm-wiki-skill/
 │   ├── ledger/        # ledger.duckdb database
 │   └── source/        # Original source files (immutable)
 ├── .claude/hooks/     # Automation hooks (optional)
-├── tests/             # Test suite (180 tests)
+├── tests/             # Test suite (206 tests)
 ├── templates/         # Page templates
 └── references/        # Deep-dive docs
 ```

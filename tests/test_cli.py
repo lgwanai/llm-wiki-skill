@@ -11,6 +11,7 @@ import tomllib
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scripts import wiki
+from ocr import cli as ocr_cli
 
 
 def test_console_scripts_declared():
@@ -94,3 +95,27 @@ def test_dream_command_routes_to_worker(monkeypatch, capsys):
 
     assert calls == [("dream.py", ["--foreground"])]
     assert "started" in capsys.readouterr().out
+
+
+def test_ocr_output_dir_rejects_source_file_path(tmp_path):
+    source = tmp_path / "slides.pdf"
+    source.write_bytes(b"%PDF fake")
+
+    with pytest.raises(ValueError, match="directory"):
+        ocr_cli.resolve_output_dir(source, str(source), "slides_ocr")
+
+
+def test_ocr_output_dir_rejects_source_like_requested_path(tmp_path):
+    source = tmp_path / "slides.pdf"
+    source.write_bytes(b"%PDF fake")
+
+    with pytest.raises(ValueError, match="source-like"):
+        ocr_cli.resolve_output_dir(source, str(tmp_path / "slides.pptx"), "slides_ocr")
+
+
+def test_ocr_text_output_rejects_input_image_path(tmp_path):
+    source = tmp_path / "diagram.png"
+    source.write_bytes(b"image")
+
+    with pytest.raises(ValueError, match="source file path"):
+        ocr_cli.validate_output_file(source, source)

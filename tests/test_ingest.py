@@ -46,6 +46,32 @@ class TestFilterSensitive:
 
 
 class TestIngestSource:
+    def test_domain_expert_routing_is_content_driven(self):
+        legal = ingest.match_domain_experts(
+            "第一条 本条例适用于本行政区域。经营者不得违反本规定，处罚如下。"
+        )
+        assert legal[0]["id"] == "legal"
+
+        mixed = ingest.match_domain_experts(
+            "课程大纲：学员完成模块与考核。研究方法包括实验、公式和变量定义。"
+        )
+        assert {item["id"] for item in mixed} >= {"curriculum", "academic"}
+
+    @pytest.mark.parametrize(
+        ("content", "expected"),
+        [
+            ("财务预算按科目核算成本，利润表披露毛利和净利润。", "finance"),
+            ("运营SOP规定工单履约、排班、服务水平和异常处理。", "operations"),
+            ("PRD包含用户故事、功能优先级、版本和验收标准。", "product"),
+            ("采购订单连接供应商、库存、仓储、物流和交期。", "supply_chain"),
+            ("临床指南说明药物剂量、适应症、禁忌症和不良反应。", "healthcare"),
+            ("指标口径包含公式、维度、数据源、时间窗和数据质量。", "data"),
+        ],
+    )
+    def test_major_business_domain_routes(self, content, expected):
+        matches = ingest.match_domain_experts(content)
+        assert expected in {item["id"] for item in matches}
+
     def test_agent_mode_creates_task_without_llm_call(self, wiki_dir, monkeypatch):
         def fail_call_llm(*_args, **_kwargs):
             raise AssertionError("Agent mode must not call configured LLM")
@@ -67,7 +93,10 @@ class TestIngestSource:
         assert result["mode"] == "agent"
         assert result["needs_agent"] is True
         assert task_path.exists()
-        assert "Do not call the configured LLM API" in task_path.read_text(encoding="utf-8")
+        task = task_path.read_text(encoding="utf-8")
+        assert "Do not call the configured LLM API" in task
+        assert "领域专家路由" in task
+        assert "固定页数" in task
 
     @patch("compile_v2.call_llm")
     def test_ingests_text_file(self, mock_call_llm, wiki_dir):
@@ -112,7 +141,7 @@ class TestIngestSource:
             ingest.CONCEPTS_DIR = ingest.PAGES_DIR / "concepts"
             ingest.INDEX_FILE = ingest.PAGES_DIR / "index.md"
 
-            result = ingest.compile_source(str(src))
+            ingest.compile_source(str(src))
 
             entities_path = Path(wiki_dir) / ".wiki" / "graph" / "entities.json"
             data = json.loads(entities_path.read_text())
@@ -137,7 +166,7 @@ class TestIngestSource:
             ingest.CONCEPTS_DIR = ingest.PAGES_DIR / "concepts"
             ingest.INDEX_FILE = ingest.PAGES_DIR / "index.md"
 
-            result = ingest.compile_source(str(src))
+            ingest.compile_source(str(src))
 
             audit_path = Path(wiki_dir) / ".wiki" / "audit.json"
             assert audit_path.exists()

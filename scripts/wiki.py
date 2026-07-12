@@ -422,6 +422,17 @@ Environment:
     lint_parser = subparsers.add_parser("lint", help="Health check wiki")
     lint_parser.add_argument("--auto-heal", action="store_true", help="Auto-fix issues")
 
+    okf_parser = subparsers.add_parser("okf", help="OKF v0.1 validate/import/export")
+    okf_sub = okf_parser.add_subparsers(dest="okf_cmd", required=True)
+    okf_validate = okf_sub.add_parser("validate", help="Validate an OKF bundle")
+    okf_validate.add_argument("bundle")
+    okf_import = okf_sub.add_parser("import", help="Import an OKF bundle")
+    okf_import.add_argument("bundle")
+    okf_import.add_argument("--force", action="store_true")
+    okf_export = okf_sub.add_parser("export", help="Export wiki as an OKF bundle")
+    okf_export.add_argument("destination")
+    okf_export.add_argument("--force", action="store_true")
+
     bulk_parser = subparsers.add_parser("bulk", help="Bulk operations")
     bulk_sub = bulk_parser.add_subparsers(dest="bulk_cmd", required=True)
     bulk_sub.add_parser("stats", help="Detailed wiki statistics")
@@ -608,6 +619,19 @@ Environment:
     elif args.command == "lint":
         result = cmd_lint(auto_heal=args.auto_heal)
         print(result["output"])
+
+    elif args.command == "okf":
+        okf_args = [args.okf_cmd]
+        if args.okf_cmd in {"validate", "import"}:
+            okf_args.append(args.bundle)
+        else:
+            okf_args.append(args.destination)
+        if getattr(args, "force", False):
+            okf_args.append("--force")
+        code, output = run_script("okf.py", okf_args)
+        print(output)
+        if code != 0:
+            sys.exit(code)
 
     elif args.command == "consolidate":
         result = cmd_consolidate(tiers=args.tiers, decay_only=args.decay_only)

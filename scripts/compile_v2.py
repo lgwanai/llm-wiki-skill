@@ -5,13 +5,16 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import traceback
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -28,6 +31,7 @@ from config import (
     get_wiki_dir,
 )
 from table_extract import persist_page_tables
+
 
 def _log_exc(msg: str = ""):
     """Log exception traceback to stderr for debugging."""
@@ -124,6 +128,130 @@ INGEST_RULES = {
     ),
 }
 
+DOMAIN_EXPERTS = {
+    "legal": {
+        "label": "法律法规与合规专家",
+        "signals": ("法律", "法规", "条例", "办法", "规定", "法条", "本法", "应当", "不得", "处罚", "管辖", "生效", "废止"),
+        "instructions": "按法律层级、章/节/条保留原编号与原文；拆出适用主体、地域、事项、条件、例外、程序、期限、法律后果、引用法条、生效/修订/废止状态。不得把‘可以/应当/不得’互换，不得把例外并入一般规则。优先形成法条导航页、制度主题页和交叉引用。",
+    },
+    "policy": {
+        "label": "销售营销政策与商业运营专家",
+        "signals": ("销售", "营销", "促销", "返利", "折扣", "渠道", "经销商", "客户", "区域", "政策期", "活动期", "适用范围", "考核"),
+        "instructions": "围绕谁在何地、何时、对什么产品/渠道/客户、满足何条件、可获何权益、由谁审批、如何核算与结算来组织；完整保留地区、主体、产品、渠道、时间窗、门槛、梯度、互斥/叠加、例外、审批、凭证和失效条件。用适用性矩阵与计算示例连接规则，禁止脱离限定条件摘录金额或比例。",
+    },
+    "academic": {
+        "label": "学术研究与科学知识专家",
+        "signals": ("摘要", "研究", "论文", "方法", "实验", "假设", "定理", "证明", "公式", "变量", "数据集", "基线", "显著", "结论", "参考文献"),
+        "instructions": "区分定义、假设、命题、公式、推导、方法、实验设计、结果、限制与结论；逐字保留公式、符号、变量含义、单位和适用条件。建立概念依赖、推导链、因果/相关边界、方法到证据的逻辑链，并保留引用与页码/章节定位。不得把作者主张写成公认事实。",
+    },
+    "curriculum": {
+        "label": "培训信息架构与课程设计专家",
+        "signals": ("课程大纲", "培训", "学员", "教学目标", "学习目标", "课时", "讲师", "模块", "单元", "练习", "作业", "考核", "教学活动"),
+        "instructions": "以便于后续组课为目标，区分课程定位、受众画像、先修要求、可观察学习目标、模块/知识点层级、概念依赖、难点误区、案例练习、教学活动、课时、资料与评估方式。保持原大纲顺序，同时建立知识点到目标、练习、考核的映射；不要把课程章节机械地等同于知识点。",
+    },
+    "finance": {
+        "label": "财务会计与经营分析专家",
+        "signals": ("财务", "会计", "资产负债表", "利润表", "现金流", "收入确认", "成本", "预算", "税务", "凭证", "科目", "毛利", "净利润"),
+        "instructions": "区分会计口径、管理口径和税务口径；保留币种、期间、主体、科目、借贷方向、确认条件、计算公式、数据来源与勾稽关系。组织报表项目、核算政策、预算差异、指标树和风险事项，任何金额或比率不得脱离期间与口径。",
+    },
+    "operations": {
+        "label": "业务运营与流程管理专家",
+        "signals": ("运营", "SOP", "流程", "工单", "排班", "履约", "转化率", "留存率", "服务水平", "周转", "产能", "异常处理"),
+        "instructions": "按目标、输入、角色、步骤、决策点、SLA、产能、指标、异常、升级与复盘组织；还原端到端流程及责任边界，建立指标口径、上下游依赖和异常闭环。区分标准路径、例外路径与人工判断点。",
+    },
+    "product": {
+        "label": "产品管理与用户体验专家",
+        "signals": ("产品需求", "PRD", "用户故事", "用户旅程", "功能", "版本", "验收标准", "优先级", "原型", "痛点", "场景", "需求池"),
+        "instructions": "围绕用户、场景、问题、价值、需求、功能、规则、交互、状态、边界、依赖、埋点、指标与验收标准组织；区分用户事实、产品假设和已确认决策，建立需求到方案、版本和验证证据的追踪链。",
+    },
+    "engineering": {
+        "label": "软件工程与系统架构专家",
+        "signals": ("架构", "接口", "API", "数据库", "服务", "部署", "代码", "算法", "协议", "依赖", "故障", "性能", "安全漏洞"),
+        "instructions": "保留组件职责、接口契约、数据模型、控制流/数据流、依赖、配置、版本、环境、性能约束、安全边界、故障模式和运维步骤；把设计决策与实现事实分开，并链接需求、代码位置、测试和已知限制。",
+    },
+    "project": {
+        "label": "项目与项目群管理专家",
+        "signals": ("项目计划", "里程碑", "WBS", "交付物", "关键路径", "进度", "项目风险", "干系人", "资源计划", "变更请求"),
+        "instructions": "按目标、范围、交付物、工作分解、负责人、时间、依赖、里程碑、资源、风险、问题、决策和变更组织；保留计划基线与实际状态的区别，建立需求—任务—交付—验收的追踪关系。",
+    },
+    "hr": {
+        "label": "人力资源与组织发展专家",
+        "signals": ("招聘", "岗位职责", "任职资格", "绩效", "薪酬", "员工", "职级", "晋升", "人才盘点", "组织架构", "劳动合同", "离职"),
+        "instructions": "围绕适用员工、组织层级、岗位、职级、能力、流程、周期、评价标准、薪酬口径、审批和员工影响组织；区分制度、流程与个案，保留劳动关系地域、时间和例外条件，避免推断敏感个人信息。",
+    },
+    "supply_chain": {
+        "label": "采购、供应链与物流专家",
+        "signals": ("采购", "供应商", "招标", "库存", "仓储", "物流", "交期", "订单", "补货", "安全库存", "运输", "供应链"),
+        "instructions": "按需求、寻源、供应商、合同、订单、库存、仓储、运输、交付、结算和绩效组织；保留物料/服务范围、数量、单位、价格口径、交期、Incoterms、质检、风险和异常责任，建立端到端流转与单据关系。",
+    },
+    "manufacturing": {
+        "label": "制造工程与质量管理专家",
+        "signals": ("生产", "工艺", "BOM", "产线", "设备", "良率", "质量", "检验", "缺陷", "批次", "作业指导书", "追溯"),
+        "instructions": "保留产品/物料版本、BOM、工序、工艺参数、设备、批次、检验标准、抽样规则、缺陷等级、良率、控制计划和追溯链；区分规范值、实测值和处置结论，串联变更、偏差、根因与纠正预防措施。",
+    },
+    "risk_audit": {
+        "label": "风险管理、内控与审计专家",
+        "signals": ("风险", "内控", "审计", "控制点", "合规检查", "整改", "证据", "抽样", "风险等级", "控制测试", "缺陷认定"),
+        "instructions": "按目标、风险、控制、责任人、频率、证据、测试方法、发现、影响、根因、整改和复核组织；区分固有风险与剩余风险、设计有效性与执行有效性，不把建议写成已执行事实。",
+    },
+    "healthcare": {
+        "label": "医疗健康与临床信息专家",
+        "signals": ("患者", "诊断", "治疗", "药物", "剂量", "临床", "指南", "适应症", "禁忌症", "不良反应", "检验", "预后"),
+        "instructions": "区分指南建议、研究证据与个案信息；完整保留人群、适应症、禁忌症、剂量、途径、频次、疗程、检查指标、证据等级和不良反应。建立症状—诊断—检查—治疗—随访逻辑，并明确来源版本与适用边界，不生成原文没有的医疗建议。",
+    },
+    "education": {
+        "label": "教育教学与学习科学专家",
+        "signals": ("教学", "学生", "学习成果", "课程标准", "教案", "课堂", "评价量规", "学科", "作业", "测验", "教学策略"),
+        "instructions": "围绕学习者、目标、先备知识、核心概念、学习进阶、教学活动、资源、形成性评价和总结性评价组织；保留学段、学科、课时与评价标准，建立目标—教学—评价一致性和概念先后依赖。",
+    },
+    "customer_service": {
+        "label": "客户服务与体验运营专家",
+        "signals": ("客服", "客诉", "投诉", "咨询", "服务话术", "满意度", "响应时长", "升级", "退换货", "服务工单", "客户体验"),
+        "instructions": "按客户类型、场景、意图、问题分类、诊断步骤、话术边界、解决方案、权限、SLA、升级、补偿和闭环组织；区分事实核验、标准答复与酌情处理，保留渠道、地区、产品和时间限制。",
+    },
+    "strategy": {
+        "label": "企业战略与商业分析专家",
+        "signals": ("战略", "商业模式", "市场规模", "竞争格局", "增长", "战略目标", "核心能力", "进入壁垒", "SWOT", "情景分析"),
+        "instructions": "区分事实、假设、判断与决策；按外部环境、市场、客户、竞争、能力、选择、目标、举措、资源、指标和情景组织，建立证据—洞察—选择—行动链，并保留预测口径、时间范围与不确定性。",
+    },
+    "data": {
+        "label": "数据分析与指标治理专家",
+        "signals": ("数据分析", "指标", "口径", "维度", "数据源", "SQL", "仪表盘", "样本", "统计", "归因", "漏斗", "数据质量"),
+        "instructions": "保留指标定义、公式、分子分母、单位、粒度、维度、过滤条件、时间窗、数据源、刷新频率和负责人；区分描述、相关、因果与预测结论，记录样本、缺失、偏差和数据质量限制，建立指标血缘与业务解释。",
+    },
+}
+
+
+def match_domain_experts(content: str, source_name: str = "") -> list[dict[str, str]]:
+    """Select one or more domain lenses from evidence in the document itself."""
+    sample = f"{source_name}\n{content[:120_000]}".lower()
+    ranked: list[tuple[int, str]] = []
+    for key, profile in DOMAIN_EXPERTS.items():
+        score = sum(sample.count(signal.lower()) for signal in profile["signals"])
+        if score:
+            ranked.append((score, key))
+    ranked.sort(reverse=True)
+    if not ranked:
+        return []
+    best = ranked[0][0]
+    # Multi-label routing handles mixed documents; weak incidental matches are excluded.
+    selected = [key for score, key in ranked if score >= max(2, best // 3)][:3]
+    return [{"id": key, **DOMAIN_EXPERTS[key]} for key in selected]
+
+
+def build_domain_expert_guidance(content: str, source_name: str = "") -> str:
+    experts = match_domain_experts(content, source_name)
+    if experts:
+        routes = "\n".join(
+            f"- **{item['label']}**：{item['instructions']}" for item in experts
+        )
+    else:
+        routes = "- **通用知识架构专家**：先识别文档真实用途、读者任务和内在结构，再决定页面粒度；不得套用固定页数、固定实体比例或固定拆分模板。"
+    return f"""## 领域专家路由（基于内容动态选择）
+{routes}
+
+先通读并判断文档体裁、权威性、目标读者与后续查询任务，再选择拆解粒度。允许多个专家视角协同，也允许发现更准确的领域后自行调整。章节只是证据边界，不必一章一页；页面数量、事实条数和实体/概念比例均由内容决定。若后续通用模板出现“固定页数”“每页固定事实数”或“固定实体/概念比例”，本节优先，忽略这些配额。所有解释性归纳须与原文明确区分，并附可回溯的原文定位。"""
+
 IMAGE_ANALYSIS_PROMPT = """Analyze this image for knowledge-base ingestion and retrieval.
 
 Return clean markdown in Chinese when the image contains Chinese; otherwise use the image's main language.
@@ -218,6 +346,37 @@ def is_supported_source(path: Path) -> bool:
     return path.is_file() and (
         is_text_source(path) or is_image_source(path) or is_document_source(path)
     )
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+@contextmanager
+def _readonly_working_copy(source_path: Path):
+    """Yield a temporary copy so external readers never touch the source file."""
+    source_path = source_path.resolve()
+    original_stat = source_path.stat()
+    original_hash = _file_sha256(source_path)
+
+    with tempfile.TemporaryDirectory(prefix="llm-wiki-source-") as tmpdir:
+        work_path = Path(tmpdir) / source_path.name
+        shutil.copy2(source_path, work_path)
+        work_path.chmod(0o400)
+        yield work_path
+
+    after_stat = source_path.stat()
+    if (
+        after_stat.st_size != original_stat.st_size
+        or _file_sha256(source_path) != original_hash
+    ):
+        raise RuntimeError(
+            f"Source file changed during read-only processing: {source_path}"
+        )
 
 
 def iter_source_files(root: Path, max_depth: int | None = None) -> list[Path]:
@@ -561,9 +720,12 @@ def _convert_office_to_pdf(source_path: Path, output_dir: Path) -> Path:
     return candidates[0]
 
 
-def _render_paginated_document_to_images(source_path: Path) -> tuple[list[Path], str]:
+def _render_paginated_document_to_images(
+    source_path: Path,
+    storage_source_path: Path | None = None,
+) -> tuple[list[Path], str]:
     """Render all pages/slides from a PDF/PPT/PPTX source into images."""
-    output_dir = _document_images_dir(source_path)
+    output_dir = _document_images_dir(storage_source_path or source_path)
     suffix = source_path.suffix.lower()
     if suffix == ".pdf":
         return _render_pdf_pages_to_images(source_path, output_dir), "pdf-pages"
@@ -686,7 +848,11 @@ def _read_paginated_document_for_compile(source_path: Path) -> str:
     ]
 
     try:
-        page_images, pipeline = _render_paginated_document_to_images(source_path)
+        with _readonly_working_copy(source_path) as work_path:
+            page_images, pipeline = _render_paginated_document_to_images(
+                work_path,
+                storage_source_path=source_path,
+            )
     except Exception as render_error:
         markitdown_text = _markitdown_to_markdown(source_path)
         sections.extend(
@@ -804,7 +970,8 @@ def _markitdown_to_markdown(source_path: Path) -> str:
     try:
         from markitdown import MarkItDown
 
-        result = MarkItDown().convert(str(source_path))
+        with _readonly_working_copy(source_path) as work_path:
+            result = MarkItDown().convert(str(work_path))
         return (getattr(result, "text_content", "") or "").strip()
     except Exception as exc:
         print(f"  WARNING: MarkItDown failed for {source_path}: {exc}", file=sys.stderr)
@@ -1031,6 +1198,7 @@ def create_agent_compile_task(
         source_hint = infer_source_type(path)
 
     selected_type = source_type if source_type != "auto" else "Agent must decide"
+    expert_guidance = build_domain_expert_guidance(readable_content, source_name)
     schema_text = ""
     if SCHEMA_PATH.is_file():
         schema_text = SCHEMA_PATH.read_text(encoding="utf-8")[:12000]
@@ -1110,12 +1278,15 @@ This task was generated in Agent mode. Do not call the configured LLM API.
 ## Agent Responsibilities
 
 1. Read the source directly if possible.
-2. Decide the source type: `doc`, `article`, `code`, or `conversation`.
-3. Compile knowledge according to `.wiki/schema.md` and LLM Wiki compile rules.
+2. Decide the document's actual domain and purpose; `doc`, `article`, `code`, or
+   `conversation` is only a storage hint, not the compilation strategy.
+3. Apply the matched expert lens below, then compile according to `.wiki/schema.md`.
 4. Write pages under `.wiki/pages/concepts/` or `.wiki/pages/entities/`.
 5. Update `.wiki/pages/index.md`, `.wiki/graph/entities.json`, `.wiki/graph/edges.json`,
    `.wiki/log.md`, and `.wiki/audit.json`.
 6. If the source cannot be read, stop and ask the user for readable content.
+
+{expert_guidance}
 
 ## Required Page Standard
 
@@ -1359,12 +1530,12 @@ def _count_facts(page_content: str) -> tuple[int, int]:
     """Count facts and relationships in a compiled page."""
     fact_count = 0
     rel_count = 0
-    
+
     # Count facts in Key Facts table rows: | attr | value |
     in_facts_section = False
     for line in page_content.split("\n"):
         stripped = line.strip()
-        
+
         # Track section
         if stripped.startswith("## 关键事实") or stripped.startswith("## Key Facts"):
             in_facts_section = True
@@ -1372,21 +1543,21 @@ def _count_facts(page_content: str) -> tuple[int, int]:
         elif stripped.startswith("## ") and in_facts_section:
             in_facts_section = False
             continue
-        
+
         # Count fact table rows
         if in_facts_section and stripped.startswith("|") and not stripped.startswith("|---") and "|" in stripped[1:]:
             parts = [p.strip() for p in stripped.split("|")[1:-1]]
             if len(parts) >= 2 and parts[0] and parts[0] not in ("属性", "Attribute", "------"):
                 fact_count += 1
-        
+
         # Also count **key**: value facts
         if stripped.startswith("**") and "**:" in stripped:
             fact_count += 1
-        
+
         # Count relationships
         if stripped.startswith("- ") and "[[" in stripped:
             rel_count += 1
-    
+
     return fact_count, rel_count
 
 
@@ -1410,8 +1581,6 @@ def _print_dry_run_preview(source_name: str, all_pages: list, created_pages: lis
 
     entity_count = 0
     concept_count = 0
-    total_facts = 0
-    total_relationships = 0
 
     for i, page in enumerate(all_pages):
         pid = page.get("id", "?")[:30]
@@ -1612,10 +1781,13 @@ def _compile_single_chunk(
     chunked-compile orchestrator)."""
     import re as _re
     source_abbr = _re.sub(r'[^\u4e00-\u9fff\w]', '', chunk_name)[:8].lower() or "doc"
+    domain_guidance = build_domain_expert_guidance(chunk_content, chunk_name)
 
     # Build prompts (abbreviated — reuse the same structure as compile_source)
     if lang == "zh":
         system_prompt = f"""你是 Wiki 知识编译引擎。你必须用中文撰写所有内容。
+
+{domain_guidance}
 
 ## 数据保真（最高优先级，不可妥协）
 内容中涉及的任何数据——数字、日期、金额、百分比、阈值、配置参数、表格单元格、统计值、单位、名称——必须**逐字原样保留**，不得有任何篡改、省略、改写、四舍五入、单位换算或"联想补全"。
@@ -1785,6 +1957,8 @@ published_at: ""   # 内容本身的发布日期 YYYY-MM-DD；若来源无可识
 用 ===PAGE_END=== 分隔每个页面。"""
     else:
         system_prompt = f"""You are a wiki knowledge compiler. Your job is to read a document chunk and write high-quality wiki pages.
+
+{domain_guidance}
 
 ## Data Fidelity (highest priority — non-negotiable)
 Any data in the source — numbers, dates, amounts, percentages, thresholds, config
@@ -2076,6 +2250,7 @@ def compile_source(source_path: str, source_type: str = "doc", force: bool = Fal
     content = strip_sensitive(content)
 
     lang = detect_language(content)
+    domain_guidance = build_domain_expert_guidance(content, source_name)
     entity_types, entity_type_lines, rel_type_lines = load_entity_types_from_schema()
     focus_types, focus_desc = load_ingest_rules_from_schema(source_type)
     entity_type_str = "|".join(entity_types)
@@ -2089,7 +2264,7 @@ def compile_source(source_path: str, source_type: str = "doc", force: bool = Fal
     if est_tokens > chunk_threshold:
         chunks = _split_by_headings(content, chunk_threshold, lang)
         if len(chunks) > 1:
-            max_ctx = get_chunk_threshold()  # will return model max without override
+            get_chunk_threshold()  # will return model max without override
             print(
                 f"  Document exceeds model context threshold "
                 f"({est_tokens} > {chunk_threshold} tokens), "
@@ -2107,6 +2282,8 @@ def compile_source(source_path: str, source_type: str = "doc", force: bool = Fal
         import re as _re
         source_abbr = _re.sub(r'[^\u4e00-\u9fff\w]', '', source_name)[:8].lower() or "doc"
         system_prompt = f"""你是 Wiki 知识编译引擎。你必须用中文撰写所有内容。
+
+{domain_guidance}
 
 ## 数据保真（最高优先级，不可妥协）
 内容中涉及的任何数据——数字、日期、金额、百分比、阈值、配置参数、表格单元格、统计值、单位、名称——必须**逐字原样保留**，不得有任何篡改、省略、改写、四舍五入、单位换算或"联想补全"。
@@ -2142,7 +2319,7 @@ def compile_source(source_path: str, source_type: str = "doc", force: bool = Fal
 4. 对每个提取的内容问自己："这是具体实例还是通用概念？"——答案决定 ID 和存放位置
 
 ## 内容质量要求
-- **关键事实表（🔴 必须输出！这是用户查询时获取精确答案的唯一来源）**: 
+- **关键事实表（🔴 必须输出！这是用户查询时获取精确答案的唯一来源）**:
   从文档中提取可查询的结构化事实，格式为表格。每个页面至少 3-5 条事实。
   必须包含文档中的精确数值、日期、名称。**没有关键事实表的页面会被查询系统忽略！**
 - **概述**: 2-4句，说清楚"是什么 + 为什么重要 + 在本文档中的角色"
@@ -2254,6 +2431,8 @@ published_at: ""   # 内容本身的发布日期 YYYY-MM-DD；若来源无可识
     else:
         system_prompt = f"""You are a wiki knowledge compiler. Your job is to read a document and write high-quality wiki pages.
 
+{domain_guidance}
+
 ## Data Fidelity (highest priority — non-negotiable)
 Any data in the source — numbers, dates, amounts, percentages, thresholds, config
 parameters, table cells, statistics, units, and names — must be preserved
@@ -2282,7 +2461,7 @@ Karpathy's wiki design distinguishes two page types:
 4. For each extraction, ask: "Specific instance or general idea?" — this determines ID and placement
 
 ## Content Quality
-- **Fact Table (🔴 REQUIRED — the ONLY source of precise answers for user queries!)**: 
+- **Fact Table (🔴 REQUIRED — the ONLY source of precise answers for user queries!)**:
   Extract structured queryable facts as a markdown table. At least 3-5 facts per page.
   Include exact numbers, dates, names from the source. **Pages without a Key Facts table will be ignored by the query system!**
 - **Overview**: 2-4 substantive sentences: what it is + why it matters + role in this document
