@@ -7,9 +7,13 @@
 | `wiki init` | Initialize .wiki/ structure |
 | `wiki config` | Show current configuration |
 | `wiki config --init` | Create default wiki_config.yaml |
+| `wiki config --check` | Validate configuration |
 | `wiki status` | Wiki statistics |
-| `wiki compile <file-or-dir>` | Compile sources → wiki pages |
+| `wiki compile <file-or-dir>` | Compile sources → wiki pages (Agent mode by default) |
+| `wiki compile <file-or-dir> --mode llm` | Compile via configured LLM provider |
 | `wiki compile <dir> --depth 1` | Limit directory recursion depth |
+| `wiki compile --text "content" --name "title"` | Compile inline text |
+| `wiki compile <dir> -j 4` | Parallel compilation (4 workers) |
 | `wiki query <question>` | Search + synthesize answer |
 | `wiki query <q> --no-synthesis` | Fast search, skip LLM (0.5s) |
 | `wiki query <q> --file-back` | Answer + file back to wiki |
@@ -20,17 +24,44 @@
 | `wiki embed` | Generate page embeddings |
 | `wiki embed --chunks` | Generate chunk embeddings |
 | `wiki embed --force` | Force re-generate |
-| `wiki bulk stats` | Detailed statistics |
-| `wiki bulk clean` | Remove orphan pages |
+| `wiki bulks` | Bulk operations (stats, clean) |
 | `wiki search doctor` | Retrieval index health diagnostics |
 | `wiki search eval <file>` | Evaluate retrieval (Recall@K, MRR) |
+
+## Dream (Self-Looping Maintenance)
+
+| Command | Description |
+|---------|-------------|
+| `wiki dream` | Run 4-phase auto-maintenance (background) |
+| `wiki dream --foreground` | Run inline with live output |
+
+## Doctor (Issue Diagnosis & Repair)
+
+| Command | Description |
+|---------|-------------|
+| `wiki doctor "<feedback>"` | Report issue in natural language |
+| `wiki doctor --check <page>` | Diagnostic check on page |
+| `wiki doctor --recompile <source>` | Recompile source document |
+| `wiki doctor --re-ocr <file>` | Re-OCR + recompile |
+| `wiki doctor --list` | List outstanding issues |
+| `wiki doctor --resolve <id>` | Mark issue resolved |
+
+## OKF v0.1
+
+| Command | Description |
+|---------|-------------|
+| `wiki okf validate <bundle>` | Validate OKF bundle compliance |
+| `wiki okf import <bundle>` | Merge external OKF bundle |
+| `wiki okf export <path>` | Export wiki as OKF bundle |
+| `wiki okf migrate` | Migrate legacy metadata to OKF v0.1 |
 
 ## Benchmark
 
 ```bash
-wiki benchmark ragas                # RAGAS black-box evaluation
-wiki benchmark beir scifact         # BEIR retrieval benchmark (single dataset)
-wiki benchmark beir --all           # All BEIR datasets
+wiki benchmark <eval_file.jsonl>              # Run RAG evaluation
+wiki benchmark <eval_file.jsonl> --method retrieval  # BEIR/MTEB retrieval metrics
+wiki benchmark <eval_file.jsonl> --method ragas-lite  # RAGAS-style evaluation
+wiki benchmark <eval_file.jsonl> --method both -k 5    # Both methods
 ```
 
 ## Ledger
@@ -43,9 +74,21 @@ wiki benchmark beir --all           # All BEIR datasets
 | `wiki ledger show <id>` | Show schema + rows |
 | `wiki ledger ask <table> <question>` | Natural language → SQL |
 | `wiki ledger sql <query>` | Raw SQL (read-only) |
+| `wiki ledger search <query>` | Full-text search across all tables |
 | `wiki ledger export <id>` | Export to CSV |
 | `wiki ledger insert <id> --data` | Insert rows |
 | `wiki ledger delete <id>` | Delete ledger |
+
+## OCR
+
+```bash
+python ocr/cli.py <file.pdf>                  # MinerU (default, CPU)
+python ocr/cli.py <file.pdf> --backend paddle  # PaddleOCR
+python ocr/cli.py <file.pdf> --backend deepseek # DeepSeek-OCR-2 (GPU/MPS)
+python ocr/cli.py <file.pdf> --backend logics  # Logics-Parsing (GPU/MPS)
+python ocr/cli.py <file.pdf> --backend api     # OpenAI-compatible vision API
+python ocr/cli.py --batch ./pdfs/              # Batch entire directory
+```
 
 ## Output Formats
 

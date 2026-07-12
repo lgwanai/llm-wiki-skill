@@ -225,6 +225,86 @@ We evaluate the **complete product pipeline** (compile → search → synthesize
 
 → [Full benchmark report with per-case breakdown](docs/BENCHMARK.md)
 
+## OCR Backends
+
+Five pluggable OCR engines. MinerU is the default (best quality, CPU-only).
+
+| Backend | Engine | Highlights | HW | Size |
+|---------|--------|-----------|-----|------|
+| `mineru` ★ | MinerU 3.1 | Formula→LaTeX, table→HTML, multi-column, header/footer removal | CPU | ~2 GB |
+| `deepseek` | DeepSeek-OCR-2 | Vision-Language OCR, document understanding | GPU/MPS/CPU | ~6.3 GB |
+| `logics` | Logics-Parsing-v2 | Qwen3VL multimodal document parsing | GPU/MPS/CPU | ~8.4 GB |
+| `paddle` | PaddleOCR 3.5 | 109 languages, deskew, document orientation | CPU | ~100 MB |
+| `api` | OpenAI-compatible | Any vision-LLM endpoint, zero local model | API | — |
+
+```bash
+# MinerU (default, CPU)
+python ocr/cli.py paper.pdf
+
+# Switch backend
+python ocr/cli.py paper.pdf --backend deepseek
+python ocr/cli.py paper.pdf --backend logics
+python ocr/cli.py paper.pdf --backend paddle
+python ocr/cli.py paper.pdf --backend api
+
+# Batch directory
+python ocr/cli.py --batch ./pdfs/ --backend mineru
+
+# PDF/PPT → OCR → compile pipeline
+python ocr/cli.py paper.pdf -o .wiki/source/paper/
+wiki compile .wiki/source/paper/paper.md
+```
+
+Model storage under `models/`: `mineru/models`, `deepseek-ocr-v2/model`, `logics-parsing-v2/model`.
+
+## Configuration
+
+All settings in `wiki_config.yaml`. Create with `wiki config --init`.
+
+```yaml
+# ── LLM (API key required only for --mode llm) ──
+llm:
+  provider: deepseek           # deepseek | openai | ollama | custom
+  api_key: ${DEEPSEEK_API_KEY}
+  model: deepseek-v4-flash
+
+# ── OCR ──
+ocr_mode: mineru               # mineru | deepseek | logics | paddle | api
+mineru:
+  models_path: models/mineru/models
+deepseek_ocr:
+  model_path: models/deepseek-ocr-v2/model
+  device: mps                  # mps | cuda | cpu
+logics_parsing:
+  model_path: models/logics-parsing-v2/model
+  device: mps
+paddleocr:
+  lang: ch
+
+# ── Search ──
+query:
+  max_results: 8
+  parallel_search: true
+  search_streams: metadata,bm25,graph,ledger
+  verify_answers: true
+
+# ── Optional: semantic vector search ──
+embeddings:
+  enabled: false                # pip install -e '.[vector]'
+  backend: zvec
+  model_source: modelscope
+  index_path: graph/zvec
+
+# ── Optional: cross-encoder reranker ──
+reranker:
+  enabled: false                # pip install -e '.[rerank]'
+  backend: flagembedding
+  model: BAAI/bge-reranker-v2-m3
+  candidate_count: 20
+```
+
+> `wiki_config.yaml` is gitignored. Environment variables (`${VAR}`) are expanded on load.
+
 ## Core Capabilities
 
 | Capability | Description |
@@ -246,13 +326,10 @@ We evaluate the **complete product pipeline** (compile → search → synthesize
 
 | Document | Content |
 |----------|---------|
-| [Installation & Offline Deploy](docs/INSTALL.md) | pip install, Windows notes, offline wheel packaging |
-| [Configuration](docs/CONFIGURATION.md) | LLM, embedding, OCR, query settings |
 | [Architecture & Lifecycle](docs/ARCHITECTURE.md) | 3-layer design, 10-stage knowledge lifecycle |
 | [Benchmark Details](docs/BENCHMARK.md) | RAGAS evaluation, industry comparison, per-case results |
-| [Ledger Management](docs/LEDGER.md) | Structured tables, CSV import, NL→SQL query |
-| [OCR Backends](docs/OCR.md) | MinerU, DeepSeek-OCR, Logics, PaddleOCR comparison |
 | [CLI Reference](docs/CLI.md) | Complete command reference |
+| [Improvement Plan](docs/IMPROVEMENT_PLAN.md) | Future roadmap and enhancement proposals |
 
 ## Project Structure
 
