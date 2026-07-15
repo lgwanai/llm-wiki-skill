@@ -5,10 +5,9 @@ description: >
   Trigger when user mentions: wiki, knowledge base, kb, memory system, knowledge
   management, organizing notes, ingesting research, structured knowledge, "remember
   this", "file away", "add to wiki", "second brain", "build knowledge base", "set
-  up wiki", accumulating and structuring information that compounds over time.
-COMMANDS: >
-  /wiki-compile, /wiki-query, /wiki-lint, /wiki-bulk,
-  /wiki-consolidate, /wiki-status, /wiki-init, /wiki-update, /wiki-ledger.
+  up wiki", accumulating and structuring information that compounds over time, or
+  parsing PDF, Word, PowerPoint, EPUB, textbook, and exam sources before compiling
+  them into traceable knowledge while preserving referenced images.
 ---
 
 # LLM Wiki v2
@@ -98,7 +97,9 @@ python scripts/compile_v2.py docs/                 # recursively compile support
 python scripts/compile_v2.py docs/ --depth 1       # only direct files + one directory level
 python scripts/compile_v2.py diagram.png           # vision-skill → OCR → Agent native (see Dependencies)
 python scripts/compile_v2.py handbook.pdf          # every page rendered; OCR/vision/Agent fallback
+python scripts/compile_v2.py handbook.docx         # Word pages rendered through PDF, with page provenance
 python scripts/compile_v2.py slides.pptx           # every slide rendered; never first-slide-only
+python scripts/compile_v2.py textbook.epub          # spine-ordered Markdown + extracted image links
 python scripts/compile_v2.py source.md --force     # re-compile + detect contradictions
 python scripts/compile_v2.py source.md --mode llm  # optional legacy path using configured model
 ```
@@ -106,13 +107,25 @@ python scripts/compile_v2.py source.md --mode llm  # optional legacy path using 
 **What happens:**
 - Source sanitized (API keys, tokens, passwords, emails stripped)
 - Directories are expanded recursively by default; `.wiki` and `.git` are skipped
-- PDF/PPT/PPTX are treated as paginated documents:
+- PDF/DOC/DOCX/PPT/PPTX are treated as paginated documents:
   - Render every page/slide to images first
   - If OCR is installed/configured, OCR each page image in order
+  - If page rendering fails for a PDF, run the configured backend (MinerU by
+    default) against the complete PDF before trying MarkItDown
+  - MarkItDown output from a scanned PDF is partial evidence only; short,
+    header-only, or page-incomplete output must never be compiled as the source
   - If OCR is unavailable, use configured vision/image analysis on each page image
   - If neither is available, preserve all page images under `.wiki/source/document_images/`
     and require the Agent to inspect them or ask the user
   - Never trust first-page-only extraction; every rendered page/slide must appear in the task output
+  - Copy referenced/rendered images into `.wiki/pages/assets/` so the OKF bundle remains portable
+  - For MinerU Markdown, retain the sibling `*_content_list.json`; compile restores page
+    boundaries from its `page_idx` fields before creating knowledge pages
+- EPUB follows its OPF spine order, extracts cover/chapter images into persistent assets,
+  writes an auditable Markdown intermediate under `.wiki/source/epub_markdown/`, and
+  keeps each image reference in the converted Markdown. Use `EPUB Section` and
+  `EPUB locator` for provenance because reflowable EPUB has no reliable fixed page numbers;
+  page unavailability must not block knowledge extraction.
 - Other Office/document files use MarkItDown when available, otherwise Agent must inspect or ask for readable content
 - Agent reads the content and dynamically routes it to one or more domain-expert lenses;
   source type (`doc`, `article`, `code`, `conversation`) is only a storage hint
@@ -124,11 +137,19 @@ python scripts/compile_v2.py source.md --mode llm  # optional legacy path using 
   limitations, citations, and concept/logic relationships
 - Course outlines become reusable course knowledge maps linking audience, prerequisites,
   learning objectives, modules, knowledge points, activities, exercises, timing, and assessment
+- Textbooks and exam papers become study-ready knowledge networks: textbook concepts retain
+  definitions, formulas, prerequisites, examples, misconceptions, and related knowledge; exam
+  questions retain stems, options, scores, answers, solutions, tested knowledge points, difficulty
+  evidence, and error patterns, with bidirectional question—knowledge-point links. Every page
+  must include `## 来源追溯` with original filename, one or more pages/page range, verbatim
+  evidence, and corresponding images from cited/adjacent pages. Knowledge boundaries may cross
+  pages and chunks; uncertain locations are marked `候选页范围/待核验` and never block extraction
 - Mixed or unfamiliar documents may combine lenses or infer a more suitable expert; compilation
   uses content-driven granularity rather than fixed page counts, fact quotas, or entity ratios
 - The built-in expert catalog also covers finance/accounting, operations, product management,
   software architecture, project management, HR, procurement/supply chain, manufacturing/quality,
-  risk/audit, healthcare, education, customer service, corporate strategy, and data/metric governance
+  risk/audit, healthcare, education, textbook/exam learning, customer service, corporate strategy,
+  and data/metric governance
 - Agent generates structured Wiki pages (YAML frontmatter + Key Facts/Overview/Questions/Details/Relationships/Source Context)
 - If the Agent cannot read the source, it must stop and ask the user for readable content
 - **Cross-document entity protection**: same-named entities from different sources auto-prefixed (e.g., `coursepl-专家评审组`), concept aggregation pages auto-created
@@ -141,7 +162,9 @@ python scripts/compile_v2.py source.md --mode llm  # optional legacy path using 
 
 Wiki-native search (metadata + page BM25F + compiled graph + complete DuckDB ledger), then the
 current Agent synthesizes from already-compiled pages with citations. No
-configured model/API key is required by default.
+configured model/API key is required by default. Referenced images are resolved from each
+retrieved page, included in synthesis context, and exposed in `images` and
+`source_details[].images` in query results.
 
 ```bash
 python scripts/query.py "What is X?"
@@ -422,9 +445,19 @@ quality:
 
 Pluggable backends, default via `ocr.backend` config.
 
+Use the unified command below. Do not inspect MinerU ad hoc, write a temporary OCR
+harness, or guess which Python environment is active. The preflight and manifest are
+the stable contracts for Agent use.
+
 ```bash
-# Default (from config)
-python scripts/ocr.py document.pdf
+# 1. Preflight once per interpreter/environment
+python scripts/ocr.py --doctor --json
+
+# 2. For a new or previously failing document, verify exactly three pages
+python scripts/ocr.py document.pdf --smoke-pages 3 --json
+
+# 3. Run the full document
+python scripts/ocr.py document.pdf -o .wiki/source/document/ --json
 
 # Explicit backend
 python scripts/ocr.py document.pdf --backend paddle
@@ -432,12 +465,23 @@ python scripts/ocr.py document.pdf --backend deepseek
 
 # PDF → Wiki full pipeline
 python scripts/ocr.py paper.pdf -o .wiki/source/paper/
-python scripts/compile_v2.py .wiki/source/paper/paper/auto/paper.md
+python scripts/compile_v2.py .wiki/source/paper/paper/pipeline/paper.md
 ```
+
+For MinerU, `--doctor` must report `ready: true` and version `>=3.4.4,<4` before
+parsing. If it fails, run the exact `repair_command` returned by the report in the
+reported Python interpreter. Never silently fall back to another interpreter.
+
+For PDF, Word, and PowerPoint runs, read the automatically generated
+`<source>_ocr_manifest.json` rather than inferring success from process output. Treat
+`coverage_complete: false` as an incomplete parse. A null coverage value is not a
+reason to discard extracted knowledge; retain the content and mark page provenance as
+pending verification. The manifest's Markdown, content-list, page, and image fields
+are the inputs to compile and source registration.
 
 | Backend | Engine | Strengths | GPU |
 |---------|--------|-----------|-----|
-| `mineru` ★ | MinerU 3.1 | Formula→LaTeX, table→HTML, multi-column, all formats | No (4GB RAM) |
+| `mineru` ★ | MinerU 3.4.4 | Formula→LaTeX, table→HTML, multi-column, all formats | No (4GB RAM) |
 | `paddle` | PaddleOCR 3.5 | 109 languages, doc unwarping, orientation fix | No |
 | `deepseek` | DeepSeek-OCR | Grounding + image crop | GPU or API |
 
@@ -474,7 +518,7 @@ python scripts/compile_v2.py .wiki/source/paper/paper/auto/paper.md
 | `consolidate.py` | Memory tier promotion + decay |
 | `crystallize.py` | Session → digest |
 | `bulk.py` | Bulk operations |
-| `ocr.py` | OCR interface (3 backends) |
+| `ocr/cli.py` | Stable OCR interface, preflight, smoke test, and manifest |
 | `_mineru_ocr.py` | MinerU wrapper |
 | `_paddle_ocr.py` | PaddleOCR wrapper |
 | `_deepseek_ocr.py` | DeepSeek-OCR wrapper |

@@ -170,14 +170,20 @@ Built-in expert coverage includes:
 - Legal/regulatory compliance, sales and marketing policy, finance/accounting
 - Operations, product management, software architecture, and project management
 - HR, procurement/supply chain, manufacturing/quality, risk/internal audit
-- Academic research, curriculum design, education, healthcare, and customer service
+- Academic research, curriculum design, textbook/exam learning, education, healthcare, and customer service
 - Corporate strategy and data/metric governance
 
 For example, regulations retain article numbering, operative language, applicability,
 exceptions, effective dates, and cross-references. Commercial policies retain region,
 audience, channel, time window, thresholds, exclusions, approvals, and settlement
 conditions. Academic documents retain definitions, formulas, assumptions, derivations,
-evidence, limitations, and citations. Mixed or unfamiliar sources can combine lenses
+evidence, limitations, and citations. Textbooks compile into linked knowledge-point pages;
+exam questions preserve stems, answers, solutions, scoring evidence, tested concepts, and
+common mistakes, with bidirectional question—knowledge-point links. Every study knowledge
+point records the original filename plus one or more pages/page ranges, and keeps relevant
+figures from cited and adjacent pages. Knowledge is merged across page/chunk boundaries;
+uncertain locations are marked for verification instead of suppressing the concept.
+Mixed or unfamiliar sources can combine lenses
 or infer a more suitable specialist dynamically.
 
 ## Native Open Knowledge Format (OKF) Storage
@@ -231,7 +237,7 @@ Five pluggable OCR engines. MinerU is the default (best quality, CPU-only).
 
 | Backend | Engine | Highlights | HW | Size |
 |---------|--------|-----------|-----|------|
-| `mineru` ★ | MinerU 3.1 | Formula→LaTeX, table→HTML, multi-column, header/footer removal | CPU | ~2 GB |
+| `mineru` ★ | MinerU 3.4.4 | Formula→LaTeX, table→HTML, multi-column, header/footer removal | CPU | ~2 GB |
 | `deepseek` | DeepSeek-OCR-2 | Vision-Language OCR, document understanding | GPU/MPS/CPU | ~6.3 GB |
 | `logics` | Logics-Parsing-v2 | Qwen3VL multimodal document parsing | GPU/MPS/CPU | ~8.4 GB |
 | `paddle` | PaddleOCR 3.5 | 109 languages, deskew, document orientation | CPU | ~100 MB |
@@ -239,23 +245,51 @@ Five pluggable OCR engines. MinerU is the default (best quality, CPU-only).
 
 ```bash
 # MinerU (default, CPU)
-python ocr/cli.py paper.pdf
+uv pip install -U "mineru[all]>=3.4.4,<4"
+wiki ocr --doctor
+wiki ocr paper.pdf --smoke-pages 3
+wiki ocr paper.pdf
 
 # Switch backend
-python ocr/cli.py paper.pdf --backend deepseek
-python ocr/cli.py paper.pdf --backend logics
-python ocr/cli.py paper.pdf --backend paddle
-python ocr/cli.py paper.pdf --backend api
+wiki ocr paper.pdf --backend deepseek
+wiki ocr paper.pdf --backend logics
+wiki ocr paper.pdf --backend paddle
+wiki ocr paper.pdf --backend api
 
 # Batch directory
-python ocr/cli.py --batch ./pdfs/ --backend mineru
+wiki ocr --batch ./pdfs/ --backend mineru
 
-# PDF/PPT → OCR → compile pipeline
-python ocr/cli.py paper.pdf -o .wiki/source/paper/
-wiki compile .wiki/source/paper/paper.md
+# PDF/Word/PPT → page images + OCR → compile pipeline
+wiki ocr paper.pdf -o .wiki/source/paper/
+wiki compile .wiki/source/paper/paper/pipeline/paper.md
 ```
 
+`wiki ocr --doctor` is the authoritative preflight. It reports the exact Python
+interpreter, installed MinerU version and module path, config path, model source,
+and local model availability. MinerU runs require `>=3.4.4,<4`, so a stale editable
+install is rejected before a long parse starts. `--smoke-pages N` processes exactly
+the first N pages and is safe with macOS multiprocessing; no temporary Python harness
+is needed.
+
+Every document run writes `<source>_ocr_manifest.json` next to the Markdown. The
+manifest records the source hash, runtime, requested and parsed pages, coverage,
+content-list path, referenced images, and elapsed time. Agents should use this file
+as the success contract. Use `--json` when machine-readable command output is needed.
+
+Local images referenced by OCR Markdown are copied into `.wiki/pages/assets/` during
+compile. Compiled pages retain the relevant image links, and query results return the
+resolved images together with their source concept. MinerU OCR also emits its
+`*_content_list.json`; when that Markdown is compiled, llm-wiki restores `## Page N`
+boundaries from MinerU's `page_idx` metadata for page-accurate provenance.
+
+The same interface is available as `python -m ocr.cli` and `llm-wiki-ocr`.
 Model storage under `models/`: `mineru/models`, `deepseek-ocr-v2/model`, `logics-parsing-v2/model`.
+
+EPUB files enter the compile pipeline directly: `wiki compile textbook.epub`. Chapters
+are converted to Markdown in OPF spine order and saved under
+`.wiki/source/epub_markdown/`; cover and in-chapter images are extracted, their Markdown
+references are rewritten to persistent local assets, and chapter/section locators are
+retained for source tracing when fixed page numbers do not exist.
 
 ## Configuration
 

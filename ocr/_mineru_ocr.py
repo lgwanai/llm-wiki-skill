@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""_mineru_ocr.py — MinerU OCR backend (v3.x).
+"""_mineru_ocr.py — MinerU OCR backend (v3.4.4).
 
 MinerU is a high-precision PDF parsing tool that supports:
 - Formula → LaTeX conversion
@@ -8,7 +8,7 @@ MinerU is a high-precision PDF parsing tool that supports:
 - Header/footer removal
 - DOCX, PPTX, XLSX parsing
 
-Uses mineru v3.x Python API (mineru.cli.common.do_parse) with model paths
+Uses the MinerU 3.4.4 Python API (mineru.cli.common.do_parse) with model paths
 configured via ocr/mineru.json (MINERU_TOOLS_CONFIG_JSON).
 
 Usage:
@@ -27,7 +27,6 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -37,16 +36,31 @@ DEFAULT_MODELS_PATH = PROJECT_ROOT / "models" / "mineru" / "models"
 MINERU_JSON = Path(__file__).resolve().parent / "mineru.json"
 
 
-def _ensure_mineru_config():
-    """Set MINERU_TOOLS_CONFIG_JSON env var so mineru finds its config."""
+def _ensure_mineru_config() -> None:
+    """Configure MinerU to use this project's tools config and local models."""
     if "MINERU_TOOLS_CONFIG_JSON" not in os.environ:
         if MINERU_JSON.exists():
-            os.environ["MINERU_TOOLS_CONFIG_JSON"] = str(MINERU_JSON)
+            os.environ.setdefault("MINERU_TOOLS_CONFIG_JSON", str(MINERU_JSON))
             logger.debug(f"MINERU_TOOLS_CONFIG_JSON set to {MINERU_JSON}")
+
+    # MinerU 3.1 defaults to Hugging Face even when ``models-dir`` points to a
+    # complete local cache. MinerU 3.4 also accepts this explicit source. Only
+    # select local mode when the configured pipeline root exists, and never
+    # override a source explicitly chosen by the user.  setdefault keeps the
+    # check-then-set atomic against concurrent callers setting the same value.
+    if "MINERU_MODEL_SOURCE" not in os.environ and MINERU_JSON.exists():
+        try:
+            config = json.loads(MINERU_JSON.read_text(encoding="utf-8"))
+            pipeline_root = config.get("models-dir", {}).get("pipeline")
+            if pipeline_root and Path(pipeline_root).expanduser().is_dir():
+                os.environ.setdefault("MINERU_MODEL_SOURCE", "local")
+                logger.debug("MINERU_MODEL_SOURCE set to local")
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            logger.warning("Unable to inspect MinerU model config %s: %s", MINERU_JSON, exc)
 
 
 class MinerUOCR:
-    """MinerU OCR client using mineru v3.x Python API.
+    """MinerU OCR client using the MinerU 3.4.4 Python API.
 
     Model paths are configured via ocr/mineru.json, not passed directly.
     Wiki config (wiki_config.yaml) controls lang/formula/table settings.
@@ -54,7 +68,7 @@ class MinerUOCR:
 
     def __init__(
         self,
-        models_path: Optional[str] = None,
+        models_path: str | None = None,
         backend: str = "pipeline",
         lang: str = "ch",
         formula: bool = True,
@@ -72,7 +86,7 @@ class MinerUOCR:
         _ensure_mineru_config()
 
     @classmethod
-    def from_config(cls, path: Optional[Path] = None) -> "MinerUOCR":
+    def from_config(cls, path: Path | None = None) -> MinerUOCR:
         """Create instance from unified OCR config (wiki_config.yaml)."""
         _scripts_dir = Path(__file__).resolve().parent.parent / "scripts"
         sys.path.insert(0, str(_scripts_dir))
@@ -113,25 +127,21 @@ class MinerUOCR:
         self,
         pdf_path: str,
         output_dir: Path,
-        max_pages: Optional[int] = None,
+        max_pages: int | None = None,
     ) -> Path:
         """Extract text from a PDF file using MinerU.
 
         Args:
             pdf_path: Path to PDF file.
             output_dir: Directory to save results.
-            max_pages: Not directly supported by mineru v3 API; processed via
-                       environment or config. (Ignored in this version.)
+            max_pages: Maximum number of pages to process, starting at page 1.
 
         Returns:
             Path to the output markdown file.
         """
         output_dir.mkdir(parents=True, exist_ok=True)
-        if max_pages is not None:
-            logger.warning(
-                "max_pages is not directly supported by mineru v3.x API; "
-                "all pages will be processed."
-            )
+        if max_pages is not None and max_pages < 1:
+            raise ValueError("max_pages must be at least 1")
 
         result = self._run_mineru(pdf_path, output_dir, max_pages)
         return Path(result)
@@ -140,9 +150,9 @@ class MinerUOCR:
         self,
         input_path: str,
         output_dir: Path,
-        max_pages: Optional[int] = None,
+        max_pages: int | None = None,
     ) -> str:
-        """Run MinerU v3.x do_parse() API.
+        """Run the MinerU 3.4.4 ``do_parse()`` API.
 
         Sets MINERU_TOOLS_CONFIG_JSON so mineru finds its config with model paths.
         Uses mineru.cli.common.do_parse() for the actual parsing.
@@ -160,13 +170,15 @@ class MinerUOCR:
         try:
             pdf_bytes = read_fn(input_path)
         except Exception as e:
-            raise RuntimeError(
-                f"MinerU failed to read {input_path}: {e}"
-            ) from e
+            raise RuntimeError(f"MinerU failed to read {input_path}: {e}") from e
 
         logger.info(
             "MinerU processing %s (backend=%s, lang=%s, formula=%s, table=%s)",
-            input_path.name, self.backend, self.lang, self.formula, self.table,
+            input_path.name,
+            self.backend,
+            self.lang,
+            self.formula,
+            self.table,
         )
 
         try:
@@ -182,16 +194,18 @@ class MinerUOCR:
                 f_dump_middle_json=False,
                 f_dump_model_output=False,
                 f_dump_orig_pdf=False,
-                f_dump_content_list=False,
+                # Keep MinerU's page_idx metadata so compile_v2 can inject exact
+                # page boundaries into the otherwise unpaginated Markdown.
+                f_dump_content_list=True,
                 f_draw_layout_bbox=False,
                 f_draw_span_bbox=False,
                 start_page_id=0,
-                end_page_id=max_pages,
+                # MinerU uses a zero-based, inclusive end_page_id.  Convert the
+                # public count semantics (3 means exactly pages 1..3).
+                end_page_id=max_pages - 1 if max_pages is not None else None,
             )
         except Exception as e:
-            raise RuntimeError(
-                f"MinerU do_parse failed for {input_path}: {e}"
-            ) from e
+            raise RuntimeError(f"MinerU do_parse failed for {input_path}: {e}") from e
 
         # The output structure is: {output_dir}/{stem}/{backend}/{stem}.md
         md_path = output_dir / stem / self.backend / f"{stem}.md"
@@ -215,7 +229,7 @@ class MinerUOCR:
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="MinerU OCR backend (v3.x)")
+    parser = argparse.ArgumentParser(description="MinerU OCR backend (v3.4.4)")
     parser.add_argument("file", help="Image or PDF file")
     parser.add_argument("-o", "--output", help="Output directory for PDF results")
     parser.add_argument("--models-path", help="Path to MinerU models (for compat, not used)")

@@ -3,6 +3,8 @@ pyyaml>=6.0          # YAML frontmatter parsing in markdown pages
 requests>=2.28.0     # HTTP client for LLM API calls
 numpy>=1.24          # Numerical operations, embedding math
 markitdown>=0.1      # Multi-format file → Markdown (PDF, DOCX, PPTX, XLSX, HTML, EPUB...)
+beautifulsoup4>=4.12 # EPUB XHTML parsing and image-link rewriting
+markdownify>=1.0     # EPUB chapter HTML → Markdown conversion
 
 # Search (Level 5)
 duckdb>=1.0                   # SQL database for ledger tables + FTS/vector search
@@ -15,8 +17,8 @@ faiss-cpu>=1.7                # Vector index for similarity search
 PyMuPDF>=1.24               # PDF page rendering (deepseek/paddle backends)
 
 # MinerU — high-precision PDF/DOCX/PPTX/XLSX/image parsing (default backend)
-# Install: uv pip install -U "mineru[all]"
-# mineru>=3.1  # Uncomment to enforce version
+# Install: uv pip install -U "mineru[all]>=3.4.4,<4"
+# mineru[all]>=3.4.4,<4  # Uncomment to install the optional local backend
 
 # PaddleOCR — PP-OCRv5 text recognition, 109 languages
 # Install: pip install paddleocr paddlepaddle

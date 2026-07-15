@@ -1036,6 +1036,88 @@ def read_page_content(page_path: str) -> str:
         return ""
 
 
+MARKDOWN_IMAGE_RE = re.compile(r"!\[(?P<alt>[^\]]*)\]\((?P<target><[^>]+>|[^)\n]+)\)")
+_IMAGE_TITLE_RE = re.compile(r'''\s+(".*"|'.*?'|\(.*\))\s*$''')
+
+
+def _strip_image_title(target: str) -> str:
+    """Return the URL/path portion of a Markdown image target.
+
+    Drops an optional CommonMark title (``"..."``, ``'...'``, ``(...)``) and
+    angle brackets so ``![alt](images/fig.png "Figure 1")`` resolves the image
+    instead of treating the title as part of the filename.
+    """
+    if target.startswith("<"):
+        end = target.find(">")
+        if end != -1:
+            return target[1:end].strip()
+    match = _IMAGE_TITLE_RE.search(target)
+    if match:
+        return target[: match.start()].strip()
+    return target
+
+
+def extract_page_images(page_path: str) -> list[dict[str, str]]:
+    """Return every image referenced by a compiled page with resolved local paths."""
+    path = Path(page_path)
+    content = read_page_content(page_path)
+    if not content:
+        return []
+    images: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for match in MARKDOWN_IMAGE_RE.finditer(content):
+        alt = match.group("alt").strip()
+        target = _strip_image_title(match.group("target").strip())
+        lowered = target.lower()
+        local_path = ""
+        display_url = target
+        if not lowered.startswith(("http://", "https://", "data:", "blob:")):
+            candidate = Path(target[7:] if lowered.startswith("file://") else target).expanduser()
+            if not candidate.is_absolute():
+                candidate = path.parent / candidate
+            candidate = candidate.resolve()
+            if candidate.is_file():
+                local_path = str(candidate)
+                display_url = local_path
+        identity = local_path or display_url
+        if identity in seen:
+            continue
+        seen.add(identity)
+        images.append(
+            {
+                "alt": alt,
+                "url": display_url,
+                "path": local_path,
+                "markdown": f"![{alt}]({display_url})",
+            }
+        )
+    return images
+
+
+def _attach_page_images(pages: list[dict]) -> list[dict]:
+    """Annotate retrieved pages with their image evidence."""
+    annotated: list[dict] = []
+    for page in pages:
+        item = dict(page)
+        item["images"] = extract_page_images(str(item.get("path", "")))
+        annotated.append(item)
+    return annotated
+
+
+def _collect_retrieved_images(pages: list[dict]) -> list[dict[str, str]]:
+    """Deduplicate images while retaining the concept that surfaced each one."""
+    images: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for page in pages:
+        for image in page.get("images", []):
+            identity = image.get("path") or image.get("url")
+            if not identity or identity in seen:
+                continue
+            seen.add(identity)
+            images.append({**image, "source_id": str(page.get("id", "unknown"))})
+    return images
+
+
 def select_evidence_sections(content: str, query: str, max_chars: int = 2800) -> str:
     """Select high-value sections from a compiled OKF concept without raw chunking."""
     if len(content) <= max_chars:
@@ -1135,11 +1217,18 @@ def _format_page_context(page: dict, index: int, query: str = "") -> str:
                         ledger_block += f"  - {flat}\n"
             ledger_block += "\n"
 
+    image_block = ""
+    images = page.get("images") or extract_page_images(page.get("path", ""))
+    if images:
+        image_block = "\n\n### Referenced Source Images（引用原图）\n\n"
+        image_block += "\n\n".join(image["markdown"] for image in images)
+
     return (
         f"## DOC {index}: {header}{score_info}\n"
         f"**Type**: {ptype} | **ID**: {pid}\n\n"
         f"{reordered}"
         f"{ledger_block}"
+        f"{image_block}"
     )
 
 
@@ -1317,7 +1406,8 @@ Output ONLY valid JSON (no markdown, no explanation):
 5. **写前验证**: 每写一句之前，先问自己："哪篇维基文档支持这句话？"如果找不到，就不要写。
 6. **使用精确数值**: 当文档包含具体数字/日期/名称时，逐字使用原文。
 7. **区分来源**: 如果多篇文档对同一主题有不同说法，明确标注分歧。
-8. **简洁但完整**: 直接回答问题。不要添加与查询无直接关系的背景内容。"""
+8. **简洁但完整**: 直接回答问题。不要添加与查询无直接关系的背景内容。
+9. **保留图片证据**: 检索文档包含与答案直接相关的原图时，在答案中保留其 Markdown 图片引用，不得只改写成文字描述。"""
         user_prompt = f"""## 查询
 {query}
 
@@ -1326,7 +1416,7 @@ Output ONLY valid JSON (no markdown, no explanation):
 
 ## 任务
 只使用上面维基文档中的信息回答问题。每个事实都要标明 OKF 概念链接。
-如果文档中缺少答案，明确说明——不要猜测或使用外部知识。"""
+如果文档中缺少答案，明确说明——不要猜测或使用外部知识。保留与答案直接相关的原图引用。"""
     else:
         system_prompt = f"""You are a precise wiki query engine.
 Your ONLY knowledge source is the wiki documents provided below — you have NO other knowledge.
@@ -1358,7 +1448,10 @@ When the documents contain specific numbers/dates/names, use them verbatim.
 7. **DISTINGUISH SOURCES**:
 If multiple documents say different things about the same topic, note the disagreement.
 8. **CONCISE BUT COMPLETE**:
-Answer the query directly. Don't add background context unless directly relevant."""
+Answer the query directly. Don't add background context unless directly relevant.
+9. **PRESERVE IMAGE EVIDENCE**:
+When a retrieved document includes a relevant source image, keep its Markdown image
+reference in the answer instead of replacing it with a text-only description."""
 
         user_prompt = f"""## Query
 {query}
@@ -1434,6 +1527,7 @@ This task was generated in Agent mode. Do not call the configured LLM API.
 Use ONLY the wiki documents below. Cite every factual claim with its OKF concept link.
 If the documents do not contain enough information, say so and summarize the
 partial information that is available. Do not use outside knowledge.
+Keep any directly relevant Markdown source images in the synthesized answer.
 
 Available source IDs: {source_links}
 
@@ -1857,6 +1951,8 @@ def query_wiki(
     else:
         pages = search_wiki(query, limit=max_results)
         trace = {}
+    pages = _attach_page_images(pages)
+    retrieved_images = _collect_retrieved_images(pages)
 
     # ── Graph intent routing ──
     graph_intent = _detect_graph_intent(query)
@@ -1895,6 +1991,8 @@ def query_wiki(
             )
             if snippet:
                 lines.append(f"   > {snippet}")
+            for image in p.get("images", []):
+                lines.append(f"   {image['markdown']}")
             lines.append("")
         return {
             "query": query,
@@ -1909,9 +2007,11 @@ def query_wiki(
                     "path": p.get("path", ""),
                     "page_type": p.get("type", "unknown"),
                     "relevance": p.get("score", 0),
+                    "images": p.get("images", []),
                 }
                 for p in pages
             ],
+            "images": retrieved_images,
             "debug_search": trace if debug_search else {},
         }
 
@@ -1922,6 +2022,12 @@ def query_wiki(
             answer = graph_section + synthesize_answer_agent(query, pages, fmt=fmt)
     else:
         answer = graph_section or "No relevant wiki pages found."
+
+    if retrieved_images and synthesis_mode == "llm" and fmt != "json":
+        gallery = "\n\n## 引用原图\n\n" + "\n\n".join(
+            image["markdown"] for image in retrieved_images
+        )
+        answer = answer.rstrip() + gallery
 
     result = {
         "query": query,
@@ -1937,9 +2043,11 @@ def query_wiki(
                 "path": p.get("path", ""),
                 "page_type": p.get("type", "unknown"),
                 "relevance": p.get("score", 0),
+                "images": p.get("images", []),
             }
             for p in pages
         ],
+        "images": retrieved_images,
     }
     if query_cfg.get("verify_answers", True):
         result["verification"] = (

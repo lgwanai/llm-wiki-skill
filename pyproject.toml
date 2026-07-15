@@ -16,7 +16,10 @@ dependencies = [
     "numpy>=1.24",
     "duckdb>=1.0",
     "jieba>=0.42",
-    "openpyxl>=3.1"
+    "openpyxl>=3.1",
+    "markitdown>=0.1",
+    "beautifulsoup4>=4.12",
+    "markdownify>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -24,17 +27,22 @@ search = ["sentence-transformers>=2.2", "faiss-cpu>=1.7"]
 dev = ["pytest>=7.0", "pytest-cov>=4.0", "black>=23.0", "isort>=5.12", "ruff>=0.1"]
 vector = ["zvec>=0.5.1", "sentence-transformers>=2.2", "modelscope>=1.20"]
 rerank = ["FlagEmbedding>=1.3"]
+ocr-mineru = ["mineru[all]>=3.4.4,<4"]
 
 [project.scripts]
 wiki = "scripts.wiki:main"
 llm-wiki = "scripts.wiki:main"
+llm-wiki-ocr = "ocr.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/anomalyco/llm-wiki-skill"
 Documentation = "https://github.com/anomalyco/llm-wiki-skill#readme"
 
 [tool.setuptools.packages.find]
-include = ["scripts*"]
+include = ["scripts*", "ocr*"]
+
+[tool.setuptools.package-data]
+ocr = ["mineru.json"]
 
 [tool.black]
 line-length = 100

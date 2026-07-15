@@ -176,9 +176,12 @@ if ($LASTEXITCODE -eq 0) {
 
 # Optional OCR backends
 $ocrOk = $true
-$mineruCheck = python -c "import magic_pdf; print('OK')" 2>&1
+# Mirror the ocr/cli.py readiness gate: require >=3.4.4 AND reject pre-release
+# suffixes (rc/dev/a/b) so a 3.4.4rc1 install is reported as not-OK rather than
+# crashing on int('4rc1').  Single-quoted so the regex '$' is not interpolated.
+$mineruCheck = python -c 'import re; from importlib.metadata import version; v = version("mineru"); m = re.match(r"(\d+)\.(\d+)\.(\d+)", v); assert m and tuple(map(int, m.groups())) >= (3, 4, 4) and not re.search(r"(?:a|b|rc|dev|alpha|beta)\d*$", v, re.IGNORECASE); print(v)' 2>&1
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "  MinerU OCR:  OK" -ForegroundColor Green
+    Write-Host "  MinerU OCR:  OK ($mineruCheck)" -ForegroundColor Green
 } else {
     Write-Host "  MinerU OCR:  not installed (optional)" -ForegroundColor DarkGray
     $ocrOk = $false
@@ -207,7 +210,7 @@ Write-Host ""
 
 if (-not $ocrOk) {
     Write-Host "  Optional: Install OCR backends" -ForegroundColor DarkGray
-    Write-Host "    MinerU:  uv pip install -U `"mineru[all]`"" -ForegroundColor DarkGray
+    Write-Host "    MinerU:  uv pip install -U `"mineru[all]>=3.4.4,<4`"" -ForegroundColor DarkGray
     Write-Host "    Paddle:  pip install paddleocr paddlepaddle" -ForegroundColor DarkGray
     Write-Host ""
 }

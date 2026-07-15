@@ -21,7 +21,8 @@
 | Script | Lines | Purpose | Dependencies |
 |--------|-------|---------|--------------|
 | `url2markdown.py` | 280 | URL → markdown conversion | None |
-| `ocr.py` | 79 | OCR for PDFs/images | `_deepseek_ocr` |
+| `ocr.py` | shim | Backward-compatible wrapper for `wiki ocr` | `ocr.cli` |
+| `epub.py` | — | EPUB spine → Markdown with persistent image extraction | BeautifulSoup, markdownify |
 | `_deepseek_ocr.py` | 358 | DeepSeek OCR backend | None |
 | `_ollama.py` | 52 | Ollama embeddings | None |
 
@@ -43,7 +44,7 @@
 query.py → search.py → graph.py
 consolidate.py → crystallize.py
 wiki.py → compile_v2.py, query.py, lint.py
-ocr.py → _deepseek_ocr.py
+ocr.py → ocr.cli → selected OCR backend
 ```
 
 ## Usage Examples
@@ -100,7 +101,7 @@ scripts/
 ├── consolidate.py       # Memory consolidation (307 lines)
 ├── crystallize.py       # Session → digest (330 lines)
 ├── url2markdown.py      # URL conversion (280 lines)
-├── ocr.py               # OCR interface (79 lines)
+├── ocr.py               # Backward-compatible wrapper for wiki ocr
 ├── _deepseek_ocr.py     # OCR backend (358 lines)
 ├── _ollama.py           # Embeddings (52 lines)
 └── __init__.py          # Package init (12 lines)

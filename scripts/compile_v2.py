@@ -14,9 +14,11 @@ import subprocess
 import sys
 import tempfile
 import traceback
+from collections.abc import Callable
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -30,83 +32,149 @@ from config import (
     get_vision_skill_config,
     get_wiki_dir,
 )
+from epub import epub_to_markdown
 from table_extract import persist_page_tables
 
 
 def _log_exc(msg: str = ""):
     """Log exception traceback to stderr for debugging."""
     import traceback as _tb
+
     if msg:
         print(f"  [WARN] {msg}: {_tb.format_exc()}", file=sys.stderr)
     else:
         print(f"  [WARN] {_tb.format_exc()}", file=sys.stderr)
 
 
-
 SENSITIVE_PATTERNS: list[tuple[str, str]] = [
-    (r'(?:sk|pk|rk)-(?:[a-zA-Z0-9]{20,})', '[REDACTED: API key]'),
-    (r'(?:ghp|gho|ghu|ghs|ghr)_[a-zA-Z0-9]{36,}', '[REDACTED: GitHub token]'),
-    (r'-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----.*?-----END (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----',
-     '[REDACTED: Private key]'),
-    (r'password\s*[=:]\s*\S+', 'password=[REDACTED]'),
-    (r'[\w\.-]+@[\w\.-]+\.\w{2,}', '[REDACTED: Email]'),
+    (r"(?:sk|pk|rk)-(?:[a-zA-Z0-9]{20,})", "[REDACTED: API key]"),
+    (r"(?:ghp|gho|ghu|ghs|ghr)_[a-zA-Z0-9]{36,}", "[REDACTED: GitHub token]"),
+    (
+        r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----.*?-----END (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----",
+        "[REDACTED: Private key]",
+    ),
+    (r"password\s*[=:]\s*\S+", "password=[REDACTED]"),
+    (r"[\w\.-]+@[\w\.-]+\.\w{2,}", "[REDACTED: Email]"),
 ]
 
 KEYWORD_RELATION_MAP = [
     # English patterns
-    (r'(?i)\buses?\b\s*\[\[', 'uses'),
-    (r'(?i)\bdepends?\s+on\b.*?\[\[', 'depends_on'),
-    (r'(?i)\bextends?\b\s*\[\[', 'extends'),
-    (r'(?i)\bimproves?\s+(?:upon|over)?\s*\[\[', 'improves_upon'),
-    (r'(?i)\bcontradicts?\b\s*\[\[', 'contradicts'),
-    (r'(?i)\bsupersedes?\b\s*\[\[', 'supersedes'),
-    (r'(?i)\bcaused?\s+by\b.*?\[\[', 'caused_by'),
-    (r'(?i)\bfixed?\s+by\b.*?\[\[', 'fixed_by'),
-    (r'(?i)\breplaces?\b\s*\[\[', 'replaces'),
-    (r'(?i)\brelated\s+to\b.*?\[\[', 'relates_to'),
-    (r'(?i)\bpart\s+of\b.*?\[\[', 'part_of'),
-    (r'(?i)\bimplemented\s+(?:by|via)\b.*?\[\[', 'implemented_by'),
+    (r"(?i)\buses?\b\s*\[\[", "uses"),
+    (r"(?i)\bdepends?\s+on\b.*?\[\[", "depends_on"),
+    (r"(?i)\bextends?\b\s*\[\[", "extends"),
+    (r"(?i)\bimproves?\s+(?:upon|over)?\s*\[\[", "improves_upon"),
+    (r"(?i)\bcontradicts?\b\s*\[\[", "contradicts"),
+    (r"(?i)\bsupersedes?\b\s*\[\[", "supersedes"),
+    (r"(?i)\bcaused?\s+by\b.*?\[\[", "caused_by"),
+    (r"(?i)\bfixed?\s+by\b.*?\[\[", "fixed_by"),
+    (r"(?i)\breplaces?\b\s*\[\[", "replaces"),
+    (r"(?i)\brelated\s+to\b.*?\[\[", "relates_to"),
+    (r"(?i)\bpart\s+of\b.*?\[\[", "part_of"),
+    (r"(?i)\bimplemented\s+(?:by|via)\b.*?\[\[", "implemented_by"),
     # Chinese patterns
-    (r'(?:使用|采用|利用|调用|借助|依据|通过)\s*\[\[', 'uses'),
-    (r'(?:依赖|取决于|依赖于)\s*\[\[', 'depends_on'),
-    (r'(?:扩展|继承|基于\s*)\s*\[\[', 'extends'),
-    (r'(?:改进|优化|提升|增强)\s*\[\[', 'improves_upon'),
-    (r'(?:矛盾|冲突|不一致|违背)\s*\[\[', 'contradicts'),
-    (r'(?:取代|替代|替换\s*掉|淘汰)\s*\[\[', 'supersedes'),
-    (r'(?:导致|引起|造成|触发|引发)\s*\[\[', 'caused_by'),
-    (r'(?:修复|解决|修正|纠正)\s*\[\[', 'fixed_by'),
-    (r'(?:替换|更换|换成|切换)\s*\[\[', 'replaces'),
-    (r'(?:关联|相关|有关|涉及|对接|协作|配合|协调)\s*\[\[', 'relates_to'),
-    (r'(?:属于|组成部分|包含于|隶属于)\s*\[\[', 'part_of'),
-    (r'(?:实现|实施|执行|落实|负责|承担|主持)\s*\[\[', 'implemented_by'),
+    (r"(?:使用|采用|利用|调用|借助|依据|通过)\s*\[\[", "uses"),
+    (r"(?:依赖|取决于|依赖于)\s*\[\[", "depends_on"),
+    (r"(?:扩展|继承|基于\s*)\s*\[\[", "extends"),
+    (r"(?:改进|优化|提升|增强)\s*\[\[", "improves_upon"),
+    (r"(?:矛盾|冲突|不一致|违背)\s*\[\[", "contradicts"),
+    (r"(?:取代|替代|替换\s*掉|淘汰)\s*\[\[", "supersedes"),
+    (r"(?:导致|引起|造成|触发|引发)\s*\[\[", "caused_by"),
+    (r"(?:修复|解决|修正|纠正)\s*\[\[", "fixed_by"),
+    (r"(?:替换|更换|换成|切换)\s*\[\[", "replaces"),
+    (r"(?:关联|相关|有关|涉及|对接|协作|配合|协调)\s*\[\[", "relates_to"),
+    (r"(?:属于|组成部分|包含于|隶属于)\s*\[\[", "part_of"),
+    (r"(?:实现|实施|执行|落实|负责|承担|主持)\s*\[\[", "implemented_by"),
 ]
 
 TEXT_EXTENSIONS = {
-    ".md", ".markdown", ".txt", ".rst", ".adoc",
-    ".csv", ".tsv", ".json", ".jsonl", ".yaml", ".yml",
-    ".html", ".htm", ".xml", ".svg",  # SVG is XML text, not pixel data
-    ".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".rs", ".java",
-    ".c", ".cc", ".cpp", ".h", ".hpp", ".cs", ".php", ".rb",
-    ".sh", ".bash", ".zsh", ".sql", ".toml", ".ini", ".cfg",
+    ".md",
+    ".markdown",
+    ".txt",
+    ".rst",
+    ".adoc",
+    ".csv",
+    ".tsv",
+    ".json",
+    ".jsonl",
+    ".yaml",
+    ".yml",
+    ".html",
+    ".htm",
+    ".xml",
+    ".svg",  # SVG is XML text, not pixel data
+    ".py",
+    ".js",
+    ".ts",
+    ".jsx",
+    ".tsx",
+    ".go",
+    ".rs",
+    ".java",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".h",
+    ".hpp",
+    ".cs",
+    ".php",
+    ".rb",
+    ".sh",
+    ".bash",
+    ".zsh",
+    ".sql",
+    ".toml",
+    ".ini",
+    ".cfg",
 }
 IMAGE_EXTENSIONS = {
-    ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp",
-    ".tiff", ".tif", ".avif", ".heic", ".heif",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".gif",
+    ".bmp",
+    ".tiff",
+    ".tif",
+    ".avif",
+    ".heic",
+    ".heif",
 }
-PAGINATED_DOCUMENT_EXTENSIONS = {".pdf", ".ppt", ".pptx"}
+PAGINATED_DOCUMENT_EXTENSIONS = {".pdf", ".ppt", ".pptx", ".doc", ".docx"}
 MARKITDOWN_DOCUMENT_EXTENSIONS = {
-    ".doc", ".docx", ".xls", ".xlsx", ".rtf", ".epub", ".msg",
+    ".xls",
+    ".xlsx",
+    ".rtf",
+    ".epub",
+    ".msg",
 }
 DOCUMENT_EXTENSIONS = PAGINATED_DOCUMENT_EXTENSIONS | MARKITDOWN_DOCUMENT_EXTENSIONS
 SKIP_DIR_NAMES = {".wiki", ".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
 DEFAULT_ENTITY_TYPES = [
-    "entity", "concept", "process", "rule", "role", "event",
-    "model", "technique", "framework", "benchmark", "paper",
+    "entity",
+    "concept",
+    "process",
+    "rule",
+    "role",
+    "event",
+    "model",
+    "technique",
+    "framework",
+    "benchmark",
+    "paper",
 ]
 DEFAULT_RELATIONSHIP_TYPES = [
-    "uses", "depends_on", "extends", "improves_upon", "contradicts",
-    "supersedes", "caused_by", "fixed_by", "replaces", "relates_to",
-    "part_of", "implemented_by",
+    "uses",
+    "depends_on",
+    "extends",
+    "improves_upon",
+    "contradicts",
+    "supersedes",
+    "caused_by",
+    "fixed_by",
+    "replaces",
+    "relates_to",
+    "part_of",
+    "implemented_by",
 ]
 CONCEPT_LIKE_TYPES = {"concept", "technique", "model", "framework", "benchmark", "paper", "pattern"}
 INGEST_RULES = {
@@ -131,92 +199,392 @@ INGEST_RULES = {
 DOMAIN_EXPERTS = {
     "legal": {
         "label": "法律法规与合规专家",
-        "signals": ("法律", "法规", "条例", "办法", "规定", "法条", "本法", "应当", "不得", "处罚", "管辖", "生效", "废止"),
+        "signals": (
+            "法律",
+            "法规",
+            "条例",
+            "办法",
+            "规定",
+            "法条",
+            "本法",
+            "应当",
+            "不得",
+            "处罚",
+            "管辖",
+            "生效",
+            "废止",
+        ),
         "instructions": "按法律层级、章/节/条保留原编号与原文；拆出适用主体、地域、事项、条件、例外、程序、期限、法律后果、引用法条、生效/修订/废止状态。不得把‘可以/应当/不得’互换，不得把例外并入一般规则。优先形成法条导航页、制度主题页和交叉引用。",
     },
     "policy": {
         "label": "销售营销政策与商业运营专家",
-        "signals": ("销售", "营销", "促销", "返利", "折扣", "渠道", "经销商", "客户", "区域", "政策期", "活动期", "适用范围", "考核"),
+        "signals": (
+            "销售",
+            "营销",
+            "促销",
+            "返利",
+            "折扣",
+            "渠道",
+            "经销商",
+            "客户",
+            "区域",
+            "政策期",
+            "活动期",
+            "适用范围",
+            "考核",
+        ),
         "instructions": "围绕谁在何地、何时、对什么产品/渠道/客户、满足何条件、可获何权益、由谁审批、如何核算与结算来组织；完整保留地区、主体、产品、渠道、时间窗、门槛、梯度、互斥/叠加、例外、审批、凭证和失效条件。用适用性矩阵与计算示例连接规则，禁止脱离限定条件摘录金额或比例。",
     },
     "academic": {
         "label": "学术研究与科学知识专家",
-        "signals": ("摘要", "研究", "论文", "方法", "实验", "假设", "定理", "证明", "公式", "变量", "数据集", "基线", "显著", "结论", "参考文献"),
+        "signals": (
+            "摘要",
+            "研究",
+            "论文",
+            "方法",
+            "实验",
+            "假设",
+            "定理",
+            "证明",
+            "公式",
+            "变量",
+            "数据集",
+            "基线",
+            "显著",
+            "结论",
+            "参考文献",
+        ),
         "instructions": "区分定义、假设、命题、公式、推导、方法、实验设计、结果、限制与结论；逐字保留公式、符号、变量含义、单位和适用条件。建立概念依赖、推导链、因果/相关边界、方法到证据的逻辑链，并保留引用与页码/章节定位。不得把作者主张写成公认事实。",
     },
     "curriculum": {
         "label": "培训信息架构与课程设计专家",
-        "signals": ("课程大纲", "培训", "学员", "教学目标", "学习目标", "课时", "讲师", "模块", "单元", "练习", "作业", "考核", "教学活动"),
+        "signals": (
+            "课程大纲",
+            "培训",
+            "学员",
+            "教学目标",
+            "学习目标",
+            "课时",
+            "讲师",
+            "模块",
+            "单元",
+            "练习",
+            "作业",
+            "考核",
+            "教学活动",
+        ),
         "instructions": "以便于后续组课为目标，区分课程定位、受众画像、先修要求、可观察学习目标、模块/知识点层级、概念依赖、难点误区、案例练习、教学活动、课时、资料与评估方式。保持原大纲顺序，同时建立知识点到目标、练习、考核的映射；不要把课程章节机械地等同于知识点。",
+    },
+    "study_material": {
+        "label": "知识学习与课本试卷解析专家",
+        "strong_signals": (
+            "课本",
+            "教材",
+            "试卷",
+            "练习册",
+            "习题册",
+            "错题集",
+            "单元测试",
+            "期中试卷",
+            "期末试卷",
+            "textbook",
+            "workbook",
+            "exam paper",
+            "question paper",
+            "answer key",
+        ),
+        "signals": (
+            "知识点",
+            "考点",
+            "题号",
+            "题干",
+            "选项",
+            "选择题",
+            "填空题",
+            "判断题",
+            "解答题",
+            "计算题",
+            "例题",
+            "习题",
+            "答案",
+            "解析",
+            "解题步骤",
+            "得分点",
+            "难度",
+            "易错点",
+            "先修知识",
+            "章节练习",
+            "multiple choice",
+            "short answer",
+            "worked example",
+            "common mistake",
+            "knowledge point",
+        ),
+        "instructions": (
+            "以‘可学习、可检索、可关联、可复习’为目标。先保留学科、学段/年级、"
+            "教材版本、册次、章/节/单元或试卷年份、地区、考试类型等来源语境。"
+            "课本/教材按实际知识点编译：区分定义、原理、公式/定理、条件、推导、例题、"
+            "反例、方法、易错点与应用场景；章节只作来源定位，不得机械地一节一页。"
+            "为每个知识点建立稳定概念页，记录别名/同义词、先修、后续、并列、"
+            "包含、对比、推导和应用关系，用标准 Markdown 链接连接关联知识点。"
+            "试卷/习题按题号保留题干、材料、选项、图表、分值、答案、解析、"
+            "解题步骤与得分点，并提取主考点、次考点、所需先修知识、题型、"
+            "难度依据、解题方法、易错原因和可迁移技巧。题目页链接知识点，"
+            "知识点页反向汇总例题/真题，便于按考点找题和由错题回溯知识缺口。"
+            "每个知识点页和题目页都必须包含‘来源追溯’小节，逐项写明原始资料文件名、"
+            "一个或多个页码/连续页范围、可核验的原文摘录；有相关图、表、实验装置或题图时，"
+            "必须保留并引用对应原图及相邻页上下文。知识边界优先于页面边界：定义在前页、"
+            "图或推导在后页时必须合并理解，禁止机械地一页一知识点。无法准确定位时标记"
+            "‘候选页范围/待核验’并继续提取知识，不得因此丢弃知识点。"
+            "严格区分原文答案与编译者推断；原文没有答案、难度或关联时必须标注‘未提供’"
+            "或‘推断’，不得伪造官方解析。"
+        ),
     },
     "finance": {
         "label": "财务会计与经营分析专家",
-        "signals": ("财务", "会计", "资产负债表", "利润表", "现金流", "收入确认", "成本", "预算", "税务", "凭证", "科目", "毛利", "净利润"),
+        "signals": (
+            "财务",
+            "会计",
+            "资产负债表",
+            "利润表",
+            "现金流",
+            "收入确认",
+            "成本",
+            "预算",
+            "税务",
+            "凭证",
+            "科目",
+            "毛利",
+            "净利润",
+        ),
         "instructions": "区分会计口径、管理口径和税务口径；保留币种、期间、主体、科目、借贷方向、确认条件、计算公式、数据来源与勾稽关系。组织报表项目、核算政策、预算差异、指标树和风险事项，任何金额或比率不得脱离期间与口径。",
     },
     "operations": {
         "label": "业务运营与流程管理专家",
-        "signals": ("运营", "SOP", "流程", "工单", "排班", "履约", "转化率", "留存率", "服务水平", "周转", "产能", "异常处理"),
+        "signals": (
+            "运营",
+            "SOP",
+            "流程",
+            "工单",
+            "排班",
+            "履约",
+            "转化率",
+            "留存率",
+            "服务水平",
+            "周转",
+            "产能",
+            "异常处理",
+        ),
         "instructions": "按目标、输入、角色、步骤、决策点、SLA、产能、指标、异常、升级与复盘组织；还原端到端流程及责任边界，建立指标口径、上下游依赖和异常闭环。区分标准路径、例外路径与人工判断点。",
     },
     "product": {
         "label": "产品管理与用户体验专家",
-        "signals": ("产品需求", "PRD", "用户故事", "用户旅程", "功能", "版本", "验收标准", "优先级", "原型", "痛点", "场景", "需求池"),
+        "signals": (
+            "产品需求",
+            "PRD",
+            "用户故事",
+            "用户旅程",
+            "功能",
+            "版本",
+            "验收标准",
+            "优先级",
+            "原型",
+            "痛点",
+            "场景",
+            "需求池",
+        ),
         "instructions": "围绕用户、场景、问题、价值、需求、功能、规则、交互、状态、边界、依赖、埋点、指标与验收标准组织；区分用户事实、产品假设和已确认决策，建立需求到方案、版本和验证证据的追踪链。",
     },
     "engineering": {
         "label": "软件工程与系统架构专家",
-        "signals": ("架构", "接口", "API", "数据库", "服务", "部署", "代码", "算法", "协议", "依赖", "故障", "性能", "安全漏洞"),
+        "signals": (
+            "架构",
+            "接口",
+            "API",
+            "数据库",
+            "服务",
+            "部署",
+            "代码",
+            "算法",
+            "协议",
+            "依赖",
+            "故障",
+            "性能",
+            "安全漏洞",
+        ),
         "instructions": "保留组件职责、接口契约、数据模型、控制流/数据流、依赖、配置、版本、环境、性能约束、安全边界、故障模式和运维步骤；把设计决策与实现事实分开，并链接需求、代码位置、测试和已知限制。",
     },
     "project": {
         "label": "项目与项目群管理专家",
-        "signals": ("项目计划", "里程碑", "WBS", "交付物", "关键路径", "进度", "项目风险", "干系人", "资源计划", "变更请求"),
+        "signals": (
+            "项目计划",
+            "里程碑",
+            "WBS",
+            "交付物",
+            "关键路径",
+            "进度",
+            "项目风险",
+            "干系人",
+            "资源计划",
+            "变更请求",
+        ),
         "instructions": "按目标、范围、交付物、工作分解、负责人、时间、依赖、里程碑、资源、风险、问题、决策和变更组织；保留计划基线与实际状态的区别，建立需求—任务—交付—验收的追踪关系。",
     },
     "hr": {
         "label": "人力资源与组织发展专家",
-        "signals": ("招聘", "岗位职责", "任职资格", "绩效", "薪酬", "员工", "职级", "晋升", "人才盘点", "组织架构", "劳动合同", "离职"),
+        "signals": (
+            "招聘",
+            "岗位职责",
+            "任职资格",
+            "绩效",
+            "薪酬",
+            "员工",
+            "职级",
+            "晋升",
+            "人才盘点",
+            "组织架构",
+            "劳动合同",
+            "离职",
+        ),
         "instructions": "围绕适用员工、组织层级、岗位、职级、能力、流程、周期、评价标准、薪酬口径、审批和员工影响组织；区分制度、流程与个案，保留劳动关系地域、时间和例外条件，避免推断敏感个人信息。",
     },
     "supply_chain": {
         "label": "采购、供应链与物流专家",
-        "signals": ("采购", "供应商", "招标", "库存", "仓储", "物流", "交期", "订单", "补货", "安全库存", "运输", "供应链"),
+        "signals": (
+            "采购",
+            "供应商",
+            "招标",
+            "库存",
+            "仓储",
+            "物流",
+            "交期",
+            "订单",
+            "补货",
+            "安全库存",
+            "运输",
+            "供应链",
+        ),
         "instructions": "按需求、寻源、供应商、合同、订单、库存、仓储、运输、交付、结算和绩效组织；保留物料/服务范围、数量、单位、价格口径、交期、Incoterms、质检、风险和异常责任，建立端到端流转与单据关系。",
     },
     "manufacturing": {
         "label": "制造工程与质量管理专家",
-        "signals": ("生产", "工艺", "BOM", "产线", "设备", "良率", "质量", "检验", "缺陷", "批次", "作业指导书", "追溯"),
+        "signals": (
+            "生产",
+            "工艺",
+            "BOM",
+            "产线",
+            "设备",
+            "良率",
+            "质量",
+            "检验",
+            "缺陷",
+            "批次",
+            "作业指导书",
+            "追溯",
+        ),
         "instructions": "保留产品/物料版本、BOM、工序、工艺参数、设备、批次、检验标准、抽样规则、缺陷等级、良率、控制计划和追溯链；区分规范值、实测值和处置结论，串联变更、偏差、根因与纠正预防措施。",
     },
     "risk_audit": {
         "label": "风险管理、内控与审计专家",
-        "signals": ("风险", "内控", "审计", "控制点", "合规检查", "整改", "证据", "抽样", "风险等级", "控制测试", "缺陷认定"),
+        "signals": (
+            "风险",
+            "内控",
+            "审计",
+            "控制点",
+            "合规检查",
+            "整改",
+            "证据",
+            "抽样",
+            "风险等级",
+            "控制测试",
+            "缺陷认定",
+        ),
         "instructions": "按目标、风险、控制、责任人、频率、证据、测试方法、发现、影响、根因、整改和复核组织；区分固有风险与剩余风险、设计有效性与执行有效性，不把建议写成已执行事实。",
     },
     "healthcare": {
         "label": "医疗健康与临床信息专家",
-        "signals": ("患者", "诊断", "治疗", "药物", "剂量", "临床", "指南", "适应症", "禁忌症", "不良反应", "检验", "预后"),
+        "signals": (
+            "患者",
+            "诊断",
+            "治疗",
+            "药物",
+            "剂量",
+            "临床",
+            "指南",
+            "适应症",
+            "禁忌症",
+            "不良反应",
+            "检验",
+            "预后",
+        ),
         "instructions": "区分指南建议、研究证据与个案信息；完整保留人群、适应症、禁忌症、剂量、途径、频次、疗程、检查指标、证据等级和不良反应。建立症状—诊断—检查—治疗—随访逻辑，并明确来源版本与适用边界，不生成原文没有的医疗建议。",
     },
     "education": {
         "label": "教育教学与学习科学专家",
-        "signals": ("教学", "学生", "学习成果", "课程标准", "教案", "课堂", "评价量规", "学科", "作业", "测验", "教学策略"),
+        "signals": (
+            "教学",
+            "学生",
+            "学习成果",
+            "课程标准",
+            "教案",
+            "课堂",
+            "评价量规",
+            "学科",
+            "作业",
+            "测验",
+            "教学策略",
+        ),
         "instructions": "围绕学习者、目标、先备知识、核心概念、学习进阶、教学活动、资源、形成性评价和总结性评价组织；保留学段、学科、课时与评价标准，建立目标—教学—评价一致性和概念先后依赖。",
     },
     "customer_service": {
         "label": "客户服务与体验运营专家",
-        "signals": ("客服", "客诉", "投诉", "咨询", "服务话术", "满意度", "响应时长", "升级", "退换货", "服务工单", "客户体验"),
+        "signals": (
+            "客服",
+            "客诉",
+            "投诉",
+            "咨询",
+            "服务话术",
+            "满意度",
+            "响应时长",
+            "升级",
+            "退换货",
+            "服务工单",
+            "客户体验",
+        ),
         "instructions": "按客户类型、场景、意图、问题分类、诊断步骤、话术边界、解决方案、权限、SLA、升级、补偿和闭环组织；区分事实核验、标准答复与酌情处理，保留渠道、地区、产品和时间限制。",
     },
     "strategy": {
         "label": "企业战略与商业分析专家",
-        "signals": ("战略", "商业模式", "市场规模", "竞争格局", "增长", "战略目标", "核心能力", "进入壁垒", "SWOT", "情景分析"),
+        "signals": (
+            "战略",
+            "商业模式",
+            "市场规模",
+            "竞争格局",
+            "增长",
+            "战略目标",
+            "核心能力",
+            "进入壁垒",
+            "SWOT",
+            "情景分析",
+        ),
         "instructions": "区分事实、假设、判断与决策；按外部环境、市场、客户、竞争、能力、选择、目标、举措、资源、指标和情景组织，建立证据—洞察—选择—行动链，并保留预测口径、时间范围与不确定性。",
     },
     "data": {
         "label": "数据分析与指标治理专家",
-        "signals": ("数据分析", "指标", "口径", "维度", "数据源", "SQL", "仪表盘", "样本", "统计", "归因", "漏斗", "数据质量"),
+        "signals": (
+            "数据分析",
+            "指标",
+            "口径",
+            "维度",
+            "数据源",
+            "SQL",
+            "仪表盘",
+            "样本",
+            "统计",
+            "归因",
+            "漏斗",
+            "数据质量",
+        ),
         "instructions": "保留指标定义、公式、分子分母、单位、粒度、维度、过滤条件、时间窗、数据源、刷新频率和负责人；区分描述、相关、因果与预测结论，记录样本、缺失、偏差和数据质量限制，建立指标血缘与业务解释。",
     },
 }
@@ -228,6 +596,9 @@ def match_domain_experts(content: str, source_name: str = "") -> list[dict[str, 
     ranked: list[tuple[int, str]] = []
     for key, profile in DOMAIN_EXPERTS.items():
         score = sum(sample.count(signal.lower()) for signal in profile["signals"])
+        score += 2 * sum(
+            sample.count(signal.lower()) for signal in profile.get("strong_signals", ())
+        )
         if score:
             ranked.append((score, key))
     ranked.sort(reverse=True)
@@ -236,21 +607,42 @@ def match_domain_experts(content: str, source_name: str = "") -> list[dict[str, 
     best = ranked[0][0]
     # Multi-label routing handles mixed documents; weak incidental matches are excluded.
     selected = [key for score, key in ranked if score >= max(2, best // 3)][:3]
-    return [{"id": key, **DOMAIN_EXPERTS[key]} for key in selected]
+    return [
+        {
+            "id": key,
+            "label": DOMAIN_EXPERTS[key]["label"],
+            "instructions": DOMAIN_EXPERTS[key]["instructions"],
+        }
+        for key in selected
+    ]
 
 
 def build_domain_expert_guidance(content: str, source_name: str = "") -> str:
     experts = match_domain_experts(content, source_name)
     if experts:
-        routes = "\n".join(
-            f"- **{item['label']}**：{item['instructions']}" for item in experts
-        )
+        routes = "\n".join(f"- **{item['label']}**：{item['instructions']}" for item in experts)
     else:
         routes = "- **通用知识架构专家**：先识别文档真实用途、读者任务和内在结构，再决定页面粒度；不得套用固定页数、固定实体比例或固定拆分模板。"
     return f"""## 领域专家路由（基于内容动态选择）
 {routes}
 
 先通读并判断文档体裁、权威性、目标读者与后续查询任务，再选择拆解粒度。允许多个专家视角协同，也允许发现更准确的领域后自行调整。章节只是证据边界，不必一章一页；页面数量、事实条数和实体/概念比例均由内容决定。若后续通用模板出现“固定页数”“每页固定事实数”或“固定实体/概念比例”，本节优先，忽略这些配额。所有解释性归纳须与原文明确区分，并附可回溯的原文定位。"""
+
+
+def build_media_fidelity_guidance(lang: str) -> str:
+    """Return mandatory compile instructions for images and page provenance."""
+    if lang == "zh":
+        return """## 图片与来源保真（强制）
+- 原文中的 Markdown 图片链接是证据，不是装饰。知识页使用了某张图、图表、实验装置、题图或页面内容时，必须原样保留对应图片引用。
+- 图片已持久化到 OKF bundle 的 `pages/assets/**`，只能引用这些稳定路径，不得改回临时 OCR 目录。
+- 保留图片与页码的对应关系；禁止只描述图片而删除可用原图。
+- 知识学习类页面必须包含 `## 来源追溯`：原始资料文件名、一个或多个页码/连续页范围、原文摘录，并在有图时包含对应图片。知识边界可以跨页；无法精确定位时写‘候选页范围/待核验’并继续提取，绝不能因页码不确定而丢弃知识。"""
+    return """## Image and Source Fidelity (mandatory)
+- Markdown image links in the source are evidence, not decoration. Preserve the corresponding image whenever a compiled page uses a diagram, chart, apparatus, question figure, or rendered page.
+- Images are persisted under `pages/assets/**`; keep those stable references and never point back to a temporary OCR directory.
+- Preserve the image-to-page/slide association. Do not replace an available source image with text-only prose.
+- Study-material pages require `## Source Traceability` with the source filename, one or more pages/a page range, a verbatim excerpt, and the corresponding image when present. Knowledge boundaries may cross pages. If the exact location is uncertain, record a candidate range and `needs verification`; never discard knowledge merely because page provenance is uncertain."""
+
 
 IMAGE_ANALYSIS_PROMPT = """Analyze this image for knowledge-base ingestion and retrieval.
 
@@ -366,17 +758,87 @@ def _readonly_working_copy(source_path: Path):
     with tempfile.TemporaryDirectory(prefix="llm-wiki-source-") as tmpdir:
         work_path = Path(tmpdir) / source_path.name
         shutil.copy2(source_path, work_path)
-        work_path.chmod(0o400)
-        yield work_path
+        work_path.chmod(0o444)
+        try:
+            yield work_path
+        finally:
+            # Run the integrity check even when the parser/converter raises.  The
+            # copy is disposable; the caller's source is not.  Capture any
+            # in-flight exception first so an integrity failure chains it instead
+            # of masking the real error.
+            original_exc = sys.exc_info()[1]
+            try:
+                after_stat = source_path.stat()
+                unchanged = (
+                    after_stat.st_size == original_stat.st_size
+                    and _file_sha256(source_path) == original_hash
+                )
+            except OSError as exc:
+                raise RuntimeError(
+                    f"Source file became unavailable during read-only processing: {source_path}"
+                ) from (original_exc or exc)
+            if not unchanged:
+                integrity_error = RuntimeError(
+                    f"Source file changed during read-only processing: {source_path}"
+                )
+                if original_exc is not None:
+                    raise integrity_error from original_exc
+                raise integrity_error
 
-    after_stat = source_path.stat()
-    if (
-        after_stat.st_size != original_stat.st_size
-        or _file_sha256(source_path) != original_hash
-    ):
-        raise RuntimeError(
-            f"Source file changed during read-only processing: {source_path}"
-        )
+
+def _agent_source_snapshot(source_path: Path) -> Path:
+    """Create an immutable, content-addressed input copy for Agent execution.
+
+    Agent tasks must never point an execution-capable Agent at the user's only
+    copy.  Keeping the snapshot under ``.wiki/source/agent_inputs`` also makes
+    the task reproducible after the original is moved.
+    """
+    source_path = source_path.resolve()
+    digest = _file_sha256(source_path)
+    snapshot_dir = WIKI_DIR / "source" / "agent_inputs" / digest[:16]
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+    snapshot_path = snapshot_dir / source_path.name
+
+    if snapshot_path.exists():
+        if _file_sha256(snapshot_path) != digest:
+            raise RuntimeError(f"Agent source snapshot hash mismatch: {snapshot_path}")
+        snapshot_path.chmod(0o444)
+        return snapshot_path
+
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{source_path.name}.", suffix=".tmp", dir=snapshot_dir
+    )
+    os.close(fd)
+    temporary = Path(temporary_name)
+    try:
+        shutil.copy2(source_path, temporary)
+        if _file_sha256(temporary) != digest:
+            raise RuntimeError(f"Agent source snapshot copy failed verification: {source_path}")
+        temporary.chmod(0o444)
+        os.replace(temporary, snapshot_path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    return snapshot_path
+
+
+def _assert_safe_source_location(source_path: Path) -> None:
+    """Reject managed wiki outputs as compile inputs.
+
+    ``.wiki/source`` is the sole in-wiki input area. Compiling a file from
+    ``pages`` (or another mutable output area) can otherwise make an output
+    path alias the input path and destroy the only copy.
+    """
+    resolved = source_path.resolve()
+    wiki_root = WIKI_DIR.resolve()
+    source_root = (WIKI_DIR / "source").resolve()
+    if resolved == wiki_root or wiki_root in resolved.parents:
+        if resolved != source_root and source_root not in resolved.parents:
+            raise ValueError(
+                "Refusing to compile a managed wiki output as a source: "
+                f"{source_path}. Only files under {source_root} may be used as "
+                "in-wiki source inputs."
+            )
 
 
 def iter_source_files(root: Path, max_depth: int | None = None) -> list[Path]:
@@ -395,8 +857,7 @@ def iter_source_files(root: Path, max_depth: int | None = None) -> list[Path]:
         depth = len(rel_parts)
 
         dirnames[:] = sorted(
-            d for d in dirnames
-            if d not in SKIP_DIR_NAMES and not (current_path / d).is_symlink()
+            d for d in dirnames if d not in SKIP_DIR_NAMES and not (current_path / d).is_symlink()
         )
 
         if max_depth is not None and depth >= max_depth:
@@ -412,25 +873,51 @@ def iter_source_files(root: Path, max_depth: int | None = None) -> list[Path]:
     return files
 
 
-def _ocr_image_with_config(image_path: Path) -> str:
-    """Run the configured OCR backend on an image and return markdown text."""
+def _create_ocr_backend() -> Any:
+    """Instantiate the configured OCR backend."""
     ocr_config = get_ocr_config()
     backend = ocr_config.get("backend", "mineru")
 
     if ocr_config.get("mode") == "api" or backend == "api":
         from ocr._ocr_api import OCRApiBackend
-        return OCRApiBackend.from_config().ocr_image(str(image_path))
+
+        return OCRApiBackend.from_config()
     if backend == "deepseek":
         from ocr._deepseek_ocr2 import DeepSeekOCR2
-        return DeepSeekOCR2.from_config().ocr_image(str(image_path))
+
+        return DeepSeekOCR2.from_config()
     if backend == "logics":
         from ocr._logics_parsing import LogicsParsingOCR
-        return LogicsParsingOCR.from_config().ocr_image(str(image_path))
+
+        return LogicsParsingOCR.from_config()
     if backend == "paddle":
         from ocr._paddle_ocr import PaddleOCRWrapper
-        return PaddleOCRWrapper.from_config().ocr_image(str(image_path))
+
+        return PaddleOCRWrapper.from_config()
     from ocr._mineru_ocr import MinerUOCR
-    return MinerUOCR.from_config().ocr_image(str(image_path))
+
+    return MinerUOCR.from_config()
+
+
+def _ocr_image_with_config(image_path: Path) -> str:
+    """Run the configured OCR backend on an image and return markdown text."""
+    return _create_ocr_backend().ocr_image(str(image_path))
+
+
+def _ocr_pdf_with_config(pdf_path: Path) -> str:
+    """Run document-native OCR on a PDF and return the generated Markdown."""
+    backend = _create_ocr_backend()
+    with tempfile.TemporaryDirectory(prefix="llm-wiki-pdf-ocr-") as tmpdir:
+        report_path = Path(backend.ocr_pdf(str(pdf_path), Path(tmpdir)))
+        if not report_path.is_file():
+            raise RuntimeError(f"OCR backend did not produce Markdown: {report_path}")
+        return report_path.read_text(encoding="utf-8").strip()
+
+
+def _has_meaningful_ocr_text(content: str) -> bool:
+    """Reject empty/header-only OCR output without penalising short documents."""
+    visible = re.sub(r"[\s#>*_`\-]+", "", content or "")
+    return len(visible) >= 40
 
 
 def _copy_to_source_images(image_path: Path) -> Path:
@@ -445,12 +932,352 @@ def _copy_to_source_images(image_path: Path) -> Path:
     if dest.exists():
         # Avoid collision: append short hash of original path
         import hashlib
+
         path_hash = hashlib.md5(str(image_path.resolve()).encode()).hexdigest()[:6]
         stem, ext = image_path.stem, image_path.suffix
         dest = SOURCE_IMAGES_DIR / f"{stem}-{path_hash}{ext}"
     import shutil
+
     shutil.copy2(image_path, dest)
     return dest
+
+
+MARKDOWN_IMAGE_RE = re.compile(r"!\[(?P<alt>[^\]]*)\]\((?P<target><[^>]+>|[^)\n]+)\)")
+
+
+_TITLE_RE = re.compile(r'''\s+(".*"|'.*?'|\(.*\))\s*$''')
+
+
+def _clean_image_target(target: str) -> str:
+    """Return the URL/path portion of a Markdown image target.
+
+    Strips an optional CommonMark title (``"..."``, ``'...'``, ``(...)``) so a
+    link like ``![alt](images/fig.png "Figure 1")`` resolves the image instead of
+    being treated as a filename containing the title.
+    """
+    cleaned = target.strip()
+    # Angle-bracketed destination: <url>, optionally followed by a title.
+    if cleaned.startswith("<"):
+        end = cleaned.find(">")
+        if end != -1:
+            return cleaned[1:end].strip()
+    # Bare destination: URL is the first whitespace-delimited token; a quoted
+    # title may follow it. Anything else is returned unchanged.
+    match = _TITLE_RE.search(cleaned)
+    if match:
+        return cleaned[: match.start()].strip()
+    return cleaned
+
+
+def _local_image_path(target: str, base_dir: Path) -> Path | None:
+    """Resolve a local Markdown image target, leaving remote/data URLs alone."""
+    cleaned = _clean_image_target(target)
+    lowered = cleaned.lower()
+    if lowered.startswith(("http://", "https://", "data:", "blob:")):
+        return None
+    if lowered.startswith("file://"):
+        cleaned = cleaned[7:]
+    candidate = Path(cleaned).expanduser()
+    if not candidate.is_absolute():
+        candidate = base_dir / candidate
+    return candidate.resolve()
+
+
+def _rewrite_markdown_image_targets(
+    content: str, rewrite: Callable[[str, str], str]
+) -> str:
+    """Rewrite Markdown image targets with *rewrite(target, alt)*."""
+
+    def replace(match: re.Match[str]) -> str:
+        alt = match.group("alt")
+        target = _clean_image_target(match.group("target"))
+        return f"![{alt}]({rewrite(target, alt)})"
+
+    return MARKDOWN_IMAGE_RE.sub(replace, content)
+
+
+def _source_media_key(source_path: Path) -> str:
+    safe_stem = re.sub(r"[^a-zA-Z0-9_.-]+", "-", source_path.stem).strip("-") or "source"
+    source_hash = hashlib.sha256(str(source_path.resolve()).encode()).hexdigest()[:10]
+    return f"{safe_stem}-{source_hash}"
+
+
+def _persist_source_image_references(content: str, source_path: Path) -> str:
+    """Copy all local source images into the OKF bundle and rewrite their links.
+
+    OCR Markdown commonly points at a sibling ``images/`` directory, while rendered
+    PDF/Word/PPT pages live under ``.wiki/source``. Both locations can move or be
+    cleaned independently of an exported bundle. Copying them under
+    ``pages/assets`` makes image references first-class, portable OKF artifacts.
+    """
+    destination_dir = PAGES_DIR / "assets" / _source_media_key(source_path)
+    # OKF pages always live one directory below ``pages`` (``concepts/`` or
+    # ``entities/``), so a link relative to that depth is portable across both
+    # and survives a bundle move. Absolute, host-specific paths would leak the
+    # build machine into exported pages.
+    page_anchor = (PAGES_DIR / "concepts").resolve()
+
+    def persist(target: str, _alt: str) -> str:
+        local_path = _local_image_path(target, source_path.parent)
+        if local_path is None or not local_path.is_file():
+            return target
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        destination = destination_dir / local_path.name
+        if destination.exists() and _file_sha256(destination) != _file_sha256(local_path):
+            suffix = hashlib.sha256(str(local_path).encode()).hexdigest()[:8]
+            destination = destination_dir / f"{local_path.stem}-{suffix}{local_path.suffix}"
+        if local_path != destination and not destination.exists():
+            shutil.copy2(local_path, destination)
+        return Path(os.path.relpath(destination.resolve(), page_anchor)).as_posix()
+
+    return _rewrite_markdown_image_targets(content, persist)
+
+
+def _source_page_image_map(content: str) -> dict[int, list[tuple[str, str]]]:
+    """Map rendered page/slide numbers to their persisted image references."""
+    headings = list(
+        re.finditer(
+            r"^##\s+(?:Page|Slide|第)\s*(\d+)\s*(?:页|张)?\s*$",
+            content,
+            flags=re.MULTILINE | re.IGNORECASE,
+        )
+    )
+    result: dict[int, list[tuple[str, str]]] = {}
+    for index, heading in enumerate(headings):
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(content)
+        block = content[heading.end() : end]
+        refs = [
+            (match.group("alt"), _clean_image_target(match.group("target")))
+            for match in MARKDOWN_IMAGE_RE.finditer(block)
+        ]
+        if refs:
+            result[int(heading.group(1))] = refs
+    return result
+
+
+def _source_epub_section_map(
+    content: str,
+) -> dict[int, tuple[str, list[tuple[str, str]]]]:
+    """Map EPUB section numbers to locators and persisted image references."""
+    headings = list(
+        re.finditer(
+            r"^##\s+EPUB\s+Section\s+(\d+)(?:\s*:\s*([^\n]+))?\s*$",
+            content,
+            flags=re.MULTILINE | re.IGNORECASE,
+        )
+    )
+    result: dict[int, tuple[str, list[tuple[str, str]]]] = {}
+    for index, heading in enumerate(headings):
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(content)
+        block = content[heading.end() : end]
+        locator_match = re.search(r"^>\s*EPUB locator:\s*`([^`]+)`", block, re.MULTILINE)
+        locator = locator_match.group(1) if locator_match else (heading.group(2) or "").strip()
+        refs = [
+            (match.group("alt"), _clean_image_target(match.group("target")))
+            for match in MARKDOWN_IMAGE_RE.finditer(block)
+        ]
+        result[int(heading.group(1))] = (locator, refs)
+    return result
+
+
+def _source_page_numbers(content: str) -> list[int]:
+    """Return every explicit rendered source page/slide number."""
+    return sorted(
+        {
+            int(value)
+            for value in re.findall(
+                r"^##\s+(?:Page|Slide|第)\s*(\d+)\s*(?:页|张)?\s*$",
+                content,
+                flags=re.MULTILINE | re.IGNORECASE,
+            )
+        }
+    )
+
+
+def _extract_cited_pages(content: str) -> list[int]:
+    """Extract explicit page/slide citations from a compiled page.
+
+    Patterns are anchored to provenance vocabulary (``第N页``, ``Page/Slide N``,
+    ``页码:``) so version strings, HTTP status codes, and figure numbers are
+    not mistaken for source page citations.
+    """
+    pages: set[int] = set()
+    range_patterns = (
+        r"第?\s*(\d+)\s*[-–—~至]\s*(\d+)\s*页",
+        r"\b(?:Pages?|Slides?)\s*(\d+)\s*[-–—~]\s*(\d+)\b",
+    )
+    for pattern in range_patterns:
+        for start_value, end_value in re.findall(pattern, content, re.IGNORECASE):
+            start, end = int(start_value), int(end_value)
+            if 0 < start <= end and end - start <= 1000:
+                pages.update(range(start, end + 1))
+
+    for field in re.findall(
+        r"(?:页码|页范围|Pages?|Slides?|幻灯片(?:编号)?)\s*[:：]\s*([^\n]+)",
+        content,
+        re.IGNORECASE,
+    ):
+        pages.update(int(value) for value in re.findall(r"\d+", field))
+
+    # Single-page citations: require provenance vocabulary, not a bare number.
+    # ``第N页`` and ``页码/第N`` are unambiguous; ``Page/Slide N`` is anchored
+    # with word boundaries to avoid ``HTTP 404``-style false hits.
+    patterns = (
+        r"第\s*(\d+)\s*页",
+        r"页码\s*[:：]\s*(?:第\s*)?(\d+)",
+        r"\bPage\s*(\d+)\b",
+        r"\bSlide\s*(\d+)\b",
+        r"幻灯片(?:编号)?\s*[:：]\s*(?:第\s*)?(\d+)",
+    )
+    for pattern in patterns:
+        pages.update(int(value) for value in re.findall(pattern, content, re.IGNORECASE))
+    return sorted(page for page in pages if page > 0)
+
+
+def _extract_cited_epub_sections(content: str) -> list[int]:
+    """Extract explicit EPUB section locators from a compiled page."""
+    sections: set[int] = set()
+    patterns = (
+        r"EPUB\s+Section\s*(\d+)",
+        r"EPUB\s*(?:章节|节)\s*[:：]?\s*(?:第\s*)?(\d+)",
+    )
+    for pattern in patterns:
+        sections.update(int(value) for value in re.findall(pattern, content, re.IGNORECASE))
+    return sorted(section for section in sections if section > 0)
+
+
+def _ensure_study_traceability(
+    page_content: str,
+    source_name: str,
+    source_content: str,
+) -> str:
+    """Add best-effort page provenance without sacrificing extracted knowledge."""
+    source_pages = _source_page_numbers(source_content)
+    epub_sections = _source_epub_section_map(source_content)
+    cited_pages = _extract_cited_pages(page_content)
+    cited_epub_sections = _extract_cited_epub_sections(page_content)
+    unknown_citations = [page for page in cited_pages if source_pages and page not in source_pages]
+    candidate_range = ""
+    location_status = ""
+    if source_pages:
+        if not cited_pages and len(source_pages) == 1:
+            cited_pages = source_pages
+        if cited_pages and not unknown_citations:
+            location_status = "准确页码"
+        elif cited_pages:
+            location_status = "模型定位，部分页码超出当前分块，待核验"
+        else:
+            candidate_range = f"第 {source_pages[0]}–{source_pages[-1]} 页"
+            location_status = "候选页范围（根据当前连续页面上下文推定，待核验）"
+    elif epub_sections:
+        if not cited_epub_sections and len(epub_sections) == 1:
+            cited_epub_sections = list(epub_sections)
+        location_status = "EPUB 章节定位；重排格式无可靠固定页码"
+    elif cited_pages:
+        location_status = "模型定位，原解析缺少分页清单，待核验"
+    else:
+        location_status = "未能从当前解析结果确定页码，待核验"
+
+    page_value = "、".join(f"第 {page} 页" for page in cited_pages) if cited_pages else "待核验"
+    trace_match = re.search(
+        r"^##\s+(?:来源追溯|Source Traceability)\s*$.*?(?=^##\s+|\Z)",
+        page_content,
+        flags=re.MULTILINE | re.DOTALL | re.IGNORECASE,
+    )
+    required_lines = [
+        f"- 原始资料：`{source_name}`",
+        f"- 页码：{page_value}",
+        f"- 定位状态：{location_status}",
+    ]
+    if candidate_range:
+        required_lines.append(f"- 候选页范围：{candidate_range}")
+    if cited_epub_sections:
+        locators = []
+        for section in cited_epub_sections:
+            locator = epub_sections.get(section, ("", []))[0]
+            suffix = f"（`{locator}`）" if locator else ""
+            locators.append(f"EPUB Section {section}{suffix}")
+        required_lines.append(f"- EPUB章节定位：{'、'.join(locators)}")
+    required_block = "\n".join(required_lines) + "\n"
+    if trace_match:
+        block = trace_match.group(0).rstrip()
+        additions: list[str] = []
+        if source_name not in block:
+            additions.append(f"- 原始资料：`{source_name}`")
+        if not re.search(r"(?:页码|Page|Slide|幻灯片)", block, re.IGNORECASE):
+            additions.append(f"- 页码：{page_value}")
+        if "定位状态" not in block:
+            additions.append(f"- 定位状态：{location_status}")
+        if candidate_range and "候选页范围" not in block:
+            additions.append(f"- 候选页范围：{candidate_range}")
+        if cited_epub_sections and "EPUB章节定位" not in block:
+            locators = []
+            for section in cited_epub_sections:
+                locator = epub_sections.get(section, ("", []))[0]
+                suffix = f"（`{locator}`）" if locator else ""
+                locators.append(f"EPUB Section {section}{suffix}")
+            additions.append(f"- EPUB章节定位：{'、'.join(locators)}")
+        if additions:
+            replacement = block + "\n" + "\n".join(additions) + "\n\n"
+            return page_content[: trace_match.start()] + replacement + page_content[trace_match.end() :]
+        return page_content
+    return page_content.rstrip() + "\n\n## 来源追溯\n\n" + required_block
+
+
+def _attach_source_media(page_content: str, source_content: str, page_path: Path) -> str:
+    """Keep copied image links valid and attach images from cited source pages."""
+    # Resolve the page directory once so relpath matches the resolved image
+    # paths from _local_image_path; otherwise a symlinked wiki dir (common on
+    # macOS, where /var -> /private/var) yields a convoluted non-portable link.
+    page_dir = page_path.parent.resolve()
+    existing_targets = {
+        _clean_image_target(match.group("target"))
+        for match in MARKDOWN_IMAGE_RE.finditer(page_content)
+    }
+
+    def make_relative(target: str, _alt: str) -> str:
+        local_path = _local_image_path(target, page_path.parent)
+        if local_path is None or not local_path.is_file():
+            return target
+        return Path(os.path.relpath(local_path, page_dir)).as_posix()
+
+    page_content = _rewrite_markdown_image_targets(page_content, make_relative)
+    page_map = _source_page_image_map(source_content)
+    epub_map = _source_epub_section_map(source_content)
+    additions: list[str] = []
+    cited_pages = _extract_cited_pages(page_content)
+    media_pages: set[int] = set(cited_pages)
+    for page_number in cited_pages:
+        # Figures and captions frequently spill onto the adjacent page. Keep a
+        # one-page context halo instead of treating the cited page as a hard cut.
+        media_pages.update({page_number - 1, page_number + 1})
+    for media_page in sorted(page for page in media_pages if page > 0):
+        for alt, target in page_map.get(media_page, []):
+            if target in existing_targets:
+                continue
+            relative_target = make_relative(target, alt)
+            relation = "直接引用页" if media_page in cited_pages else "相邻页上下文"
+            additions.append(
+                f"![原始资料第 {media_page} 页（{relation}）：{alt}]({relative_target})"
+            )
+            existing_targets.add(target)
+    cited_sections = _extract_cited_epub_sections(page_content)
+    if not cited_sections and len(epub_map) == 1:
+        cited_sections = list(epub_map)
+    for section in cited_sections:
+        locator, refs = epub_map.get(section, ("", []))
+        for alt, target in refs:
+            if target in existing_targets:
+                continue
+            relative_target = make_relative(target, alt)
+            locator_label = f"，{locator}" if locator else ""
+            additions.append(
+                f"![原始资料 EPUB Section {section}{locator_label}：{alt}]({relative_target})"
+            )
+            existing_targets.add(target)
+    if additions:
+        page_content = page_content.rstrip() + "\n\n## 来源图片\n\n" + "\n\n".join(additions) + "\n"
+    return page_content
 
 
 def analyze_image_for_compile(image_path: Path, for_agent: bool = False) -> str:
@@ -695,10 +1522,12 @@ def _render_pdf_pages_to_images(pdf_path: Path, output_dir: Path) -> list[Path]:
 
 
 def _convert_office_to_pdf(source_path: Path, output_dir: Path) -> Path:
-    """Convert PPT/PPTX and other Office files to PDF using LibreOffice."""
+    """Convert Word/PowerPoint files to PDF using LibreOffice."""
     converter = shutil.which("soffice") or shutil.which("libreoffice")
     if not converter:
-        raise RuntimeError("LibreOffice/soffice is not installed; cannot render slides to images.")
+        raise RuntimeError(
+            "LibreOffice/soffice is not installed; cannot render Word/PowerPoint pages to images."
+        )
 
     output_dir.mkdir(parents=True, exist_ok=True)
     before = set(output_dir.glob("*.pdf"))
@@ -724,14 +1553,15 @@ def _render_paginated_document_to_images(
     source_path: Path,
     storage_source_path: Path | None = None,
 ) -> tuple[list[Path], str]:
-    """Render all pages/slides from a PDF/PPT/PPTX source into images."""
+    """Render all pages/slides from a PDF, Word, or PowerPoint source into images."""
     output_dir = _document_images_dir(storage_source_path or source_path)
     suffix = source_path.suffix.lower()
     if suffix == ".pdf":
         return _render_pdf_pages_to_images(source_path, output_dir), "pdf-pages"
-    if suffix in {".ppt", ".pptx"}:
+    if suffix in {".ppt", ".pptx", ".doc", ".docx"}:
         pdf_path = _convert_office_to_pdf(source_path, output_dir)
-        return _render_pdf_pages_to_images(pdf_path, output_dir), "slides-via-pdf"
+        pipeline = "slides-via-pdf" if suffix in {".ppt", ".pptx"} else "word-via-pdf"
+        return _render_pdf_pages_to_images(pdf_path, output_dir), pipeline
     raise RuntimeError(f"Unsupported paginated document type: {suffix}")
 
 
@@ -749,6 +1579,7 @@ def _ocr_backend_available() -> bool:
         provider_presets: dict[str, dict[str, str]] = {}
         if provider:
             from ocr._ocr_api import _PROVIDER_PRESETS
+
             provider_presets = _PROVIDER_PRESETS
 
         # Resolve api_url (config or provider preset)
@@ -827,7 +1658,7 @@ def _rendered_page_markdown(image_path: Path, page_number: int, body: str, label
 
 
 def _read_paginated_document_for_compile(source_path: Path) -> str:
-    """Read a PDF/PPT/PPTX with page-preserving fallbacks.
+    """Read a PDF/Word/PowerPoint document with page-preserving fallbacks.
 
     Priority:
     1. Render every page/slide to images, then OCR each image when OCR is usable.
@@ -854,6 +1685,34 @@ def _read_paginated_document_for_compile(source_path: Path) -> str:
                 storage_source_path=source_path,
             )
     except Exception as render_error:
+        direct_ocr_text = ""
+        direct_ocr_error: Exception | None = None
+        if source_path.suffix.lower() == ".pdf" and _ocr_backend_available():
+            try:
+                with _readonly_working_copy(source_path) as work_path:
+                    direct_ocr_text = _ocr_pdf_with_config(work_path)
+                if not _has_meaningful_ocr_text(direct_ocr_text):
+                    raise RuntimeError("OCR returned only empty/header-like content")
+            except Exception as exc:
+                direct_ocr_error = exc
+                direct_ocr_text = ""
+
+        if direct_ocr_text:
+            sections.extend(
+                [
+                    "## Page Rendering Failed — Direct OCR Succeeded",
+                    "",
+                    f"Page rendering failed: {render_error}",
+                    "",
+                    "> The configured OCR backend processed the complete PDF directly. "
+                    "Use this OCR result as the compile source; do not replace it with MarkItDown.",
+                    "",
+                    direct_ocr_text,
+                    "",
+                ]
+            )
+            return "\n".join(sections).strip() + "\n"
+
         markitdown_text = _markitdown_to_markdown(source_path)
         sections.extend(
             [
@@ -863,15 +1722,25 @@ def _read_paginated_document_for_compile(source_path: Path) -> str:
                 "",
             ]
         )
+        if direct_ocr_error is not None:
+            sections.extend(
+                [
+                    "## Direct OCR Failed",
+                    "",
+                    f"Configured OCR backend failed: {direct_ocr_error}",
+                    "",
+                ]
+            )
         if markitdown_text:
             sections.extend(
                 [
-                    "## MarkItDown Fallback",
+                    "## MarkItDown Partial Evidence (not compile-ready)",
                     "",
                     markitdown_text.strip(),
                     "",
-                    "> Agent must verify whether this fallback contains every page/slide. "
-                    "If not, ask the user for a page-rendered export.",
+                    "> MarkItDown is not authoritative for a scanned/paginated document. "
+                    "Do not compile from this text alone. Retry the configured OCR backend; "
+                    "if OCR remains unavailable, stop and ask the user for a readable export.",
                     "",
                 ]
             )
@@ -881,7 +1750,7 @@ def _read_paginated_document_for_compile(source_path: Path) -> str:
                     "## Agent Action Required",
                     "",
                     "No page images could be rendered and MarkItDown did not return content. "
-                    "The Agent must inspect the original file directly; if it cannot, ask the user "
+                    "The Agent must inspect the immutable source snapshot directly; if it cannot, ask the user "
                     "for a PDF/image export with every page or slide.",
                     "",
                 ]
@@ -933,6 +1802,7 @@ def _read_paginated_document_for_compile(source_path: Path) -> str:
         )
         image_config = get_image_analysis_config()
         from ocr._ocr_api import create_vision_backend
+
         vision_backend = create_vision_backend(image_config, IMAGE_ANALYSIS_PROMPT)
         for page_number, image_path in enumerate(page_images, start=1):
             try:
@@ -978,6 +1848,19 @@ def _markitdown_to_markdown(source_path: Path) -> str:
         return ""
 
 
+def _read_epub_for_compile(source_path: Path) -> str:
+    """Convert EPUB to Markdown while materializing all referenced images."""
+    media_key = _source_media_key(source_path)
+    assets_dir = WIKI_DIR / "source" / "epub_assets" / media_key
+    content = epub_to_markdown(source_path, assets_dir)
+    markdown_dir = WIKI_DIR / "source" / "epub_markdown" / media_key
+    markdown_dir.mkdir(parents=True, exist_ok=True)
+    markdown_path = markdown_dir / f"{source_path.stem}.md"
+    if not markdown_path.is_file() or markdown_path.read_text(encoding="utf-8") != content:
+        markdown_path.write_text(content, encoding="utf-8")
+    return content
+
+
 def _preprocess_svg(svg_path: Path) -> str:
     """Extract text and structure from SVG XML for LLM ingestion.
 
@@ -991,8 +1874,8 @@ def _preprocess_svg(svg_path: Path) -> str:
         # Parse SVG XML, stripping namespaces for simplicity
         raw = svg_path.read_text(encoding="utf-8")
         # Remove namespace prefixes so ElementTree can find tags
-        cleaned = re.sub(r'<(\/?)(\w+):(\w+)', r'<\1\3', raw)
-        cleaned = re.sub(r'\s+xmlns(:\w+)?="[^"]*"', '', cleaned)
+        cleaned = re.sub(r"<(\/?)(\w+):(\w+)", r"<\1\3", raw)
+        cleaned = re.sub(r'\s+xmlns(:\w+)?="[^"]*"', "", cleaned)
         root = ET.fromstring(cleaned)
     except Exception:
         # If parsing fails, return raw text — LLM can still extract info
@@ -1039,11 +1922,13 @@ def _preprocess_svg(svg_path: Path) -> str:
                     subtag = sub.tag.replace(ns, "")
                     if subtag in ("text", "tspan") and sub.text:
                         group_texts.append(sub.text.strip())
-                groups.append({
-                    "id": gid,
-                    "label": label,
-                    "texts": group_texts[:10],
-                })
+                groups.append(
+                    {
+                        "id": gid,
+                        "label": label,
+                        "texts": group_texts[:10],
+                    }
+                )
 
     # ── Build clean output ──
     if text_elements:
@@ -1082,6 +1967,89 @@ def _preprocess_svg(svg_path: Path) -> str:
     return result
 
 
+def _mineru_page_anchor(entry: dict) -> str:
+    """Return a stable Markdown anchor for one MinerU content-list entry."""
+    for key in ("text", "table_body", "latex"):
+        value = entry.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    image_path = entry.get("img_path")
+    return str(image_path).strip() if image_path else ""
+
+
+def _inject_mineru_page_markers(markdown: str, source_path: Path) -> str:
+    """Inject ``## Page N`` boundaries using MinerU's sibling content list.
+
+    MinerU's Markdown intentionally omits page breaks, but its content-list JSON
+    retains ``page_idx`` for every block. Anchoring page starts back into the
+    original Markdown preserves MinerU's rich formatting while restoring exact
+    page provenance for downstream study compilation.
+    """
+    if _source_page_numbers(markdown):
+        return markdown
+    manifest = source_path.with_name(f"{source_path.stem}_content_list.json")
+    if not manifest.is_file():
+        return markdown
+    try:
+        entries = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return markdown
+    if not isinstance(entries, list):
+        return markdown
+
+    grouped: dict[int, list[dict]] = {}
+    for entry in entries:
+        if not isinstance(entry, dict) or not isinstance(entry.get("page_idx"), int):
+            continue
+        grouped.setdefault(int(entry["page_idx"]) + 1, []).append(entry)
+    if not grouped:
+        return markdown
+
+    insertions: list[tuple[int, int]] = []
+    cursor = 0
+    first_page = min(grouped)
+    for page_number in sorted(grouped):
+        matched_end = cursor
+        candidates: list[tuple[int, int]] = []
+        for entry in grouped[page_number]:
+            anchor = _mineru_page_anchor(entry)
+            if not anchor:
+                continue
+            # Only consider matches at or after the cursor: an earlier duplicate
+            # of the anchor text would otherwise place this page before the
+            # previous page and scramble page provenance.
+            found = markdown.find(anchor, cursor)
+            if found >= 0:
+                candidates.append((found, found + len(anchor)))
+        if candidates:
+            found, matched_end = min(candidates)
+            line_break = markdown.rfind("\n", 0, found)
+            position = line_break + 1
+        elif page_number == first_page:
+            # No findable anchor for the first page: emit its marker at the top
+            # so subsequent pages stay ordered, rather than dropping page 1.
+            position = 0
+        else:
+            line_break = markdown.rfind("\n", 0, cursor)
+            position = line_break + 1
+        insertions.append((position, page_number))
+        # Advance strictly past what this page matched so the next page's
+        # search cannot re-match content already claimed by this page.
+        cursor = max(cursor, matched_end)
+
+    pieces: list[str] = []
+    previous = 0
+    for position, page_number in sorted(insertions, key=lambda item: (item[0], item[1])):
+        position = max(previous, min(position, len(markdown)))
+        pieces.append(markdown[previous:position])
+        if pieces and pieces[-1] and not pieces[-1].endswith("\n"):
+            pieces.append("\n")
+        pieces.append(f"## Page {page_number}\n\n")
+        previous = position
+    pieces.append(markdown[previous:])
+    return "".join(pieces)
+
+
 def read_source_content(source_path: str | Path) -> tuple[str, str]:
     """Read a compile source and return (content, display_name)."""
     path = Path(source_path)
@@ -1089,7 +2057,11 @@ def read_source_content(source_path: str | Path) -> tuple[str, str]:
         return _read_paginated_document_for_compile(path), path.name
 
     if is_document_source(path):
-        content = _markitdown_to_markdown(path)
+        content = (
+            _read_epub_for_compile(path)
+            if path.suffix.lower() == ".epub"
+            else _markitdown_to_markdown(path)
+        )
         if not content:
             raise RuntimeError(
                 f"Document compile requires MarkItDown or direct Agent inspection: {path}"
@@ -1104,7 +2076,10 @@ def read_source_content(source_path: str | Path) -> tuple[str, str]:
         return _preprocess_svg(path), path.name
 
     with open(path, encoding="utf-8") as f:
-        return f.read(), path.name
+        content = f.read()
+    if path.suffix.lower() in {".md", ".markdown"}:
+        content = _inject_mineru_page_markers(content, path)
+    return content, path.name
 
 
 def _read_agent_visible_source(source_path: Path) -> tuple[str, bool]:
@@ -1118,7 +2093,11 @@ def _read_agent_visible_source(source_path: Path) -> tuple[str, bool]:
             # last resort.
             return analyze_image_for_compile(source_path, for_agent=True), True
         if is_document_source(source_path):
-            content = _markitdown_to_markdown(source_path)
+            content = (
+                _read_epub_for_compile(source_path)
+                if source_path.suffix.lower() == ".epub"
+                else _markitdown_to_markdown(source_path)
+            )
             return (content, True) if content else ("", False)
         if source_path.suffix.lower() == ".svg":
             return _preprocess_svg(source_path), True
@@ -1164,6 +2143,7 @@ def create_agent_compile_task(
     path = Path(source_path)
     if not path.exists():
         raise FileNotFoundError(f"Source not found: {source_path}")
+    _assert_safe_source_location(path)
 
     WIKI_DIR.mkdir(parents=True, exist_ok=True)
     task_dir = WIKI_DIR / "agent_tasks"
@@ -1177,23 +2157,41 @@ def create_agent_compile_task(
                 f"Cannot read source directory: {e}. Check directory permissions."
             ) from e
         max_entries = 500
-        displayed = sources[:max_entries]
+        # Agent execution uses immutable snapshots, never the caller's files.
+        # This is deliberately done before writing the task so a partial
+        # snapshot set cannot be mistaken for a runnable compile request.
+        snapshots = sources if dry_run else [_agent_source_snapshot(source) for source in sources]
+        displayed = snapshots[:max_entries]
         remaining = sources[max_entries:]
         suffix = ""
         if remaining:
             suffix = f"\n\n... and {len(remaining)} more files:\n"
-            suffix += "\n".join(f"- `{src}`" for src in remaining[:10])
+            suffix += "\n".join(
+                f"- `{snapshot}`" for snapshot in snapshots[max_entries : max_entries + 10]
+            )
             if len(remaining) > 10:
                 suffix += f"\n- ... ({len(remaining) - 10} additional files omitted)"
-        source_entries = "\n".join(f"- `{src}`" for src in displayed) + suffix or "- No supported files found"
+        source_entries = (
+            "\n".join(f"- `{src}`" for src in displayed) + suffix or "- No supported files found"
+        )
         readable_content = ""
-        readable = False  # Directory: individual file readability is unknown without per-file extraction
+        readable = (
+            False  # Directory: individual file readability is unknown without per-file extraction
+        )
         source_name = path.name
         source_hint = "directory"
     else:
-        content, readable = _read_agent_visible_source(path)
+        if dry_run:
+            with _readonly_working_copy(path) as snapshot_path:
+                content, readable = _read_agent_visible_source(snapshot_path)
+            task_source_path = path
+        else:
+            task_source_path = _agent_source_snapshot(path)
+            content, readable = _read_agent_visible_source(task_source_path)
+        if readable and not dry_run:
+            content = _persist_source_image_references(content, path)
         readable_content = strip_sensitive(content) if readable else ""
-        source_entries = f"- `{path}`"
+        source_entries = f"- `{task_source_path}`"
         source_name = path.name
         source_hint = infer_source_type(path)
 
@@ -1213,7 +2211,11 @@ def create_agent_compile_task(
 
     content_block = ""
     if path.is_file() and readable:
-        if is_paginated_document_source(path) or is_image_source(path):
+        if (
+            is_paginated_document_source(path)
+            or is_image_source(path)
+            or path.suffix.lower() == ".epub"
+        ):
             # Raw markdown (not code-fenced) so embedded image links render
             # for the Agent — pages and image sources both rely on this.
             max_preview_chars = 200_000
@@ -1226,10 +2228,15 @@ def create_agent_compile_task(
                         "Agent should inspect the rendered page images under "
                         f"{_document_images_dir(path).resolve()}.]"
                     )
-                else:
+                elif is_image_source(path):
                     truncated = (
                         f"\n\n[TRUNCATED: {omitted:,} additional characters omitted. "
                         "Agent should read the source image directly.]"
+                    )
+                else:
+                    truncated = (
+                        f"\n\n[TRUNCATED: {omitted:,} additional EPUB characters omitted. "
+                        "Use the extracted EPUB assets and source snapshot if more context is needed.]"
                     )
             else:
                 truncated = ""
@@ -1277,7 +2284,50 @@ This task was generated in Agent mode. Do not call the configured LLM API.
 
 ## Agent Responsibilities
 
-1. Read the source directly if possible.
+### Source Protection (highest priority, non-negotiable)
+
+- The paths under **Source** are immutable snapshots, not output targets.
+- NEVER write to, replace, truncate, rename, move, delete, or change permissions
+  on a source path. Open source files read-only.
+- ALL writes are restricted to generated-output paths under the Wiki dir shown
+  above. `.wiki/source/**` is read-only and excluded from the write allowlist.
+  A source file is never a wiki page, temporary output, conversion output, or
+  compile destination.
+- If any tool requires an in-place conversion, make another temporary copy and
+  operate on that copy. If this cannot be guaranteed, stop without compiling.
+
+### PDF/Word/PowerPoint OCR and EPUB Routing (mandatory)
+
+- For PDF/DOC/DOCX/PPT/PPTX, use the page-by-page OCR content already embedded below.
+- If the embedded extraction reports a failure, retry the configured OCR backend
+  (`mineru` when configured) before using any generic document converter.
+- NEVER use MarkItDown as the primary extractor for a scanned PDF. A short or
+  header-only MarkItDown result is partial evidence, not compile-ready content.
+- Do not compile an incomplete extraction. OCR every page, or stop and report the
+  OCR failure explicitly.
+- For EPUB, use the spine-ordered Markdown already embedded below. Preserve its
+  extracted image links and `EPUB Section` / `EPUB locator` markers. EPUB has no
+  reliable fixed pagination, so cite its chapter/section locator and mark page as
+  unavailable or pending verification instead of discarding knowledge.
+
+### Image Fidelity and Source Traceability (mandatory)
+
+- Preserve relevant diagrams, figures, charts, experimental apparatus, question
+  images, and rendered source pages in the compiled concept documents. Never
+  replace an available image with text-only prose.
+- Source images have already been copied under `.wiki/pages/assets/**`. Use those
+  exact files in Markdown image links; do not point compiled pages at temporary
+  OCR directories or the caller's original file location.
+- When a concept uses evidence from a page/slide, retain its corresponding image
+  under a `## 来源图片` / `## Source Images` section.
+- In the study-material expert mode, EVERY knowledge-point and question page must
+  contain `## 来源追溯` with the original filename, one or more pages/page range,
+  and a verbatim excerpt. Read adjacent pages together when definitions, figures,
+  captions, examples, or derivations cross a page boundary.
+- If exact page provenance cannot be established, keep the knowledge and mark a
+  candidate page range or `待核验`; page uncertainty must never suppress a concept.
+
+1. Read the immutable source snapshot directly if possible.
 2. Decide the document's actual domain and purpose; `doc`, `article`, `code`, or
    `conversation` is only a storage hint, not the compilation strategy.
 3. Apply the matched expert lens below, then compile according to `.wiki/schema.md`.
@@ -1341,7 +2391,18 @@ This task was generated in Agent mode. Do not call the configured LLM API.
 def extract_edge_type(line: str) -> str:
     lowered = line.lower()
     prose_rules = [
-        (("依赖", "取决于", "depends on", "requires"), "depends_on"),
+        (
+            (
+                "依赖",
+                "取决于",
+                "先修知识",
+                "前置知识",
+                "depends on",
+                "requires",
+                "prerequisite",
+            ),
+            "depends_on",
+        ),
         (("使用", "采用", "uses", "employs"), "uses"),
         (("扩展", "基于", "extends", "based on"), "extends"),
         (("改进", "优化", "improves", "enhances"), "improves_upon"),
@@ -1417,6 +2478,7 @@ def load_ingest_rules_from_schema(source_type: str) -> tuple[list[str], str]:
     """Return source-type focus rules for compile prompts."""
     return INGEST_RULES.get(source_type, INGEST_RULES["doc"])
 
+
 def load_config():
     return get_config()
 
@@ -1433,6 +2495,7 @@ def get_paths():
         "graph_dir": wiki_dir / "graph",
     }
 
+
 WIKI_DIR = get_wiki_dir()
 PAGES_DIR = WIKI_DIR / "pages"
 ENTITIES_DIR = PAGES_DIR / "entities"
@@ -1448,9 +2511,7 @@ def _slugify_okf_title(value: str) -> str:
     return slug or "concept"
 
 
-def _okf_page_from_model(
-    page_content: str, source_name: str
-) -> tuple[str, dict, str, Path] | None:
+def _okf_page_from_model(page_content: str, source_name: str) -> tuple[str, dict, str, Path] | None:
     """Normalize model output to native OKF metadata and derive its Concept ID."""
     match = re.match(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", page_content, re.DOTALL)
     if not match:
@@ -1569,13 +2630,16 @@ def auto_resolve_contradictions(page_id: str, contradictions: list[dict]) -> lis
         suggestion = str(contradiction.get("resolution_suggestion", "")).strip()
         severity = str(contradiction.get("severity", "medium")).lower()
         confidence = 0.35 if severity == "high" else 0.5
-        resolutions.append({
-            "page_id": page_id,
-            "winner": "manual_review",
-            "confidence": confidence,
-            "reasoning": suggestion or "Contradiction detected during compile; preserved for manual review.",
-            "action": "flag",
-        })
+        resolutions.append(
+            {
+                "page_id": page_id,
+                "winner": "manual_review",
+                "confidence": confidence,
+                "reasoning": suggestion
+                or "Contradiction detected during compile; preserved for manual review.",
+                "action": "flag",
+            }
+        )
     return resolutions
 
 
@@ -1586,11 +2650,13 @@ def detect_language(text: str) -> str:
     """
     if not text:
         return "en"
-    cjk_count = sum(1 for c in text if '\u4e00' <= c <= '\u9fff' or '\u3400' <= c <= '\u4dbf')
+    cjk_count = sum(1 for c in text if "\u4e00" <= c <= "\u9fff" or "\u3400" <= c <= "\u4dbf")
     total = len(text)
     if total > 0 and cjk_count / total > 0.08:
         return "zh"
     return "en"
+
+
 def _count_facts(page_content: str) -> tuple[int, int]:
     """Count facts and relationships in a compiled page."""
     fact_count = 0
@@ -1610,7 +2676,12 @@ def _count_facts(page_content: str) -> tuple[int, int]:
             continue
 
         # Count fact table rows
-        if in_facts_section and stripped.startswith("|") and not stripped.startswith("|---") and "|" in stripped[1:]:
+        if (
+            in_facts_section
+            and stripped.startswith("|")
+            and not stripped.startswith("|---")
+            and "|" in stripped[1:]
+        ):
             parts = [p.strip() for p in stripped.split("|")[1:-1]]
             if len(parts) >= 2 and parts[0] and parts[0] not in ("属性", "Attribute", "------"):
                 fact_count += 1
@@ -1626,12 +2697,17 @@ def _count_facts(page_content: str) -> tuple[int, int]:
     return fact_count, rel_count
 
 
-def _print_dry_run_preview(source_name: str, all_pages: list, created_pages: list, updated_pages: list):
+def _print_dry_run_preview(
+    source_name: str, all_pages: list, created_pages: list, updated_pages: list
+):
     """Print a structured preview of what would be compiled — no files written."""
     divider = "=" * 70
     print(f"\n{divider}", file=sys.stderr)
     print(f"  DRY-RUN PREVIEW: {source_name}", file=sys.stderr)
-    print(f"  {len(created_pages)} new pages, {len(updated_pages)} updated, {len(all_pages)} total", file=sys.stderr)
+    print(
+        f"  {len(created_pages)} new pages, {len(updated_pages)} updated, {len(all_pages)} total",
+        file=sys.stderr,
+    )
     print(divider, file=sys.stderr)
 
     if not all_pages:
@@ -1642,7 +2718,7 @@ def _print_dry_run_preview(source_name: str, all_pages: list, created_pages: lis
     # ── Table header ──
     header = f"  {'#':<4} {'ID':<32} {'Type':<12} {'Title':<22} {'Facts':<6} {'Rels':<5}"
     print(header, file=sys.stderr)
-    print(f"  {'-'*4} {'-'*32} {'-'*12} {'-'*22} {'-'*6} {'-'*5}", file=sys.stderr)
+    print(f"  {'-' * 4} {'-' * 32} {'-' * 12} {'-' * 22} {'-' * 6} {'-' * 5}", file=sys.stderr)
 
     entity_count = 0
     concept_count = 0
@@ -1660,25 +2736,30 @@ def _print_dry_run_preview(source_name: str, all_pages: list, created_pages: lis
             entity_count += 1
 
         marker = " +" if page in created_pages else " ~"
-        print(f"  {marker:<3} {pid:<32} {ptype:<12} {pname:<22} {facts_count:<6} {rels_count:<5}", file=sys.stderr)
+        print(
+            f"  {marker:<3} {pid:<32} {ptype:<12} {pname:<22} {facts_count:<6} {rels_count:<5}",
+            file=sys.stderr,
+        )
 
-    print(f"  {'-'*4} {'-'*32} {'-'*12} {'-'*22} {'-'*6} {'-'*5}", file=sys.stderr)
-    print(f"  Entities: {entity_count}  |  Concepts: {concept_count}  |  Total: {len(all_pages)}", file=sys.stderr)
+    print(f"  {'-' * 4} {'-' * 32} {'-' * 12} {'-' * 22} {'-' * 6} {'-' * 5}", file=sys.stderr)
+    print(
+        f"  Entities: {entity_count}  |  Concepts: {concept_count}  |  Total: {len(all_pages)}",
+        file=sys.stderr,
+    )
     print(divider, file=sys.stderr)
     print("  No files were written. Use without --dry-run to compile.", file=sys.stderr)
     print(divider, file=sys.stderr)
 
 
-
-
 # ── Document chunking (model-context-aware) ────────────────────────────
+
 
 def _estimate_tokens(text: str, lang: str = "en") -> int:
     """Rough token count estimate. ~4 chars/token for EN, ~2 for CJK."""
     if not text:
         return 0
     if lang == "zh":
-        cjk = sum(1 for c in text if '\u4e00' <= c <= '\u9fff' or '\u3400' <= c <= '\u4dbf')
+        cjk = sum(1 for c in text if "\u4e00" <= c <= "\u9fff" or "\u3400" <= c <= "\u4dbf")
         non_cjk = len(text) - cjk
         return cjk // 2 + non_cjk // 4
     return len(text) // 4
@@ -1690,7 +2771,7 @@ def _split_by_headings(content: str, max_tokens: int, lang: str = "en") -> list[
     Each chunk is a self-contained section group. Headings before the first
     ``## `` form the preamble chunk.
     """
-    sections = re.split(r'(\n## .+)', content)
+    sections = re.split(r"(\n## .+)", content)
     if not sections:
         return [content] if content else []
 
@@ -1727,7 +2808,35 @@ def _split_by_headings(content: str, max_tokens: int, lang: str = "en") -> list[
     if current:
         merged.append(current)
 
-    return merged if merged else [content]
+    result = merged if merged else [content]
+    if len(result) > 1 and _source_page_numbers(content):
+        return _add_cross_page_overlap(result)
+    return result
+
+
+def _add_cross_page_overlap(chunks: list[str]) -> list[str]:
+    """Prepend the previous rendered page to each chunk as read-only context."""
+    overlapped = [chunks[0]]
+    for index in range(1, len(chunks)):
+        previous = chunks[index - 1]
+        page_matches = list(
+            re.finditer(
+                r"^##\s+(?:Page|Slide|第)\s*\d+\s*(?:页|张)?\s*$",
+                previous,
+                flags=re.MULTILINE | re.IGNORECASE,
+            )
+        )
+        if not page_matches:
+            overlapped.append(chunks[index])
+            continue
+        overlap = previous[page_matches[-1].start() :].strip()
+        overlapped.append(
+            "<!-- Previous-page overlap: context only; merge cross-page knowledge. -->\n"
+            + overlap
+            + "\n\n<!-- Current chunk starts below. -->\n"
+            + chunks[index]
+        )
+    return overlapped
 
 
 def _split_by_paragraphs(text: str, max_tokens: int, lang: str = "en") -> list[str]:
@@ -1747,6 +2856,75 @@ def _split_by_paragraphs(text: str, max_tokens: int, lang: str = "en") -> list[s
         chunks.append(current)
     return chunks if chunks else [text]
 
+
+def _merge_cross_chunk_page(existing: dict, incoming: dict) -> None:
+    """Merge the same knowledge point found in multiple document chunks in place."""
+    existing_content = existing.get("_content", "")
+    incoming_content = incoming.get("_content", "")
+    existing_match = re.match(
+        r"^---\s*\n(.*?)\n---\s*\n?(.*)$", existing_content, flags=re.DOTALL
+    )
+    incoming_match = re.match(
+        r"^---\s*\n(.*?)\n---\s*\n?(.*)$", incoming_content, flags=re.DOTALL
+    )
+    if not existing_match or not incoming_match:
+        existing["_content"] = existing_content.rstrip() + "\n\n" + incoming_content.lstrip()
+        return
+
+    existing_body = existing_match.group(2)
+    incoming_body = incoming_match.group(2)
+    try:
+        fused_body = llm_fuse_pages(existing_body, incoming_body, str(existing.get("id", "")))
+    except Exception:
+        fused_body = None
+    if not fused_body:
+        fused_body = (
+            existing_body.rstrip()
+            + "\n\n## 跨页补充内容\n\n"
+            + incoming_body.lstrip()
+        )
+
+    # Fusion is semantic, but provenance and media must be lossless. Re-attach
+    # exact source sections and image references from both chunk variants.
+    evidence_sections: list[str] = []
+    for content in (existing_body, incoming_body):
+        for match in re.finditer(
+            r"^##\s+(?:来源追溯|Source Traceability|来源上下文|Source Context)\s*$"
+            r".*?(?=^##\s+|\Z)",
+            content,
+            flags=re.MULTILINE | re.DOTALL | re.IGNORECASE,
+        ):
+            section = match.group(0).strip()
+            if section not in evidence_sections:
+                evidence_sections.append(section)
+    if evidence_sections:
+        fused_body = fused_body.rstrip() + "\n\n## 跨页来源证据\n\n" + "\n\n".join(
+            evidence_sections
+        )
+
+    existing_image_targets = {
+        _clean_image_target(match.group("target"))
+        for match in MARKDOWN_IMAGE_RE.finditer(fused_body)
+    }
+    missing_images: list[str] = []
+    for content in (existing_body, incoming_body):
+        for match in MARKDOWN_IMAGE_RE.finditer(content):
+            target = _clean_image_target(match.group("target"))
+            if target in existing_image_targets:
+                continue
+            missing_images.append(match.group(0))
+            existing_image_targets.add(target)
+    if missing_images:
+        fused_body = fused_body.rstrip() + "\n\n## 跨页来源图片\n\n" + "\n\n".join(
+            missing_images
+        )
+
+    merged_content = "---\n" + existing_match.group(1) + "\n---\n" + fused_body.lstrip()
+    existing["_content"] = merged_content
+    existing["facts"], existing["relationships"] = _count_facts(merged_content)
+    existing["merged_chunks"] = int(existing.get("merged_chunks", 1)) + 1
+
+
 def _compile_chunked(
     chunks: list[str],
     source_name: str,
@@ -1761,35 +2939,49 @@ def _compile_chunked(
     focus_desc: str,
     entity_type_str: str,
 ) -> dict:
-    """Compile a large document in chunks, then merge with dedup."""
+    """Compile a large document in chunks, merging cross-page knowledge."""
     all_created: list[dict] = []
     all_updated: list[dict] = []
-    seen_ids: set[str] = set()
+    pages_by_id: dict[str, dict] = {}
 
     for i, chunk in enumerate(chunks):
-        chunk_name = f"{source_name} [part {i+1}/{len(chunks)}]"
-        print(f"  Compiling chunk {i+1}/{len(chunks)} ({len(chunk)} chars)...", file=sys.stderr)
+        chunk_name = f"{source_name} [part {i + 1}/{len(chunks)}]"
+        print(f"  Compiling chunk {i + 1}/{len(chunks)} ({len(chunk)} chars)...", file=sys.stderr)
 
         try:
             result = _compile_single_chunk(
-                chunk, chunk_name, source_type, force, dry_run,
-                lang, entity_types, entity_type_lines, rel_type_lines,
-                focus_types, focus_desc, entity_type_str,
+                chunk,
+                chunk_name,
+                source_type,
+                force,
+                dry_run,
+                lang,
+                entity_types,
+                entity_type_lines,
+                rel_type_lines,
+                focus_types,
+                focus_desc,
+                entity_type_str,
+                source_name,
             )
         except Exception as e:
-            print(f"  ERROR: chunk {i+1}/{len(chunks)} failed: {e}", file=sys.stderr)
+            print(f"  ERROR: chunk {i + 1}/{len(chunks)} failed: {e}", file=sys.stderr)
             continue
 
-        # Dedup: skip pages already seen from earlier chunks
-        for page in result.get("created_pages", []):
-            if page["id"] not in seen_ids:
-                seen_ids.add(page["id"])
-                all_created.append(page)
-        for page in result.get("updated_pages", []):
-            if page["id"] not in seen_ids:
-                seen_ids.add(page["id"])
-                all_updated.append(page)
-            # else: update confidence/reinforcement for already-seen entity
+        # The same concept appearing in adjacent chunks is usually continuation,
+        # not a duplicate. Fuse it so later-page facts, provenance, and figures
+        # reinforce the first page instead of being discarded.
+        for collection_name, destination in (
+            ("created_pages", all_created),
+            ("updated_pages", all_updated),
+        ):
+            for page in result.get(collection_name, []):
+                existing = pages_by_id.get(page["id"])
+                if existing is None:
+                    pages_by_id[page["id"]] = page
+                    destination.append(page)
+                else:
+                    _merge_cross_chunk_page(existing, page)
 
     all_pages = all_created + all_updated
     if not all_pages:
@@ -1806,13 +2998,16 @@ def _compile_chunked(
         update_index(all_pages, source_name)
         update_log(source_name, len(all_created), "compile")
         update_graph(all_pages, source_name)
-        write_audit("compile", {
-            "source": source_name,
-            "chunked": True,
-            "chunks": len(chunks),
-            "pages_created": len(all_created),
-            "pages_updated": len(all_updated),
-        })
+        write_audit(
+            "compile",
+            {
+                "source": source_name,
+                "chunked": True,
+                "chunks": len(chunks),
+                "pages_created": len(all_created),
+                "pages_updated": len(all_updated),
+            },
+        )
 
     if dry_run:
         _print_dry_run_preview(source_name, all_pages, all_created, all_updated)
@@ -1840,19 +3035,29 @@ def _compile_single_chunk(
     focus_types: list[str],
     focus_desc: str,
     entity_type_str: str,
+    source_name: str | None = None,
 ) -> dict:
     """Compile a single document chunk — same LLM call as compile_source but
     returns parsed pages without writing files (writing is handled by the
     chunked-compile orchestrator)."""
     import re as _re
-    source_abbr = _re.sub(r'[^\u4e00-\u9fff\w]', '', chunk_name)[:8].lower() or "doc"
+
+    trace_source_name = source_name or chunk_name
+    source_abbr = _re.sub(r"[^\u4e00-\u9fff\w]", "", trace_source_name)[:8].lower() or "doc"
     domain_guidance = build_domain_expert_guidance(chunk_content, chunk_name)
+    media_guidance = build_media_fidelity_guidance(lang)
+    study_material = any(
+        expert["id"] == "study_material"
+        for expert in match_domain_experts(chunk_content, trace_source_name)
+    )
 
     # Build prompts (abbreviated — reuse the same structure as compile_source)
     if lang == "zh":
         system_prompt = f"""你是 Wiki 知识编译引擎。你必须用中文撰写所有内容。
 
 {domain_guidance}
+
+{media_guidance}
 
 ## 数据保真（最高优先级，不可妥协）
 内容中涉及的任何数据——数字、日期、金额、百分比、阈值、配置参数、表格单元格、统计值、单位、名称——必须**逐字原样保留**，不得有任何篡改、省略、改写、四舍五入、单位换算或"联想补全"。
@@ -2009,6 +3214,8 @@ provenance: source-name
 
 {domain_guidance}
 
+{media_guidance}
+
 ## Data Fidelity (highest priority — non-negotiable)
 Any data in the source — numbers, dates, amounts, percentages, thresholds, config
 parameters, table cells, statistics, units, and names — must be preserved
@@ -2122,22 +3329,32 @@ Output pages separated by ===PAGE_END==="""
         if not page_content or not page_content.startswith("---"):
             continue
 
-        parsed = _okf_page_from_model(page_content, chunk_name)
+        if study_material:
+            page_content = _ensure_study_traceability(
+                page_content,
+                trace_source_name,
+                chunk_content,
+            )
+
+        parsed = _okf_page_from_model(page_content, trace_source_name)
         if parsed is None:
             continue
         page_content, frontmatter, entity_id, page_path = parsed
+        page_content = _attach_source_media(page_content, chunk_content, page_path)
         entity_type = frontmatter["type"]
         f_count, r_count = _count_facts(page_content)
 
-        created_pages.append({
-            "id": entity_id,
-            "type": entity_type,
-            "name": frontmatter["title"],
-            "path": str(page_path),
-            "facts": f_count,
-            "relationships": r_count,
-            "_content": page_content,
-        })
+        created_pages.append(
+            {
+                "id": entity_id,
+                "type": entity_type,
+                "name": frontmatter["title"],
+                "path": str(page_path),
+                "facts": f_count,
+                "relationships": r_count,
+                "_content": page_content,
+            }
+        )
 
     return {
         "created_pages": created_pages,
@@ -2255,26 +3472,40 @@ def _prune_stale_pages(
     return removed
 
 
-def compile_source(source_path: str, source_type: str = "doc", force: bool = False, dry_run: bool = False) -> dict:
+def compile_source(
+    source_path: str, source_type: str = "doc", force: bool = False, dry_run: bool = False
+) -> dict:
 
     if not os.path.exists(source_path):
         raise FileNotFoundError(f"Source not found: {source_path}")
 
     source_file = Path(source_path)
+    _assert_safe_source_location(source_file)
     if source_file.is_dir():
         return compile_path(source_path, source_type=source_type, force=force)
 
     content, source_name = read_source_content(source_file)
-
+    # Materialize every local image reference before the model sees the source.
+    # This covers OCR Markdown (relative ``images/...`` links) as well as the
+    # full-page images generated for PDF, Word, and PowerPoint documents.
+    if not dry_run:
+        content = _persist_source_image_references(content, source_file)
     content = strip_sensitive(content)
 
     lang = detect_language(content)
     domain_guidance = build_domain_expert_guidance(content, source_name)
+    media_guidance = build_media_fidelity_guidance(lang)
+    study_material = any(
+        expert["id"] == "study_material"
+        for expert in match_domain_experts(content, source_name)
+    )
     entity_types, entity_type_lines, rel_type_lines = load_entity_types_from_schema()
     focus_types, focus_desc = load_ingest_rules_from_schema(source_type)
     entity_type_str = "|".join(entity_types)
 
-    print(f"Compiling {source_name} ({len(content)} chars, {lang}, {source_type})...", file=sys.stderr)
+    print(
+        f"Compiling {source_name} ({len(content)} chars, {lang}, {source_type})...", file=sys.stderr
+    )
     print(f"  Focus: {', '.join(focus_types)} — {focus_desc}", file=sys.stderr)
 
     # ── Large document chunking (model-context-aware) ──
@@ -2291,18 +3522,30 @@ def compile_source(source_path: str, source_type: str = "doc", force: bool = Fal
                 file=sys.stderr,
             )
             return _compile_chunked(
-                chunks, source_name, source_type, force, dry_run,
-                lang, entity_types, entity_type_lines, rel_type_lines,
-                focus_types, focus_desc, entity_type_str,
+                chunks,
+                source_name,
+                source_type,
+                force,
+                dry_run,
+                lang,
+                entity_types,
+                entity_type_lines,
+                rel_type_lines,
+                focus_types,
+                focus_desc,
+                entity_type_str,
             )
 
     if lang == "zh":
         # Derive a short source abbreviation for ID prefix
         import re as _re
-        source_abbr = _re.sub(r'[^\u4e00-\u9fff\w]', '', source_name)[:8].lower() or "doc"
+
+        source_abbr = _re.sub(r"[^\u4e00-\u9fff\w]", "", source_name)[:8].lower() or "doc"
         system_prompt = f"""你是 Wiki 知识编译引擎。你必须用中文撰写所有内容。
 
 {domain_guidance}
+
+{media_guidance}
 
 ## 数据保真（最高优先级，不可妥协）
 内容中涉及的任何数据——数字、日期、金额、百分比、阈值、配置参数、表格单元格、统计值、单位、名称——必须**逐字原样保留**，不得有任何篡改、省略、改写、四舍五入、单位换算或"联想补全"。
@@ -2433,6 +3676,8 @@ provenance: source-name
         system_prompt = f"""You are a wiki knowledge compiler. Your job is to read a document and write high-quality wiki pages.
 
 {domain_guidance}
+
+{media_guidance}
 
 ## Data Fidelity (highest priority — non-negotiable)
 Any data in the source — numbers, dates, amounts, percentages, thresholds, config
@@ -2618,8 +3863,9 @@ Output pages separated by ===PAGE_END==="""
 
     # Derive source abbreviation for entity ID prefix
     import re as _re
+
     src_stem = Path(source_name).stem
-    source_abbr = _re.sub(r'[^\u4e00-\u9fff\w]', '', src_stem)[:8].lower() or "doc"
+    source_abbr = _re.sub(r"[^\u4e00-\u9fff\w]", "", src_stem)[:8].lower() or "doc"
     concept_types = CONCEPT_LIKE_TYPES
     # Track which entity IDs need concept pages (base name → list of instance IDs)
     concept_groups: dict[str, list[dict]] = {}
@@ -2631,11 +3877,15 @@ Output pages separated by ===PAGE_END==="""
         if not page_content or not page_content.startswith("---"):
             continue
 
+        if study_material:
+            page_content = _ensure_study_traceability(page_content, source_name, content)
+
         parsed = _okf_page_from_model(page_content, source_name)
         if parsed is None:
             print("  WARNING: page is missing valid OKF metadata", file=sys.stderr)
             continue
         page_content, frontmatter, entity_id, page_path = parsed
+        page_content = _attach_source_media(page_content, content, page_path)
         entity_type = frontmatter["type"]
 
         # Persist regular Markdown tables as queryable DuckDB data. Key Facts
@@ -2684,10 +3934,10 @@ Output pages separated by ===PAGE_END==="""
 
                 page_content = existing_content + "\n\n## Contradictions Detected\n\n"
                 for c in contradictions:
-                    ctype = c.get('contradiction_type', 'unknown')
-                    sev = c.get('severity', 'medium')
-                    existing = c.get('existing_claim', 'N/A')
-                    new = c.get('new_claim', 'N/A')
+                    ctype = c.get("contradiction_type", "unknown")
+                    sev = c.get("severity", "medium")
+                    existing = c.get("existing_claim", "N/A")
+                    new = c.get("new_claim", "N/A")
                     page_content += f"- **{ctype}** ({sev}): {existing} → {new}\n"
 
                 if resolutions:
@@ -2697,7 +3947,7 @@ Output pages separated by ===PAGE_END==="""
                         conf = r.get("confidence", 0.5)
                         reasoning = r.get("reasoning", "")
                         action = r.get("action", "flag")
-                        page_content += f"- **Resolved #{i+1}**: {winner} claim accepted ({action}) — confidence {conf:.0%}\n"
+                        page_content += f"- **Resolved #{i + 1}**: {winner} claim accepted ({action}) — confidence {conf:.0%}\n"
                         page_content += f"  - Reasoning: {reasoning}\n"
                         if action == "supersede":
                             page_content += "  - [SUPERSEDED] Old claim marked as superseded.\n"
@@ -2712,28 +3962,35 @@ Output pages separated by ===PAGE_END==="""
                         continue
                     atomic_write(page_path, _ensure_created_at(page_content))
                 f_count, r_count = _count_facts(page_content)
-                updated_pages.append({
-                    "id": entity_id,
-                    "type": entity_type,
-                    "name": frontmatter["title"],
-                    "path": str(page_path),
-                    "contradictions": len(contradictions),
-                    "resolutions": len(resolutions),
-                    "facts": f_count,
-                    "relationships": r_count,
-                })
-                print(f"  Updated: {Path(page_path).name} ({len(contradictions)} contradictions, {len(resolutions)} resolved)", file=sys.stderr)
+                updated_pages.append(
+                    {
+                        "id": entity_id,
+                        "type": entity_type,
+                        "name": frontmatter["title"],
+                        "path": str(page_path),
+                        "contradictions": len(contradictions),
+                        "resolutions": len(resolutions),
+                        "facts": f_count,
+                        "relationships": r_count,
+                    }
+                )
+                print(
+                    f"  Updated: {Path(page_path).name} ({len(contradictions)} contradictions, {len(resolutions)} resolved)",
+                    file=sys.stderr,
+                )
             else:
                 # No contradictions — semantically fuse new content into
                 # existing page instead of overwriting (which would lose the
                 # knowledge from previously compiled sources).
                 exist_body_match = re.match(
                     r"^---\s*\n(.*?)\n---\s*\n?(.*)$",
-                    existing_content, flags=re.DOTALL,
+                    existing_content,
+                    flags=re.DOTALL,
                 )
                 new_body_match = re.match(
                     r"^---\s*\n(.*?)\n---\s*\n?(.*)$",
-                    page_content, flags=re.DOTALL,
+                    page_content,
+                    flags=re.DOTALL,
                 )
                 if exist_body_match and new_body_match:
                     exist_body = exist_body_match.group(2)
@@ -2759,33 +4016,38 @@ Output pages separated by ===PAGE_END==="""
                         continue
                     atomic_write(page_path, _ensure_created_at(page_content))
                 f_count, r_count = _count_facts(page_content)
-                updated_pages.append({
+                updated_pages.append(
+                    {
+                        "id": entity_id,
+                        "type": entity_type,
+                        "name": frontmatter["title"],
+                        "path": str(page_path),
+                        "facts": f_count,
+                        "relationships": r_count,
+                    }
+                )
+                print(f"  Updated: {Path(page_path).name} (reinforced)", file=sys.stderr)
+        else:
+            if not dry_run:
+                atomic_write(page_path, _ensure_created_at(page_content))
+            f_count, r_count = _count_facts(page_content)
+            created_pages.append(
+                {
                     "id": entity_id,
                     "type": entity_type,
                     "name": frontmatter["title"],
                     "path": str(page_path),
                     "facts": f_count,
                     "relationships": r_count,
-                })
-                print(f"  Updated: {Path(page_path).name} (reinforced)", file=sys.stderr)
-        else:
-            if not dry_run:
-                atomic_write(page_path, _ensure_created_at(page_content))
-            f_count, r_count = _count_facts(page_content)
-            created_pages.append({
-                "id": entity_id,
-                "type": entity_type,
-                "name": frontmatter["title"],
-                "path": str(page_path),
-                "facts": f_count,
-                "relationships": r_count,
-            })
+                }
+            )
             print(f"  Created: {Path(page_path).name} ({entity_type})", file=sys.stderr)
 
     all_pages = created_pages + updated_pages
     if not all_pages:
-        print("  WARNING: No pages parsed from LLM response! Raw output (500 chars):",
-              file=sys.stderr)
+        print(
+            "  WARNING: No pages parsed from LLM response! Raw output (500 chars):", file=sys.stderr
+        )
         print(f"    {response[:500]}", file=sys.stderr)
         return {"source": source_name, "pages_created": 0, "pages_updated": 0, "pages": []}
 
@@ -2821,9 +4083,7 @@ Output pages separated by ===PAGE_END==="""
                 if line.startswith("provenance:"):
                     existing_source = line.replace("provenance:", "").strip()
                     break
-            existing_link = (
-                f"- [{base_name}](/entities/{base_name}.md)（来源: {existing_source}）"
-            )
+            existing_link = f"- [{base_name}](/entities/{base_name}.md)（来源: {existing_source}）"
             if existing_link not in instance_links:
                 instance_links = existing_link + "\n" + instance_links
 
@@ -2832,10 +4092,15 @@ Output pages separated by ===PAGE_END==="""
             new_links = [li for li in instance_links.split("\n") if li not in existing]
             if new_links:
                 # Append new instances
-                updated_content = existing.rstrip() + "\n\n## 新增实例\n\n" + "\n".join(new_links) + "\n"
+                updated_content = (
+                    existing.rstrip() + "\n\n## 新增实例\n\n" + "\n".join(new_links) + "\n"
+                )
                 if not dry_run:
                     atomic_write(concept_path, _ensure_created_at(updated_content))
-                print(f"  Concept updated: {base_name}.md (+{len(new_links)} instances)", file=sys.stderr)
+                print(
+                    f"  Concept updated: {base_name}.md (+{len(new_links)} instances)",
+                    file=sys.stderr,
+                )
         else:
             # Use LLM to synthesize a concept page from entity instances
             entity_summaries = []
@@ -2896,7 +4161,10 @@ provenance: 跨文档聚合
                     concept_content = normalized[0]
                 if not dry_run:
                     atomic_write(concept_path, _ensure_created_at(concept_content.strip()))
-                print(f"  Concept created: {base_name}.md ({len(instances)} instances)", file=sys.stderr)
+                print(
+                    f"  Concept created: {base_name}.md ({len(instances)} instances)",
+                    file=sys.stderr,
+                )
             except Exception:
                 _log_exc(f"concept synthesis failed for {base_name}")
                 fallback = f"""---
@@ -2927,15 +4195,18 @@ provenance: 跨文档聚合
     update_log(source_name, len(created_pages), "compile")
     update_graph(all_pages, source_name)
 
-    write_audit("compile", {
-        "source": source_name,
-        "pages_created": len(created_pages),
-        "pages_updated": len(updated_pages),
-        "pages_skipped": skipped_pages,
-        "pages_pruned": len(pruned_pages),
-        "contradictions": len(contradictions_found),
-        "contradiction_details": contradictions_found[:10],
-    })
+    write_audit(
+        "compile",
+        {
+            "source": source_name,
+            "pages_created": len(created_pages),
+            "pages_updated": len(updated_pages),
+            "pages_skipped": skipped_pages,
+            "pages_pruned": len(pruned_pages),
+            "contradictions": len(contradictions_found),
+            "contradiction_details": contradictions_found[:10],
+        },
+    )
 
     if skipped_pages > 0:
         print(f"  ⏭ Skipped: {skipped_pages} pages unchanged", file=sys.stderr)
@@ -2952,6 +4223,7 @@ provenance: 跨文档聚合
         "contradictions_found": contradictions_found,
     }
 
+
 def _get_compile_workers() -> int:
     """Get max concurrent compile workers from config, env, or safe default.
 
@@ -2959,6 +4231,7 @@ def _get_compile_workers() -> int:
     Caps at 4 to avoid API rate limits unless explicitly overridden.
     """
     import os as _os
+
     env_val = _os.environ.get("LLM_WIKI_COMPILE_WORKERS", "").strip()
     if env_val:
         try:
@@ -2968,6 +4241,7 @@ def _get_compile_workers() -> int:
 
     try:
         from config import get_config
+
         cfg = get_config()
         compile_cfg = cfg.get("compile", {}) if isinstance(cfg, dict) else {}
         cfg_workers = compile_cfg.get("max_workers", 1)
@@ -2991,6 +4265,7 @@ def compile_path(
     path = Path(source_path)
     if not path.exists():
         raise FileNotFoundError(f"Source not found: {source_path}")
+    _assert_safe_source_location(path)
 
     if (mode or "").lower() == "agent":
         return create_agent_compile_task(
@@ -3045,9 +4320,13 @@ def compile_path(
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {
                 executor.submit(
-                    compile_source, str(s), source_type=source_type,
-                    force=force, dry_run=dry_run,
-                ): s for s in sources
+                    compile_source,
+                    str(s),
+                    source_type=source_type,
+                    force=force,
+                    dry_run=dry_run,
+                ): s
+                for s in sources
             }
             for future in as_completed(futures):
                 source = futures[future]
@@ -3070,7 +4349,9 @@ def compile_path(
         print(f"Compiling directory {path} ({len(sources)} files)...", file=sys.stderr)
         for source in sources:
             try:
-                result = compile_source(str(source), source_type=source_type, force=force, dry_run=dry_run)
+                result = compile_source(
+                    str(source), source_type=source_type, force=force, dry_run=dry_run
+                )
                 compiled.append(result)
                 pages_created += result.get("pages_created", 0)
                 pages_updated += result.get("pages_updated", 0)
@@ -3097,7 +4378,9 @@ def update_log(source_name: str, pages_count: int, operation: str = "compile"):
     log_file.parent.mkdir(parents=True, exist_ok=True)
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    entry = f"## {now}\n* **{operation.title()}**: {source_name}; {pages_count} concepts changed.\n\n"
+    entry = (
+        f"## {now}\n* **{operation.title()}**: {source_name}; {pages_count} concepts changed.\n\n"
+    )
 
     if log_file.exists():
         content = log_file.read_text(encoding="utf-8")
@@ -3147,7 +4430,9 @@ def update_graph(pages: list, source_name: str):
                 entities[eid]["sources"].append(source_name)
 
             entities[eid]["reinforcement_count"] = entities[eid].get("reinforcement_count", 1) + 1
-            entities[eid]["confidence"] = min(1.0, 0.85 + 0.05 * entities[eid]["reinforcement_count"])
+            entities[eid]["confidence"] = min(
+                1.0, 0.85 + 0.05 * entities[eid]["reinforcement_count"]
+            )
             entities[eid]["last_confirmed"] = now
 
     for page in pages:
@@ -3164,9 +4449,11 @@ def update_graph(pages: list, source_name: str):
                     line_context = ""
                     for line in content.split("\n"):
                         line_lower = line.lower()
-                        line_normalized = line_lower.replace('-', ' ')
-                        if (f"[[{target}" in line_normalized or
-                            f"[[{target.replace('-', ' ')}" in line_normalized):
+                        line_normalized = line_lower.replace("-", " ")
+                        if (
+                            f"[[{target}" in line_normalized
+                            or f"[[{target.replace('-', ' ')}" in line_normalized
+                        ):
                             line_context = line
                             break
 
@@ -3180,12 +4467,16 @@ def update_graph(pages: list, source_name: str):
                         "source_file": source_name,
                     }
 
-                    existing = [e for e in edges if e["source"] == page["id"] and e["target"] == target]
+                    existing = [
+                        e for e in edges if e["source"] == page["id"] and e["target"] == target
+                    ]
                     if not existing:
                         edges.append(edge)
 
     entities_file.write_text(json.dumps(entities, indent=2, ensure_ascii=False), encoding="utf-8")
-    edges_file.write_text(json.dumps({"edges": edges}, indent=2, ensure_ascii=False), encoding="utf-8")
+    edges_file.write_text(
+        json.dumps({"edges": edges}, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
 
 
 def update_index(pages: list, source_name: str):
@@ -3206,7 +4497,7 @@ def update_index(pages: list, source_name: str):
                 str(metadata.get("description") or ""),
             )
         )
-    lines = ['---', 'okf_version: "0.1"', '---', '# Wiki Index', '']
+    lines = ["---", 'okf_version: "0.1"', "---", "# Wiki Index", ""]
     for page_type in sorted(grouped):
         lines.extend([f"## {page_type}", ""])
         for identifier, title, description in sorted(grouped[page_type]):
@@ -3240,28 +4531,59 @@ def _materialize_text_source(text: str, name: str | None = None) -> str:
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description='Wiki compilation')
-    parser.add_argument('source', nargs='?', default=None,
-                        help='Source file/dir to compile, or "-" to read text from stdin')
-    parser.add_argument('--text', dest='text', default=None,
-                        help='Compile raw text directly (no source file needed)')
-    parser.add_argument('--name', dest='source_name', default=None,
-                        help='Name for --text / stdin source (default: text-<timestamp>)')
-    parser.add_argument('--type', dest='source_type', default='doc',
-                        choices=['auto', 'doc', 'article', 'code', 'conversation'],
-                        help='Source type; "auto" infers from file extension (Agent mode recommended)')
-    parser.add_argument('--mode', choices=['agent', 'llm'], default=None,
-                        help='Compile mode; defaults to configured mode or agent')
-    parser.add_argument('--force', action='store_true', help='Force re-compile (overwrite existing pages)')
-    parser.add_argument('--dry-run', action='store_true', help='Preview LLM output without writing any files')
-    parser.add_argument('--depth', type=int, default=None,
-                        help='Directory recursion depth: 0 = direct files only, omit = all subdirectories')
-    parser.add_argument('-j', '--jobs', type=int, default=None,
-                        help='Max concurrent LLM calls (default: 1, cap: 4)')
+
+    parser = argparse.ArgumentParser(description="Wiki compilation")
+    parser.add_argument(
+        "source",
+        nargs="?",
+        default=None,
+        help='Source file/dir to compile, or "-" to read text from stdin',
+    )
+    parser.add_argument(
+        "--text",
+        dest="text",
+        default=None,
+        help="Compile raw text directly (no source file needed)",
+    )
+    parser.add_argument(
+        "--name",
+        dest="source_name",
+        default=None,
+        help="Name for --text / stdin source (default: text-<timestamp>)",
+    )
+    parser.add_argument(
+        "--type",
+        dest="source_type",
+        default="doc",
+        choices=["auto", "doc", "article", "code", "conversation"],
+        help='Source type; "auto" infers from file extension (Agent mode recommended)',
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["agent", "llm"],
+        default=None,
+        help="Compile mode; defaults to configured mode or agent",
+    )
+    parser.add_argument(
+        "--force", action="store_true", help="Force re-compile (overwrite existing pages)"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Preview LLM output without writing any files"
+    )
+    parser.add_argument(
+        "--depth",
+        type=int,
+        default=None,
+        help="Directory recursion depth: 0 = direct files only, omit = all subdirectories",
+    )
+    parser.add_argument(
+        "-j", "--jobs", type=int, default=None, help="Max concurrent LLM calls (default: 1, cap: 4)"
+    )
     args = parser.parse_args()
 
     if args.jobs is not None:
         import os as _os
+
         _os.environ["LLM_WIKI_COMPILE_WORKERS"] = str(max(1, args.jobs))
     config_mode = get_config().get("compile", {}).get("mode", "agent")
     mode = args.mode or config_mode or "agent"
@@ -3285,14 +4607,16 @@ def main():
         mode=mode,
     )
 
-    pages_created = result.get('pages_created', 0)
-    pages_updated = result.get('pages_updated', 0)
+    pages_created = result.get("pages_created", 0)
+    pages_updated = result.get("pages_updated", 0)
     if result.get("mode") == "agent":
         print(f"\nAgent compile task created for {result['source']}")
         print(f"  → {result['agent_task']}")
         print("  → No configured LLM was called. The Agent should execute this task.")
         if not result.get("readable", True):
-            print("  → Source text was not extracted; Agent must inspect it or ask for readable content.")
+            print(
+                "  → Source text was not extracted; Agent must inspect it or ask for readable content."
+            )
         return
     if result.get("directory"):
         failed = len(result.get("failed", []))
@@ -3304,9 +4628,13 @@ def main():
         )
     else:
         if result.get("dry_run"):
-            print(f"\n[Dry-run] {result['source']}: {pages_created} pages would be created, {pages_updated} pages would be updated")
+            print(
+                f"\n[Dry-run] {result['source']}: {pages_created} pages would be created, {pages_updated} pages would be updated"
+            )
         else:
-            print(f"\nCompiled {result['source']}: {pages_created} pages created, {pages_updated} pages updated")
+            print(
+                f"\nCompiled {result['source']}: {pages_created} pages created, {pages_updated} pages updated"
+            )
     if not result.get("dry_run"):
         print("  → Updated log.md and graph/entities.json")
 

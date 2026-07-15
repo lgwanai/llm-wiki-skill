@@ -1,68 +1,92 @@
 #!/usr/bin/env python3
-"""ocr.py — Image & PDF OCR with pluggable backends.
+"""Stable command-line entry point for document OCR.
 
-Backends:
-    mineru  (default): MinerU — high-precision parsing, formula→LaTeX, table→HTML, CPU OK.
-    deepseek:          DeepSeek-OCR-2 — Vision-Language OCR, GPU/MPS/CPU.
-    logics:            Logics-Parsing-v2 — Qwen3VL-based OCR, GPU/MPS/CPU.
-    paddle:            PaddleOCR — PP-OCRv5, 109 languages, doc unwarping.
-    api:               Generic API — OpenAI-compatible vision API (GPT-4o, DeepSeek-VL2, etc.)
+Canonical usage::
 
-Usage:
-    python ocr.py document.pdf                        # Default: MinerU (local)
-    python ocr.py document.pdf --backend deepseek     # DeepSeek-OCR-2
-    python ocr.py document.pdf --backend api          # Vision API
-    python ocr.py document.pdf -o results/            # Output directory
-    python ocr.py --batch screenshots/                # Batch process
+    wiki ocr --doctor
+    wiki ocr textbook.pdf --smoke-pages 3
+    wiki ocr textbook.pdf -o .wiki/source/textbook
+
+``python -m ocr.cli`` and the ``llm-wiki-ocr`` console script expose the same
+interface.  PDF runs always emit an OCR manifest next to the generated
+Markdown so an agent can verify the runtime and page coverage without probing
+the environment or inventing a one-off harness.
 """
 
+from __future__ import annotations
+
 import argparse
+import hashlib
+import importlib.metadata
+import importlib.util
 import json
+import multiprocessing
 import os
+import re
+import shlex
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 _project_root = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_project_root))
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
 _scripts_dir = _project_root / "scripts"
-sys.path.insert(0, str(_scripts_dir))
-from config import get_ocr_config
+if str(_scripts_dir) not in sys.path:
+    sys.path.insert(0, str(_scripts_dir))
 
+from config import get_ocr_config  # noqa: E402
 
+MIN_MINERU_VERSION = (3, 4, 4)
+MAX_MINERU_VERSION = (4, 0, 0)
 _SOURCE_LIKE_SUFFIXES = {
-    ".pdf", ".ppt", ".pptx", ".doc", ".docx",
-    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp",
+    ".pdf",
+    ".ppt",
+    ".pptx",
+    ".doc",
+    ".docx",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".bmp",
+    ".tiff",
+    ".tif",
+    ".webp",
 }
+_PAGINATED_SUFFIXES = {".pdf", ".doc", ".docx", ".ppt", ".pptx"}
 
 
 def _get_default_backend() -> str:
-    """Read OCR config and return backend name (or 'api' for API mode)."""
+    """Read OCR config and return backend name (or ``api`` for API mode)."""
     ocr_config = get_ocr_config()
-    mode = ocr_config.get("mode", "local")
-    if mode == "api":
+    if ocr_config.get("mode", "local") == "api":
         return "api"
-    return ocr_config.get("backend", "mineru")
+    return str(ocr_config.get("backend", "mineru"))
 
 
-def resolve_output_dir(input_path: str | Path, requested: str | None, default: str | Path) -> Path:
+def resolve_output_dir(
+    input_path: str | Path,
+    requested: str | None,
+    default: str | Path,
+) -> Path:
     """Resolve and validate an OCR output directory without touching the input."""
     source = Path(input_path).expanduser()
     output_dir = Path(requested).expanduser() if requested else Path(default)
 
     if output_dir.exists() and not output_dir.is_dir():
         raise ValueError(f"OCR output must be a directory, not a file: {output_dir}")
-
     if requested and output_dir.suffix.lower() in _SOURCE_LIKE_SUFFIXES:
         raise ValueError(
             f"OCR output must be a directory, not a source-like file path: {output_dir}"
         )
-
     try:
         if output_dir.resolve() == source.resolve():
             raise ValueError("OCR output directory cannot be the source file path.")
     except FileNotFoundError:
         pass
-
     return output_dir
 
 
@@ -80,87 +104,421 @@ def validate_output_file(input_path: str | Path, output_path: str | Path) -> Pat
     return output
 
 
-def main():
+def _version_tuple(version: str) -> tuple[int, int, int]:
+    """Return the first three numeric release components, ignoring pre-release.
+
+    Pre-release suffixes (``rc``, ``dev``, ``a``, ``b``) are stripped before
+    parsing so ``3.4.4rc1`` is treated as the ``3.4.4`` release for the
+    ``>=3.4.4,<4`` range check; callers that must reject pre-releases should
+    also consult :func:`_is_prerelease`.
+    """
+    release = re.split(r"[^0-9.]", version, maxsplit=1)[0]
+    parts = [int(value) for value in re.findall(r"\d+", release)[:3]]
+    return tuple((parts + [0, 0, 0])[:3])  # type: ignore[return-value]
+
+
+def _is_prerelease(version: str) -> bool:
+    """True if the version string carries a PEP 440 pre-release/dev suffix."""
+    return bool(re.search(r"(?:a|b|rc|dev|alpha|beta)\d*$", version, re.IGNORECASE))
+
+
+def inspect_mineru_runtime() -> dict[str, Any]:
+    """Return a complete, side-effect-light MinerU readiness report."""
+    from ocr._mineru_ocr import MINERU_JSON, _ensure_mineru_config
+
+    _ensure_mineru_config()
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    try:
+        mineru_version = importlib.metadata.version("mineru")
+    except importlib.metadata.PackageNotFoundError:
+        mineru_version = None
+        errors.append("MinerU is not installed in this Python interpreter.")
+
+    mineru_path: str | None = None
+    try:
+        spec = importlib.util.find_spec("mineru")
+        if spec and spec.origin:
+            mineru_path = str(Path(spec.origin).resolve())
+    except (ImportError, ModuleNotFoundError, ValueError):
+        pass
+
+    if mineru_version:
+        parsed_version = _version_tuple(mineru_version)
+        if not (MIN_MINERU_VERSION <= parsed_version < MAX_MINERU_VERSION):
+            errors.append(f"Unsupported MinerU {mineru_version}; required >=3.4.4,<4.")
+        elif _is_prerelease(mineru_version):
+            errors.append(
+                f"MinerU {mineru_version} is a pre-release; a stable "
+                ">=3.4.4,<4 release is required."
+            )
+
+    config_path = Path(os.environ.get("MINERU_TOOLS_CONFIG_JSON", str(MINERU_JSON))).expanduser()
+    config: dict[str, Any] = {}
+    if not config_path.is_file():
+        errors.append(f"MinerU config does not exist: {config_path}")
+    else:
+        try:
+            loaded = json.loads(config_path.read_text(encoding="utf-8"))
+            if not isinstance(loaded, dict):
+                raise ValueError("top-level value must be an object")
+            config = loaded
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            errors.append(f"MinerU config is invalid: {exc}")
+
+    models = config.get("models-dir", {}) if isinstance(config, dict) else {}
+    pipeline_value = models.get("pipeline") if isinstance(models, dict) else None
+    model_root = Path(str(pipeline_value)).expanduser() if pipeline_value else None
+    model_source = os.environ.get("MINERU_MODEL_SOURCE") or config.get("model-source", "modelscope")
+    model_root_exists = bool(model_root and model_root.is_dir())
+    if model_source == "local" and not model_root_exists:
+        errors.append(f"Local MinerU model directory does not exist: {model_root}")
+    elif not model_root_exists:
+        warnings.append("Local pipeline models were not found; MinerU may download them.")
+
+    install_command = (
+        f"{shlex.quote(sys.executable)} -m pip install -U {shlex.quote('mineru[all]>=3.4.4,<4')}"
+    )
+    return {
+        "ready": not errors,
+        "python": {
+            "executable": sys.executable,
+            "version": sys.version.split()[0],
+        },
+        "mineru": {
+            "version": mineru_version,
+            "module_path": mineru_path,
+            "required": ">=3.4.4,<4",
+        },
+        "config": {
+            "path": str(config_path.resolve()),
+            "exists": config_path.is_file(),
+            "config_version": config.get("config_version"),
+        },
+        "models": {
+            "source": model_source,
+            "pipeline_root": str(model_root) if model_root else None,
+            "pipeline_root_exists": model_root_exists,
+        },
+        "errors": errors,
+        "warnings": warnings,
+        "repair_command": install_command,
+    }
+
+
+def _print_doctor(report: dict[str, Any]) -> None:
+    status = "READY" if report["ready"] else "NOT READY"
+    print(f"MinerU OCR: {status}")
+    print(f"Python: {report['python']['version']} ({report['python']['executable']})")
+    mineru = report["mineru"]
+    print(f"MinerU: {mineru['version'] or 'not installed'} ({mineru['module_path'] or '-'})")
+    print(f"Config: {report['config']['path']}")
+    print(f"Models: {report['models']['source']} ({report['models']['pipeline_root'] or '-'})")
+    for warning in report["warnings"]:
+        print(f"Warning: {warning}")
+    for error in report["errors"]:
+        print(f"Error: {error}", file=sys.stderr)
+    if not report["ready"]:
+        print(f"Repair: {report['repair_command']}", file=sys.stderr)
+
+
+def _load_backend(name: str) -> Any:
+    """Lazily instantiate one OCR backend."""
+    if name == "api":
+        from ocr._ocr_api import OCRApiBackend
+
+        return OCRApiBackend.from_config()
+    if name == "mineru":
+        from ocr._mineru_ocr import MinerUOCR
+
+        return MinerUOCR.from_config()
+    if name == "deepseek":
+        from ocr._deepseek_ocr2 import DeepSeekOCR2
+
+        return DeepSeekOCR2.from_config()
+    if name == "logics":
+        from ocr._logics_parsing import LogicsParsingOCR
+
+        return LogicsParsingOCR.from_config()
+    from ocr._paddle_ocr import PaddleOCRWrapper
+
+    return PaddleOCRWrapper.from_config()
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _pdf_page_count(path: Path) -> int | None:
+    try:
+        import fitz
+
+        with fitz.open(str(path)) as document:
+            return int(document.page_count)
+    except Exception:
+        return None
+
+
+def _content_list_for(markdown: Path, source_stem: str) -> Path | None:
+    exact = markdown.with_name(f"{source_stem}_content_list.json")
+    if exact.is_file():
+        return exact
+    candidates = sorted(markdown.parent.glob("*_content_list.json"))
+    return candidates[0] if candidates else None
+
+
+def _parsed_pages(content_list: Path | None) -> list[int]:
+    if not content_list:
+        return []
+    try:
+        entries = json.loads(content_list.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return []
+    if not isinstance(entries, list):
+        return []
+    indexes = {
+        int(entry["page_idx"])
+        for entry in entries
+        if isinstance(entry, dict) and isinstance(entry.get("page_idx"), int)
+    }
+    return [index + 1 for index in sorted(indexes)]
+
+
+def write_ocr_manifest(
+    source: Path,
+    markdown: Path,
+    backend: str,
+    max_pages: int | None,
+    elapsed_seconds: float,
+    requested_path: str | None = None,
+) -> tuple[Path, dict[str, Any]]:
+    """Write a deterministic OCR run report and return its path and data."""
+    source = source.resolve()
+    markdown = markdown.resolve()
+    content_list = _content_list_for(markdown, source.stem)
+    pages = _parsed_pages(content_list)
+    source_pages = _pdf_page_count(source) if source.suffix.lower() == ".pdf" else None
+    if source_pages and max_pages:
+        expected_pages = min(source_pages, max_pages)
+    elif max_pages:
+        # Source page count unknown (e.g. undetermined PDF) but a cap was
+        # requested: expect the capped page range so coverage stays meaningful
+        # instead of silently defaulting to status "complete".
+        expected_pages = max_pages
+    else:
+        expected_pages = source_pages
+    coverage_complete: bool | None = None
+    if expected_pages is not None and pages:
+        coverage_complete = pages == list(range(1, expected_pages + 1))
+
+    images = sorted(
+        str(path.resolve())
+        for path in markdown.parent.rglob("*")
+        if path.is_file() and path.suffix.lower() in _SOURCE_LIKE_SUFFIXES - {".pdf"}
+    )
+    runtime: dict[str, Any] = {"python": sys.executable}
+    if backend == "mineru":
+        doctor = inspect_mineru_runtime()
+        runtime["mineru_version"] = doctor["mineru"]["version"]
+        runtime["mineru_module_path"] = doctor["mineru"]["module_path"]
+
+    data: dict[str, Any] = {
+        "schema_version": 1,
+        "status": "complete" if coverage_complete is not False else "incomplete",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "source": str(source),
+        "source_sha256": _sha256(source),
+        "backend": backend,
+        "runtime": runtime,
+        "requested_max_pages": max_pages,
+        "source_pages": source_pages,
+        "expected_pages": expected_pages,
+        "parsed_pages": pages,
+        "parsed_page_count": len(pages) or None,
+        "coverage_complete": coverage_complete,
+        "markdown": str(markdown),
+        "content_list": str(content_list.resolve()) if content_list else None,
+        "images": images,
+        "image_count": len(images),
+        "elapsed_seconds": round(elapsed_seconds, 3),
+    }
+    manifest = (
+        Path(requested_path).expanduser()
+        if requested_path
+        else markdown.with_name(f"{source.stem}_ocr_manifest.json")
+    )
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return manifest.resolve(), data
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the shared OCR argument parser."""
     default_backend = _get_default_backend()
-    parser = argparse.ArgumentParser(description="Multi-backend OCR — Image & PDF OCR")
+    parser = argparse.ArgumentParser(description="LLM Wiki document OCR")
     parser.add_argument("file", nargs="?", help="Image or PDF file path")
-    parser.add_argument("--backend", choices=["mineru", "deepseek", "logics", "paddle", "api"],
-                        default=default_backend,
-                        help=f"OCR backend (default: {default_backend})")
+    parser.add_argument(
+        "--backend",
+        choices=["mineru", "deepseek", "logics", "paddle", "api"],
+        default=default_backend,
+        help=f"OCR backend (default: {default_backend})",
+    )
     parser.add_argument("--batch", help="Process all images/PDFs in a directory")
     parser.add_argument("-o", "--output", help="Output directory for PDF results")
-    parser.add_argument("-n", "--max-pages", type=int, help="Maximum pages to process")
-    args = parser.parse_args()
+    page_group = parser.add_mutually_exclusive_group()
+    page_group.add_argument("-n", "--max-pages", type=int, help="Maximum pages to process")
+    page_group.add_argument(
+        "--smoke-pages",
+        type=int,
+        metavar="N",
+        help="Smoke-test only the first N pages (recommended: 3)",
+    )
+    parser.add_argument(
+        "--doctor",
+        action="store_true",
+        help="Check the selected backend runtime without processing a file",
+    )
+    parser.add_argument("--manifest", help="Override the automatic OCR manifest path")
+    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+    return parser
 
-    # Lazy import based on backend
-    if args.backend == "api":
-        from ocr._ocr_api import OCRApiBackend
-        ocr = OCRApiBackend.from_config()
-    elif args.backend == "mineru":
-        from ocr._mineru_ocr import MinerUOCR
-        ocr = MinerUOCR.from_config()
-    elif args.backend == "deepseek":
-        from ocr._deepseek_ocr2 import DeepSeekOCR2
-        ocr = DeepSeekOCR2.from_config()
-    elif args.backend == "logics":
-        from ocr._logics_parsing import LogicsParsingOCR
-        ocr = LogicsParsingOCR.from_config()
-    else:  # paddle
-        from ocr._paddle_ocr import PaddleOCRWrapper
-        ocr = PaddleOCRWrapper.from_config()
 
-    if args.batch:
-        if not os.path.isdir(args.batch):
-            print(f"Error: not a directory: {args.batch}", file=sys.stderr)
-            sys.exit(1)
-        supported = {
-            ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp", ".pdf",
-        }
-        results = []
-        for fname in sorted(os.listdir(args.batch)):
-            ext = os.path.splitext(fname)[1].lower()
-            if ext not in supported:
-                continue
-            fpath = os.path.join(args.batch, fname)
-            if not os.path.isfile(fpath):
-                continue
-            try:
-                if ext == ".pdf":
-                    out_dir = resolve_output_dir(fpath, args.output, fname.replace(".pdf", "_ocr"))
-                    report = ocr.ocr_pdf(fpath, out_dir, max_pages=args.max_pages)
-                    results.append({"file": fname, "output": str(report)})
-                else:
-                    text = ocr.ocr_image(fpath)
-                    results.append({"file": fname, "text_length": len(text)})
-            except Exception as e:
-                print(f"Error processing {fname}: {e}", file=sys.stderr)
+def _validate_positive_pages(value: int | None) -> None:
+    if value is not None and value < 1:
+        raise ValueError("page limit must be at least 1")
 
-        print(json.dumps({"ocr_results": results}, indent=2, ensure_ascii=False))
-        return
 
-    if not args.file:
-        parser.print_help()
-        sys.exit(1)
+def main(argv: list[str] | None = None) -> int:
+    """Run OCR and return a process exit code."""
+    multiprocessing.freeze_support()
+    parser = build_parser()
+    args = parser.parse_args(argv)
 
-    ext = os.path.splitext(args.file)[1].lower()
-    try:
-        if ext == ".pdf":
-            out_dir = resolve_output_dir(args.file, args.output, Path(args.file).stem + "_ocr")
-            report = ocr.ocr_pdf(args.file, out_dir, max_pages=args.max_pages)
-            print(f"Output: {report}")
+    if args.doctor:
+        if args.backend != "mineru":
+            report = {
+                "ready": True,
+                "backend": args.backend,
+                "note": "Detailed preflight is currently available for MinerU.",
+            }
         else:
-            text = ocr.ocr_image(args.file)
-            if args.output:
-                output = validate_output_file(args.file, args.output)
-                output.parent.mkdir(parents=True, exist_ok=True)
-                output.write_text(text, encoding="utf-8")
-                print(f"Output: {output}")
+            report = inspect_mineru_runtime()
+        if args.json:
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+        elif args.backend == "mineru":
+            _print_doctor(report)
+        else:
+            print(f"{args.backend} OCR: READY (loaded lazily when a file is processed)")
+        return 0 if report["ready"] else 2
+
+    if not args.file and not args.batch:
+        parser.error("provide FILE, --batch DIRECTORY, or --doctor")
+
+    max_pages = args.smoke_pages if args.smoke_pages is not None else args.max_pages
+    try:
+        _validate_positive_pages(max_pages)
+        if args.backend == "mineru":
+            readiness = inspect_mineru_runtime()
+            if not readiness["ready"]:
+                if args.json:
+                    print(json.dumps(readiness, ensure_ascii=False, indent=2))
+                else:
+                    _print_doctor(readiness)
+                return 2
+        ocr = _load_backend(args.backend)
+
+        if args.batch:
+            batch_dir = Path(args.batch).expanduser()
+            if not batch_dir.is_dir():
+                raise ValueError(f"not a directory: {batch_dir}")
+            supported = _SOURCE_LIKE_SUFFIXES
+            results: list[dict[str, Any]] = []
+            for source in sorted(batch_dir.iterdir()):
+                if not source.is_file() or source.suffix.lower() not in supported:
+                    continue
+                started = time.monotonic()
+                if source.suffix.lower() in _PAGINATED_SUFFIXES:
+                    output = resolve_output_dir(
+                        source,
+                        args.output,
+                        source.with_name(f"{source.stem}_ocr"),
+                    )
+                    # A shared --output would let later files' MinerU results
+                    # overwrite earlier ones; give each source its own subdir.
+                    if args.output:
+                        output = output / f"{source.stem}_ocr"
+                    markdown = Path(ocr.ocr_pdf(str(source), output, max_pages=max_pages))
+                    manifest, data = write_ocr_manifest(
+                        source,
+                        markdown,
+                        args.backend,
+                        max_pages,
+                        time.monotonic() - started,
+                    )
+                    results.append(
+                        {
+                            "file": str(source.resolve()),
+                            "output": str(markdown.resolve()),
+                            "manifest": str(manifest),
+                            "status": data["status"],
+                        }
+                    )
+                else:
+                    text = ocr.ocr_image(str(source))
+                    results.append({"file": str(source.resolve()), "text_length": len(text)})
+            print(json.dumps({"ocr_results": results}, indent=2, ensure_ascii=False))
+            return 0
+
+        source = Path(args.file).expanduser()
+        if not source.is_file():
+            raise ValueError(f"file does not exist: {source}")
+        if source.suffix.lower() in _PAGINATED_SUFFIXES:
+            output = resolve_output_dir(source, args.output, f"{source.stem}_ocr")
+            started = time.monotonic()
+            markdown = Path(ocr.ocr_pdf(str(source), output, max_pages=max_pages))
+            manifest, data = write_ocr_manifest(
+                source,
+                markdown,
+                args.backend,
+                max_pages,
+                time.monotonic() - started,
+                args.manifest,
+            )
+            result = {
+                "status": data["status"],
+                "output": str(markdown.resolve()),
+                "manifest": str(manifest),
+                "parsed_pages": data["parsed_pages"],
+                "image_count": data["image_count"],
+            }
+            if args.json:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
             else:
-                print(text)
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+                print(f"Output: {result['output']}")
+                print(f"Manifest: {result['manifest']}")
+            return 0 if data["status"] == "complete" else 3
+
+        text = ocr.ocr_image(str(source))
+        if args.output:
+            output_file = validate_output_file(source, args.output)
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text(text, encoding="utf-8")
+            print(f"Output: {output_file.resolve()}")
+        else:
+            print(text)
+        return 0
+    except Exception as exc:
+        if args.json:
+            print(json.dumps({"status": "error", "error": str(exc)}, ensure_ascii=False))
+        else:
+            print(f"Error: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

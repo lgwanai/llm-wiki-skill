@@ -2,12 +2,174 @@
 
 from __future__ import annotations
 
+import json
+import os
 import sys
+import zipfile
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import scripts.compile_v2 as compile_v2
+
+
+def _write_test_epub(path: Path) -> bytes:
+    """Create a minimal spine-ordered EPUB with cover and chapter images."""
+    cover = b"cover-image-bytes"
+    diagram = b"diagram-image-bytes"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("mimetype", "application/epub+zip")
+        archive.writestr(
+            "META-INF/container.xml",
+            """<?xml version="1.0"?>
+<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles>
+</container>""",
+        )
+        archive.writestr(
+            "OEBPS/content.opf",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>物理电子书</dc:title>
+  </metadata>
+  <manifest>
+    <item id="cover" href="images/cover.jpg" media-type="image/jpeg" properties="cover-image"/>
+    <item id="chapter" href="Text/chapter.xhtml" media-type="application/xhtml+xml"/>
+    <item id="diagram" href="images/diagram.png" media-type="image/png"/>
+  </manifest>
+  <spine><itemref idref="chapter"/></spine>
+</package>""",
+        )
+        archive.writestr(
+            "OEBPS/Text/chapter.xhtml",
+            """<html xmlns="http://www.w3.org/1999/xhtml"><body>
+<h1>第一章 机械运动</h1>
+<p>速度表示物体运动的快慢。</p>
+<img src="../images/diagram.png" alt="速度图像"/>
+</body></html>""",
+        )
+        archive.writestr("OEBPS/images/cover.jpg", cover)
+        archive.writestr("OEBPS/images/diagram.png", diagram)
+    return diagram
+
+
+@pytest.mark.parametrize("suffix", [".pdf", ".pptx", ".docx", ".epub", ".html"])
+def test_agent_compile_uses_verified_snapshot_and_preserves_original(tmp_path, monkeypatch, suffix):
+    """All user-facing document formats must share the same source isolation."""
+    wiki = tmp_path / ".wiki"
+    source = tmp_path / f"important{suffix}"
+    original = (b"valuable-source-data\x00" * 100_000) + suffix.encode()
+    source.write_bytes(original)
+    original_mtime = source.stat().st_mtime_ns
+
+    monkeypatch.setattr(compile_v2, "WIKI_DIR", wiki)
+    monkeypatch.setattr(
+        compile_v2,
+        "_read_agent_visible_source",
+        lambda path: (f"snapshot-size={path.stat().st_size}", True),
+    )
+
+    result = compile_v2.create_agent_compile_task(str(source))
+
+    assert source.read_bytes() == original
+    assert source.stat().st_mtime_ns == original_mtime
+    snapshots = list((wiki / "source" / "agent_inputs").rglob(source.name))
+    assert len(snapshots) == 1
+    snapshot = snapshots[0]
+    assert snapshot.read_bytes() == original
+    task = Path(result["agent_task"]).read_text(encoding="utf-8")
+    assert str(snapshot) in task
+    assert str(source) not in task
+    assert "NEVER write to, replace, truncate" in task
+    assert "NEVER use MarkItDown as the primary extractor for a scanned PDF" in task
+
+
+def test_agent_snapshot_absorbs_accidental_133_byte_overwrite(tmp_path, monkeypatch):
+    wiki = tmp_path / ".wiki"
+    source = tmp_path / "important.pdf"
+    original = b"irreplaceable" * 200_000
+    source.write_bytes(original)
+    monkeypatch.setattr(compile_v2, "WIKI_DIR", wiki)
+    monkeypatch.setattr(compile_v2, "_read_agent_visible_source", lambda _path: ("", False))
+
+    compile_v2.create_agent_compile_task(str(source))
+    snapshot = next((wiki / "source" / "agent_inputs").rglob(source.name))
+
+    # Simulate a misbehaving Agent/tool defeating chmod and writing its input.
+    snapshot.chmod(0o600)
+    snapshot.write_bytes(b"x" * 133)
+
+    assert snapshot.stat().st_size == 133
+    assert source.read_bytes() == original
+
+
+def test_agent_directory_task_contains_only_snapshots(tmp_path, monkeypatch):
+    wiki = tmp_path / ".wiki"
+    sources = tmp_path / "documents"
+    sources.mkdir()
+    originals = []
+    for suffix in (".pdf", ".pptx", ".docx", ".html"):
+        path = sources / f"important{suffix}"
+        path.write_bytes((suffix.encode() + b"-original") * 100)
+        originals.append(path)
+    monkeypatch.setattr(compile_v2, "WIKI_DIR", wiki)
+
+    result = compile_v2.create_agent_compile_task(str(sources))
+    task = Path(result["agent_task"]).read_text(encoding="utf-8")
+
+    for source in originals:
+        assert str(source) not in task
+        snapshots = list((wiki / "source" / "agent_inputs").rglob(source.name))
+        assert len(snapshots) == 1
+        assert snapshots[0].read_bytes() == source.read_bytes()
+
+
+def test_compile_refuses_managed_output_as_source(tmp_path, monkeypatch):
+    wiki = tmp_path / ".wiki"
+    page = wiki / "pages" / "important.md"
+    page.parent.mkdir(parents=True)
+    page.write_text("must not become its own output", encoding="utf-8")
+    monkeypatch.setattr(compile_v2, "WIKI_DIR", wiki)
+
+    with pytest.raises(ValueError, match="managed wiki output"):
+        compile_v2.compile_path(str(page), mode="agent")
+
+    assert page.read_text(encoding="utf-8") == "must not become its own output"
+
+
+def test_readonly_copy_preserves_source_when_parser_truncates_copy_then_fails(tmp_path):
+    source = tmp_path / "important.docx"
+    original = b"office-package" * 10_000
+    source.write_bytes(original)
+
+    with pytest.raises(RuntimeError, match="parser failed"):
+        with compile_v2._readonly_working_copy(source) as working_copy:
+            working_copy.chmod(0o600)
+            working_copy.write_bytes(b"x" * 133)
+            raise RuntimeError("parser failed")
+
+    assert source.read_bytes() == original
+
+
+def test_readonly_copy_chains_original_error_when_source_also_changes(tmp_path):
+    """When the body raises AND the source is mutated, the integrity error must
+    chain the original error instead of masking it."""
+    source = tmp_path / "doc.docx"
+    source.write_bytes(b"original")
+
+    with pytest.raises(RuntimeError, match="changed during read-only processing") as exc_info:
+        with compile_v2._readonly_working_copy(source) as working_copy:
+            working_copy.chmod(0o600)  # keep the temp copy deletable on cleanup
+            # Mutate the real source out-of-band, then fail.
+            source.write_bytes(b"tampered")
+            raise RuntimeError("the real parse error")
+
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert str(exc_info.value.__cause__) == "the real parse error"
+    assert source.read_bytes() == b"tampered"
 
 
 def test_iter_source_files_respects_depth_and_skips_wiki(tmp_path):
@@ -26,12 +188,10 @@ def test_iter_source_files_respects_depth_and_skips_wiki(tmp_path):
     (wiki / "generated.md").write_text("# Generated", encoding="utf-8")
 
     depth_0 = {
-        p.relative_to(root).as_posix()
-        for p in compile_v2.iter_source_files(root, max_depth=0)
+        p.relative_to(root).as_posix() for p in compile_v2.iter_source_files(root, max_depth=0)
     }
     depth_1 = {
-        p.relative_to(root).as_posix()
-        for p in compile_v2.iter_source_files(root, max_depth=1)
+        p.relative_to(root).as_posix() for p in compile_v2.iter_source_files(root, max_depth=1)
     }
     all_files = {p.relative_to(root).as_posix() for p in compile_v2.iter_source_files(root)}
 
@@ -43,11 +203,290 @@ def test_iter_source_files_respects_depth_and_skips_wiki(tmp_path):
 def test_paginated_documents_are_supported_sources(tmp_path):
     pdf = tmp_path / "brief.pdf"
     pptx = tmp_path / "deck.pptx"
+    docx = tmp_path / "handbook.docx"
     pdf.write_bytes(b"%PDF fake")
     pptx.write_bytes(b"fake pptx")
+    docx.write_bytes(b"fake docx")
 
     assert compile_v2.is_supported_source(pdf)
     assert compile_v2.is_supported_source(pptx)
+    assert compile_v2.is_paginated_document_source(docx)
+
+
+def test_epub_converts_spine_to_markdown_and_extracts_images(tmp_path, monkeypatch):
+    source = tmp_path / "physics.epub"
+    diagram = _write_test_epub(source)
+    wiki = tmp_path / ".wiki"
+    monkeypatch.setattr(compile_v2, "WIKI_DIR", wiki)
+
+    content, name = compile_v2.read_source_content(source)
+
+    assert name == "physics.epub"
+    assert "# 物理电子书" in content
+    assert "## EPUB Section 1: 第一章 机械运动" in content
+    assert "EPUB locator: `OEBPS/Text/chapter.xhtml`" in content
+    assert "速度表示物体运动的快慢" in content
+    image_targets = [
+        compile_v2._clean_image_target(match.group("target"))
+        for match in compile_v2.MARKDOWN_IMAGE_RE.finditer(content)
+    ]
+    assert len(image_targets) == 2
+    extracted = [Path(target) for target in image_targets]
+    assert all(path.is_file() for path in extracted)
+    assert any(path.read_bytes() == diagram for path in extracted)
+    markdown_files = list((wiki / "source" / "epub_markdown").rglob("physics.md"))
+    assert len(markdown_files) == 1
+    assert markdown_files[0].read_text(encoding="utf-8") == content
+
+
+def test_epub_agent_task_persists_images_and_renders_markdown(tmp_path, monkeypatch):
+    source = tmp_path / "physics.epub"
+    original = _write_test_epub(source)
+    source_bytes = source.read_bytes()
+    wiki = tmp_path / ".wiki"
+    pages = wiki / "pages"
+    monkeypatch.setattr(compile_v2, "WIKI_DIR", wiki)
+    monkeypatch.setattr(compile_v2, "PAGES_DIR", pages)
+
+    result = compile_v2.create_agent_compile_task(str(source))
+    task = Path(result["agent_task"]).read_text(encoding="utf-8")
+
+    assert source.read_bytes() == source_bytes
+    assert "## EPUB Section 1" in task
+    assert "```text\n# 物理电子书" not in task
+    copied = list((pages / "assets").rglob("*.png"))
+    assert len(copied) == 1
+    assert copied[0].read_bytes() == original
+    # The agent task must show a portable relative link, not an absolute,
+    # host-specific path the agent would copy verbatim into a wiki page.
+    relative_link = os.path.relpath(copied[0], pages / "concepts").replace(os.sep, "/")
+    assert relative_link in task
+    assert str(copied[0].resolve()) not in task
+
+
+def test_cited_epub_section_image_is_attached_to_compiled_page(tmp_path):
+    pages = tmp_path / ".wiki" / "pages"
+    page_path = pages / "concepts" / "speed.md"
+    image = pages / "assets" / "book" / "speed.png"
+    image.parent.mkdir(parents=True)
+    image.write_bytes(b"speed-image")
+    source_content = (
+        "# 物理电子书\n\n"
+        "## EPUB Section 1: 第一章\n\n"
+        "> EPUB locator: `OEBPS/Text/chapter.xhtml`\n\n"
+        f"![速度图像]({image.resolve()})\n"
+    )
+    page_content = (
+        "# 速度\n\n## 来源追溯\n\n"
+        "- 原始资料：`physics.epub`\n"
+        "- EPUB章节定位：EPUB Section 1\n"
+    )
+
+    rendered = compile_v2._attach_source_media(page_content, source_content, page_path)
+
+    assert "## 来源图片" in rendered
+    assert "../assets/book/speed.png" in rendered
+    assert "EPUB Section 1" in rendered
+
+
+def test_epub_traceability_uses_section_when_fixed_pages_do_not_exist():
+    source_content = (
+        "## EPUB Section 2: 机械运动\n\n"
+        "> EPUB locator: `OEBPS/Text/motion.xhtml`\n\n正文。\n"
+    )
+    page_content = "# 速度\n\n内容。\n\n- EPUB Section 2\n"
+
+    rendered = compile_v2._ensure_study_traceability(
+        page_content,
+        "physics.epub",
+        source_content,
+    )
+
+    assert "- 页码：待核验" in rendered
+    assert "重排格式无可靠固定页码" in rendered
+    assert "EPUB Section 2（`OEBPS/Text/motion.xhtml`）" in rendered
+
+
+def test_ocr_markdown_images_are_persisted_in_okf_bundle(tmp_path, monkeypatch):
+    source = tmp_path / "ocr" / "textbook.md"
+    image = source.parent / "images" / "apparatus.png"
+    image.parent.mkdir(parents=True)
+    image.write_bytes(b"png-image")
+    source.write_text("## Page 3\n\n![实验装置](images/apparatus.png)\n", encoding="utf-8")
+    pages_dir = tmp_path / ".wiki" / "pages"
+    monkeypatch.setattr(compile_v2, "PAGES_DIR", pages_dir)
+
+    rewritten = compile_v2._persist_source_image_references(
+        source.read_text(encoding="utf-8"), source
+    )
+
+    copied = list((pages_dir / "assets").rglob("apparatus.png"))
+    assert len(copied) == 1
+    assert copied[0].read_bytes() == b"png-image"
+    # Persisted links must be portable: relative to the page location, never an
+    # absolute, host-specific path that would break an exported bundle.
+    relative_link = os.path.relpath(copied[0], pages_dir / "concepts").replace(os.sep, "/")
+    assert relative_link in rewritten
+    assert str(copied[0].resolve()) not in rewritten
+
+
+def test_image_link_with_title_is_persisted(tmp_path, monkeypatch):
+    source = tmp_path / "ocr" / "notes.md"
+    image = source.parent / "images" / "diagram.png"
+    image.parent.mkdir(parents=True)
+    image.write_bytes(b"png-image")
+    # A CommonMark title must not become part of the resolved filename.
+    source.write_text(
+        '![实验装置](images/diagram.png "Figure 1: Apparatus")\n', encoding="utf-8"
+    )
+    pages_dir = tmp_path / ".wiki" / "pages"
+    monkeypatch.setattr(compile_v2, "PAGES_DIR", pages_dir)
+
+    rewritten = compile_v2._persist_source_image_references(
+        source.read_text(encoding="utf-8"), source
+    )
+
+    copied = list((pages_dir / "assets").rglob("diagram.png"))
+    assert len(copied) == 1
+    relative_link = os.path.relpath(copied[0], pages_dir / "concepts").replace(os.sep, "/")
+    assert relative_link in rewritten
+    assert "Figure 1" not in rewritten
+
+
+def test_mineru_content_list_restores_page_boundaries(tmp_path):
+    source = tmp_path / "physics.md"
+    source.write_text(
+        "# 第一章\n\n第一页内容。\n\n# 第二章\n\n第二页内容。\n",
+        encoding="utf-8",
+    )
+    source.with_name("physics_content_list.json").write_text(
+        json.dumps(
+                [
+                    {"type": "text", "text": "第一章", "text_level": 1, "page_idx": 0},
+                    {"type": "text", "text": "第一页内容。", "page_idx": 0},
+                    {"type": "text", "text": "第二章", "text_level": 1, "page_idx": 1},
+                    {"type": "text", "text": "第二页内容。", "page_idx": 1},
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    content, _ = compile_v2.read_source_content(source)
+
+    assert content.startswith("## Page 1")
+    assert content.count("## Page ") == 2
+    assert content.index("## Page 2") < content.index("# 第二章")
+
+
+def test_cited_source_page_image_is_attached_to_compiled_page(tmp_path):
+    pages_dir = tmp_path / ".wiki" / "pages"
+    page_path = pages_dir / "concepts" / "density.md"
+    images = []
+    for page_number in (11, 12, 13):
+        image = pages_dir / "assets" / "book" / f"page-{page_number:03d}.png"
+        image.parent.mkdir(parents=True, exist_ok=True)
+        image.write_bytes(f"page-{page_number}".encode())
+        images.append(image)
+    source_content = "\n".join(
+        f"## Page {page_number}\n\n![Page {page_number}]({image.resolve()})\n\n正文。"
+        for page_number, image in zip((11, 12, 13), images)
+    )
+    page_content = (
+        "# 密度\n\n## 来源追溯\n\n"
+        "- 原始资料：`八年级物理课本.pdf`\n- 页码：第 12 页\n"
+    )
+
+    rendered = compile_v2._attach_source_media(page_content, source_content, page_path)
+
+    assert "## 来源图片" in rendered
+    assert "../assets/book/page-012.png" in rendered
+    assert "../assets/book/page-011.png" in rendered
+    assert "../assets/book/page-013.png" in rendered
+    assert "相邻页上下文" in rendered
+
+
+def test_study_page_keeps_knowledge_when_exact_page_is_unknown():
+    source_content = "## Page 1\n\n正文一\n\n## Page 2\n\n正文二\n"
+
+    rendered = compile_v2._ensure_study_traceability(
+        "# 密度\n\n## 概述\n知识点。",
+        "八年级物理课本.pdf",
+        source_content,
+    )
+
+    assert "知识点" in rendered
+    assert "页码：待核验" in rendered
+    assert "候选页范围：第 1–2 页" in rendered
+    assert "定位状态" in rendered
+
+
+def test_study_traceability_records_source_and_exact_page():
+    source_content = "## Page 1\n\n正文一\n\n## Page 2\n\n正文二\n"
+
+    rendered = compile_v2._ensure_study_traceability(
+        "# 密度\n\n原文定位在第 2 页。",
+        "八年级物理课本.pdf",
+        source_content,
+    )
+
+    assert "## 来源追溯" in rendered
+    assert "`八年级物理课本.pdf`" in rendered
+    assert "第 2 页" in rendered
+
+
+def test_multi_page_ranges_expand_for_provenance_and_media():
+    pages = compile_v2._extract_cited_pages("页码：第 10–12 页、第 15 页")
+
+    assert pages == [10, 11, 12, 15]
+
+
+def test_paginated_chunking_overlaps_previous_page_context():
+    content = (
+        "## Page 1\n\n第一页定义和条件。\n\n"
+        "## Page 2\n\n第二页图片和推导。\n\n"
+        "## Page 3\n\n第三页例题。\n"
+    )
+
+    chunks = compile_v2._split_by_headings(content, max_tokens=12, lang="zh")
+
+    assert len(chunks) >= 2
+    assert "Previous-page overlap" in chunks[1]
+    assert "## Page 1" in chunks[1]
+    assert "## Page 2" in chunks[1]
+
+
+def test_same_knowledge_point_across_chunks_is_merged_without_losing_sources(monkeypatch):
+    existing = {
+        "id": "concepts/density",
+        "facts": 1,
+        "relationships": 0,
+        "_content": (
+            "---\ntype: concept\ntitle: 密度\n---\n# 密度\n\n"
+            "## 来源追溯\n\n- 页码：第 10 页\n"
+        ),
+    }
+    incoming = {
+        "id": "concepts/density",
+        "facts": 1,
+        "relationships": 0,
+        "_content": (
+            "---\ntype: concept\ntitle: 密度\n---\n# 密度\n\n"
+            "## 来源追溯\n\n- 页码：第 11 页\n"
+        ),
+    }
+    monkeypatch.setattr(
+        compile_v2,
+        "llm_fuse_pages",
+        lambda *_args: "# 密度\n\n跨页合并后的定义与图片说明。",
+    )
+
+    compile_v2._merge_cross_chunk_page(existing, incoming)
+
+    assert "跨页合并后的定义与图片说明" in existing["_content"]
+    assert "第 10 页" in existing["_content"]
+    assert "第 11 页" in existing["_content"]
+    assert existing["merged_chunks"] == 2
 
 
 def test_paginated_document_without_ocr_preserves_every_page_for_agent(tmp_path, monkeypatch):
@@ -120,6 +559,66 @@ def test_paginated_document_ocr_runs_for_every_page(tmp_path, monkeypatch):
     assert "OCR text for page-001.png" in content
     assert "OCR text for page-002.png" in content
     assert "OCR text for page-003.png" in content
+
+
+def test_pdf_render_failure_uses_direct_ocr_before_markitdown(tmp_path, monkeypatch):
+    source = tmp_path / "scan.pdf"
+    original = b"%PDF scanned source" * 10_000
+    source.write_bytes(original)
+
+    monkeypatch.setattr(
+        compile_v2,
+        "_render_paginated_document_to_images",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("render failed")),
+    )
+    monkeypatch.setattr(compile_v2, "_ocr_backend_available", lambda: True)
+
+    def fake_direct_ocr(path):
+        assert path != source
+        assert path.read_bytes() == original
+        return "# 完整 OCR\n\n" + "这是扫描 PDF 的正文。" * 20
+
+    monkeypatch.setattr(compile_v2, "_ocr_pdf_with_config", fake_direct_ocr)
+    monkeypatch.setattr(
+        compile_v2,
+        "_markitdown_to_markdown",
+        lambda _path: pytest.fail("MarkItDown must not run after successful direct OCR"),
+    )
+
+    content = compile_v2._read_paginated_document_for_compile(source)
+
+    assert "Direct OCR Succeeded" in content
+    assert "这是扫描 PDF 的正文" in content
+    assert "MarkItDown" in content  # explicit instruction not to replace OCR with it
+    assert source.read_bytes() == original
+
+
+def test_pdf_failed_ocr_labels_markitdown_as_partial_only(tmp_path, monkeypatch):
+    source = tmp_path / "scan.pdf"
+    source.write_bytes(b"%PDF scanned source")
+    monkeypatch.setattr(
+        compile_v2,
+        "_render_paginated_document_to_images",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("render failed")),
+    )
+    monkeypatch.setattr(compile_v2, "_ocr_backend_available", lambda: True)
+    monkeypatch.setattr(
+        compile_v2,
+        "_ocr_pdf_with_config",
+        lambda _path: (_ for _ in ()).throw(RuntimeError("mineru failed")),
+    )
+    monkeypatch.setattr(
+        compile_v2,
+        "_markitdown_to_markdown",
+        lambda _path: "title and one official web link",
+    )
+
+    content = compile_v2._read_paginated_document_for_compile(source)
+
+    assert "Direct OCR Failed" in content
+    assert "mineru failed" in content
+    assert "MarkItDown Partial Evidence (not compile-ready)" in content
+    assert "Do not compile from this text alone" in content
 
 
 def test_image_source_uses_analysis_and_keeps_source_path(tmp_path, monkeypatch):

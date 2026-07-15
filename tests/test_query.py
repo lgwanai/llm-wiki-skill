@@ -244,6 +244,40 @@ def test_query_wiki_fast_mode_uses_okf_markdown_link(monkeypatch, tmp_path):
     assert "[[concepts/concept]]" not in result["answer"]
 
 
+def test_query_returns_referenced_images_with_search_result(monkeypatch, tmp_path):
+    image = tmp_path / "assets" / "density-apparatus.png"
+    image.parent.mkdir()
+    image.write_bytes(b"image")
+    page = tmp_path / "concept.md"
+    page.write_text(
+        "# 密度\n\n## 来源图片\n\n"
+        "![密度测量装置](assets/density-apparatus.png)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        query,
+        "search_wiki",
+        lambda *_args, **_kwargs: [
+            {
+                "id": "concepts/density",
+                "type": "Concept",
+                "path": str(page),
+                "score": 1.0,
+            }
+        ],
+    )
+
+    result = query.query_wiki("密度怎么测量", synthesis=False)
+
+    assert result["images"], "expected at least one referenced image"
+    assert result["source_details"], "expected at least one source detail"
+    assert result["images"][0]["path"] == str(image.resolve())
+    assert result["images"][0]["source_id"] == "concepts/density"
+    assert result["source_details"][0]["images"], "source detail missing images"
+    assert result["source_details"][0]["images"][0]["alt"] == "密度测量装置"
+    assert f"![密度测量装置]({image.resolve()})" in result["answer"]
+
+
 def test_query_wiki_llm_mode_calls_configured_llm(monkeypatch, tmp_path):
     page = tmp_path / "concept.md"
     page.write_text("# Concept\n\nAnswer source.", encoding="utf-8")

@@ -4,6 +4,7 @@
 Commands:
     wiki init              Initialize wiki structure
     wiki compile <source>  Compile source file/directory → build wiki pages
+    wiki ocr <source>      Preflight, smoke-test, or parse a document
     wiki query <question>  Search wiki → answer questions
     wiki dream             Optimize retrieval metadata from query behavior
     wiki lint              Health check → auto-heal
@@ -34,9 +35,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+_project_root = Path(__file__).resolve().parent.parent
+if str(_project_root) not in sys.path:
+    # Keep the top-level ``ocr`` package ahead of the legacy scripts/ocr.py
+    # wrapper when this file is executed directly.
+    sys.path.insert(0, str(_project_root))
+sys.path.insert(1, str(Path(__file__).parent))
 
-from config import (
+from config import (  # noqa: E402
     CONFIG_FILENAME,
     create_default_config,
     get_api_url,
@@ -52,9 +58,7 @@ def run_script(script_name: str, args: list[str]) -> tuple[int, str]:
     script_dir = Path(__file__).parent
     script_path = script_dir / script_name
     result = subprocess.run(
-        [sys.executable, str(script_path)] + args,
-        capture_output=True,
-        text=True
+        [sys.executable, str(script_path)] + args, capture_output=True, text=True
     )
     output = result.stdout
     if result.stderr:
@@ -107,20 +111,32 @@ def cmd_compile(
         return {"success": False, "error": output}
 
 
-def cmd_query(question: str, file_back: bool = False, fmt: str = "markdown",
-              synthesis: bool = True, debug_search: bool = False,
-              mode: str | None = None) -> dict:
+def cmd_query(
+    question: str,
+    file_back: bool = False,
+    fmt: str = "markdown",
+    synthesis: bool = True,
+    debug_search: bool = False,
+    mode: str | None = None,
+) -> dict:
     # Direct import for speed — avoids subprocess overhead (~0.3s)
     try:
         import query as qm
-        result = qm.query_wiki(question, file_back=file_back, fmt=fmt,
-                               synthesis=synthesis,
-                               debug_search=debug_search,
-                               mode=mode)
+
+        result = qm.query_wiki(
+            question,
+            file_back=file_back,
+            fmt=fmt,
+            synthesis=synthesis,
+            debug_search=debug_search,
+            mode=mode,
+        )
         answer = result.get("answer", "")
         if debug_search:
             answer += "\n\n--- SEARCH DEBUG ---\n"
-            answer += json.dumps(result.get("debug_search", {}), indent=2, ensure_ascii=False, default=str)
+            answer += json.dumps(
+                result.get("debug_search", {}), indent=2, ensure_ascii=False, default=str
+            )
         return {"success": True, "answer": answer}
     except Exception:
         # Fallback to subprocess on import failure
@@ -149,10 +165,8 @@ def cmd_lint(auto_heal: bool = False) -> dict:
 
     code, output = run_script("lint.py", args)
 
-    return {
-        "success": code == 0,
-        "output": output
-    }
+    return {"success": code == 0, "output": output}
+
 
 def cmd_consolidate(tiers: str = "working,episodic,semantic", decay_only: bool = False) -> dict:
     args = []
@@ -163,10 +177,7 @@ def cmd_consolidate(tiers: str = "working,episodic,semantic", decay_only: bool =
 
     code, output = run_script("consolidate.py", args)
 
-    return {
-        "success": code == 0,
-        "output": output
-    }
+    return {"success": code == 0, "output": output}
 
 
 def cmd_dream(foreground: bool = False) -> dict:
@@ -272,8 +283,7 @@ def cmd_init() -> dict:
     index_file = pages_dir / "index.md"
     if not index_file.exists():
         index_file.write_text(
-            '---\nokf_version: "0.1"\n---\n# Wiki Index\n\n'
-            "Welcome to your OKF knowledge bundle.\n",
+            '---\nokf_version: "0.1"\n---\n# Wiki Index\n\nWelcome to your OKF knowledge bundle.\n',
             encoding="utf-8",
         )
 
@@ -281,11 +291,13 @@ def cmd_init() -> dict:
     schema_dest = wiki_dir / "schema.md"
     if schema_src.exists() and not schema_dest.exists():
         import shutil
+
         shutil.copy2(schema_src, schema_dest)
 
     log_file = pages_dir / "log.md"
     if not log_file.exists():
         from datetime import datetime, timezone
+
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         log_file.write_text(
             f"# Wiki Log\n\n## {now}\n* **Initialization**: Wiki initialized.\n",
@@ -340,6 +352,8 @@ Examples:
   wiki config --init           Create default config file
   wiki config                  Show current configuration
   wiki compile paper.md        Compile document to wiki pages
+  wiki ocr --doctor            Verify MinerU interpreter, version, config, and models
+  wiki ocr paper.pdf --smoke-pages 3
     wiki query "What is X?"      Query wiki and get answer
     wiki search doctor           Diagnose retrieval indexes
   wiki lint --auto-heal        Health check with auto-repair
@@ -347,7 +361,7 @@ Examples:
 Environment:
   LLM_WIKI_DIR     Wiki directory path (default: .wiki)
   LLM_WIKI_CONFIG  Config file path (default: wiki_config.yaml)
-        """
+        """,
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -355,63 +369,146 @@ Environment:
 
     config_parser = subparsers.add_parser("config", help="Show or create configuration")
     config_parser.add_argument("--init", action="store_true", help="Create default config file")
-    config_parser.add_argument("--check", action="store_true", help="Validate configuration and exit")
+    config_parser.add_argument(
+        "--check", action="store_true", help="Validate configuration and exit"
+    )
 
     compile_parser = subparsers.add_parser("compile", help="Compile source file/directory to wiki")
-    compile_parser.add_argument("source", nargs="?", default=None,
-                                help="Source file/dir to compile, or '-' for stdin (omit if using --text)")
-    compile_parser.add_argument("--text", dest="text", default=None,
-                                help="Compile raw text directly (no source file needed)")
-    compile_parser.add_argument("--name", dest="source_name", default=None,
-                                help="Name for --text / stdin source (default: text-<timestamp>)")
-    compile_parser.add_argument("--type", dest="source_type", default="doc",
-                                choices=["auto", "doc", "article", "code", "conversation"],
-                                help='Source type; "auto" infers from file extension (Agent mode recommended)')
-    compile_parser.add_argument("--mode", choices=["agent", "llm"], default=None,
-                                help="Compile mode; defaults to configured mode or agent")
+    compile_parser.add_argument(
+        "source",
+        nargs="?",
+        default=None,
+        help="Source file/dir to compile, or '-' for stdin (omit if using --text)",
+    )
+    compile_parser.add_argument(
+        "--text",
+        dest="text",
+        default=None,
+        help="Compile raw text directly (no source file needed)",
+    )
+    compile_parser.add_argument(
+        "--name",
+        dest="source_name",
+        default=None,
+        help="Name for --text / stdin source (default: text-<timestamp>)",
+    )
+    compile_parser.add_argument(
+        "--type",
+        dest="source_type",
+        default="doc",
+        choices=["auto", "doc", "article", "code", "conversation"],
+        help='Source type; "auto" infers from file extension (Agent mode recommended)',
+    )
+    compile_parser.add_argument(
+        "--mode",
+        choices=["agent", "llm"],
+        default=None,
+        help="Compile mode; defaults to configured mode or agent",
+    )
     compile_parser.add_argument("--force", action="store_true", help="Force re-compile")
-    compile_parser.add_argument("--dry-run", action="store_true", help="Preview without writing files")
-    compile_parser.add_argument("--depth", type=int, default=None,
-                                help="Directory recursion depth: 0 = direct files only, omit = all subdirectories")
-    compile_parser.add_argument("-j", "--jobs", type=int, default=None,
-                                help="Max concurrent LLM calls (default: 1, cap: 4)")
+    compile_parser.add_argument(
+        "--dry-run", action="store_true", help="Preview without writing files"
+    )
+    compile_parser.add_argument(
+        "--depth",
+        type=int,
+        default=None,
+        help="Directory recursion depth: 0 = direct files only, omit = all subdirectories",
+    )
+    compile_parser.add_argument(
+        "-j", "--jobs", type=int, default=None, help="Max concurrent LLM calls (default: 1, cap: 4)"
+    )
+
+    ocr_parser = subparsers.add_parser(
+        "ocr",
+        help="OCR preflight and document parsing with a verifiable manifest",
+    )
+    ocr_parser.add_argument("file", nargs="?", help="PDF, Word, PowerPoint, or image file")
+    ocr_parser.add_argument("--backend", choices=["mineru", "deepseek", "logics", "paddle", "api"])
+    ocr_parser.add_argument("--batch", help="Process all supported files in a directory")
+    ocr_parser.add_argument("-o", "--output", help="Output directory")
+    ocr_pages = ocr_parser.add_mutually_exclusive_group()
+    ocr_pages.add_argument("-n", "--max-pages", type=int, help="Maximum pages to process")
+    ocr_pages.add_argument(
+        "--smoke-pages", type=int, metavar="N", help="Smoke-test only the first N pages"
+    )
+    ocr_parser.add_argument(
+        "--doctor", action="store_true", help="Check runtime, version, config, and models"
+    )
+    ocr_parser.add_argument("--manifest", help="Override the automatic manifest path")
+    ocr_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
 
     query_parser = subparsers.add_parser("query", help="Query wiki")
     query_parser.add_argument("question", help="Question to answer")
     query_parser.add_argument("--file-back", action="store_true", help="File answer to wiki")
-    query_parser.add_argument("--format", choices=["markdown","table","timeline","slides","json","graph"],
-                               default="markdown", help="Output format")
-    query_parser.add_argument("--mode", choices=["agent", "llm"], default=None,
-                               help="Synthesis mode: agent (default) or llm (configured API)")
-    query_parser.add_argument("--no-synthesis", action="store_true",
-                               help="Skip synthesis — return raw search results (fast)")
-    query_parser.add_argument("--debug-search", action="store_true",
-                               help="Print search trace for retrieval debugging")
+    query_parser.add_argument(
+        "--format",
+        choices=["markdown", "table", "timeline", "slides", "json", "graph"],
+        default="markdown",
+        help="Output format",
+    )
+    query_parser.add_argument(
+        "--mode",
+        choices=["agent", "llm"],
+        default=None,
+        help="Synthesis mode: agent (default) or llm (configured API)",
+    )
+    query_parser.add_argument(
+        "--no-synthesis",
+        action="store_true",
+        help="Skip synthesis — return raw search results (fast)",
+    )
+    query_parser.add_argument(
+        "--debug-search", action="store_true", help="Print search trace for retrieval debugging"
+    )
 
-    dream_parser = subparsers.add_parser("dream", help="Run query-driven maintenance in the background")
-    dream_parser.add_argument("--foreground", action="store_true", help="Run in the current process")
+    dream_parser = subparsers.add_parser(
+        "dream", help="Run query-driven maintenance in the background"
+    )
+    dream_parser.add_argument(
+        "--foreground", action="store_true", help="Run in the current process"
+    )
 
     # ── Doctor ────────────────────────────────────────────────────────
-    doctor_parser = subparsers.add_parser("doctor", help="Diagnose and repair wiki issues from user feedback")
-    doctor_parser.add_argument("feedback", nargs="?", default="",
-                               help="Natural language description of the issue")
-    doctor_parser.add_argument("--target", dest="target_page", default=None,
-                               help="Target page ID to check/fix")
-    doctor_parser.add_argument("--issue", dest="issue_category", default=None,
-                               choices=["missing_info", "incorrect_info", "uncompiled",
-                                         "ocr_missed", "search_quality", "contradiction",
-                                         "outdated"],
-                               help="Explicit issue category")
-    doctor_parser.add_argument("--recompile", dest="recompile_path", default=None,
-                               help="Recompile a specific source file")
-    doctor_parser.add_argument("--re-ocr", dest="re_ocr_path", default=None,
-                               help="Re-OCR a specific document")
-    doctor_parser.add_argument("--list", dest="list_issues", action="store_true",
-                               help="List outstanding issues")
-    doctor_parser.add_argument("--check", dest="check_page", default=None,
-                               help="Run diagnostic check on a page")
-    doctor_parser.add_argument("--resolve", dest="resolve_id", default=None,
-                               help="Mark an issue as resolved")
+    doctor_parser = subparsers.add_parser(
+        "doctor", help="Diagnose and repair wiki issues from user feedback"
+    )
+    doctor_parser.add_argument(
+        "feedback", nargs="?", default="", help="Natural language description of the issue"
+    )
+    doctor_parser.add_argument(
+        "--target", dest="target_page", default=None, help="Target page ID to check/fix"
+    )
+    doctor_parser.add_argument(
+        "--issue",
+        dest="issue_category",
+        default=None,
+        choices=[
+            "missing_info",
+            "incorrect_info",
+            "uncompiled",
+            "ocr_missed",
+            "search_quality",
+            "contradiction",
+            "outdated",
+        ],
+        help="Explicit issue category",
+    )
+    doctor_parser.add_argument(
+        "--recompile", dest="recompile_path", default=None, help="Recompile a specific source file"
+    )
+    doctor_parser.add_argument(
+        "--re-ocr", dest="re_ocr_path", default=None, help="Re-OCR a specific document"
+    )
+    doctor_parser.add_argument(
+        "--list", dest="list_issues", action="store_true", help="List outstanding issues"
+    )
+    doctor_parser.add_argument(
+        "--check", dest="check_page", default=None, help="Run diagnostic check on a page"
+    )
+    doctor_parser.add_argument(
+        "--resolve", dest="resolve_id", default=None, help="Mark an issue as resolved"
+    )
 
     search_parser = subparsers.add_parser("search", help="Search diagnostics and evaluation")
     search_sub = search_parser.add_subparsers(dest="search_cmd", required=True)
@@ -422,9 +519,15 @@ Environment:
 
     benchmark_parser = subparsers.add_parser("benchmark", help="Run RAG benchmark")
     benchmark_parser.add_argument("file", help="Benchmark eval jsonl file")
-    benchmark_parser.add_argument("--method", choices=["retrieval", "ragas-lite", "both"],
-                                  default="both", help="Benchmark method")
-    benchmark_parser.add_argument("-k", "--top-k", type=int, default=5, help="Top-k retrieval cutoff")
+    benchmark_parser.add_argument(
+        "--method",
+        choices=["retrieval", "ragas-lite", "both"],
+        default="both",
+        help="Benchmark method",
+    )
+    benchmark_parser.add_argument(
+        "-k", "--top-k", type=int, default=5, help="Top-k retrieval cutoff"
+    )
     benchmark_parser.add_argument("-o", "--output", help="Write result JSON")
 
     lint_parser = subparsers.add_parser("lint", help="Health check wiki")
@@ -468,9 +571,11 @@ Environment:
 
     create_lp = ledger_sub.add_parser("create", help="Create a new table")
     create_lp.add_argument("display_name", help="Display name for the table")
-    create_lp.add_argument("--fields", required=True, help='Field definitions JSON')
+    create_lp.add_argument("--fields", required=True, help="Field definitions JSON")
     create_lp.add_argument("--unique", default=None, help="Unique key field(s)")
-    create_lp.add_argument("--auto-increment", action="store_true", help="Add auto-increment _id field")
+    create_lp.add_argument(
+        "--auto-increment", action="store_true", help="Add auto-increment _id field"
+    )
     create_lp.add_argument("--table-name", default=None, help="Override safe table name")
     create_lp.add_argument("--description", default="", help="Table description")
 
@@ -516,7 +621,9 @@ Environment:
     ask_lp.add_argument("--page", type=int, default=1, help="Page number")
     ask_lp.add_argument("--page-size", type=int, default=20, help="Rows per page")
 
-    ctx_lp = ledger_sub.add_parser("context", help="Prepare schema + function context for SQL generation")
+    ctx_lp = ledger_sub.add_parser(
+        "context", help="Prepare schema + function context for SQL generation"
+    )
 
     # Ledger import/export
     li = ledger_sub.add_parser("import", help="Import CSV/Excel file as ledger table")
@@ -530,18 +637,26 @@ Environment:
     ctx_lp.add_argument("table", help="Table name")
     ctx_lp.add_argument("question", help="Natural language question")
 
-    cons_parser = subparsers.add_parser("consolidate", help="Consolidate memory tiers and apply decay")
-    cons_parser.add_argument("--tiers", default="working,episodic,semantic", help="Tiers to consolidate")
+    cons_parser = subparsers.add_parser(
+        "consolidate", help="Consolidate memory tiers and apply decay"
+    )
+    cons_parser.add_argument(
+        "--tiers", default="working,episodic,semantic", help="Tiers to consolidate"
+    )
     cons_parser.add_argument("--decay-only", action="store_true", help="Only apply retention decay")
 
-    table_parser = subparsers.add_parser("table", help="View and query Markdown tables extracted by compile")
+    table_parser = subparsers.add_parser(
+        "table", help="View and query Markdown tables extracted by compile"
+    )
     table_sub = table_parser.add_subparsers(dest="table_cmd", required=True)
     table_sub.add_parser("list", help="List extracted tables")
     table_show = table_sub.add_parser("show", help="Show an extracted table")
     table_show.add_argument("table")
     table_schema = table_sub.add_parser("schema", help="Show an extracted table schema")
     table_schema.add_argument("table")
-    table_ask = table_sub.add_parser("ask", help="Ask a natural-language question about an extracted table")
+    table_ask = table_sub.add_parser(
+        "ask", help="Ask a natural-language question about an extracted table"
+    )
     table_ask.add_argument("table")
     table_ask.add_argument("question")
     table_ask.add_argument("--page", type=int, default=1)
@@ -558,7 +673,7 @@ Environment:
         print(f"Wiki directory: {result['wiki_dir']}")
 
     elif args.command == "config":
-        result = cmd_config(init=args.init, check=getattr(args, 'check', False))
+        result = cmd_config(init=args.init, check=getattr(args, "check", False))
         if args.init:
             if result.get("success"):
                 print(f"Config file created: {result['created']}")
@@ -571,6 +686,7 @@ Environment:
     elif args.command == "compile":
         try:
             from dream import cancel_active_dream
+
             cancel_active_dream("compile started")
         except Exception:
             pass
@@ -579,30 +695,69 @@ Environment:
             source_type=args.source_type,
             force=args.force,
             depth=args.depth,
-            dry_run=getattr(args, 'dry_run', False),
-            jobs=getattr(args, 'jobs', None),
-            mode=getattr(args, 'mode', None),
-            text=getattr(args, 'text', None),
-            source_name=getattr(args, 'source_name', None),
+            dry_run=getattr(args, "dry_run", False),
+            jobs=getattr(args, "jobs", None),
+            mode=getattr(args, "mode", None),
+            text=getattr(args, "text", None),
+            source_name=getattr(args, "source_name", None),
         )
         if result.get("success"):
             print(result.get("message", "Done"))
         else:
             print(f"Error: {result.get('error', 'Unknown error')}")
 
+    elif args.command == "ocr":
+        try:
+            from ocr.cli import main as ocr_main
+        except ImportError as exc:
+            print(
+                f"OCR is not available: {exc}\nInstall OCR dependencies (see README) and retry.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        ocr_args: list[str] = []
+        if args.file:
+            ocr_args.append(args.file)
+        if args.backend:
+            ocr_args.extend(["--backend", args.backend])
+        if args.batch:
+            ocr_args.extend(["--batch", args.batch])
+        if args.output:
+            ocr_args.extend(["--output", args.output])
+        if args.max_pages is not None:
+            ocr_args.extend(["--max-pages", str(args.max_pages)])
+        if args.smoke_pages is not None:
+            ocr_args.extend(["--smoke-pages", str(args.smoke_pages)])
+        if args.doctor:
+            ocr_args.append("--doctor")
+        if args.manifest:
+            ocr_args.extend(["--manifest", args.manifest])
+        if args.json:
+            ocr_args.append("--json")
+        code = ocr_main(ocr_args)
+        if code:
+            sys.exit(code)
+
     elif args.command == "query":
         try:
             from dream import cancel_active_dream
+
             cancel_active_dream("query started")
         except Exception:
             pass
-        result = cmd_query(args.question, file_back=args.file_back, fmt=args.format,
-                           synthesis=not args.no_synthesis,
-                           debug_search=args.debug_search,
-                           mode=args.mode)
+        result = cmd_query(
+            args.question,
+            file_back=args.file_back,
+            fmt=args.format,
+            synthesis=not args.no_synthesis,
+            debug_search=args.debug_search,
+            mode=args.mode,
+        )
         if result.get("success"):
             try:
                 from dream import log_query
+
                 log_query(result, synthesis=not args.no_synthesis)
             except Exception:
                 pass
@@ -611,7 +766,11 @@ Environment:
             print(f"Error: {result.get('error', 'Unknown error')}")
 
     elif args.command == "search":
-        search_args = ["--doctor"] if args.search_cmd == "doctor" else ["--eval", args.file, "--limit", str(args.limit)]
+        search_args = (
+            ["--doctor"]
+            if args.search_cmd == "doctor"
+            else ["--eval", args.file, "--limit", str(args.limit)]
+        )
         code, output = run_script("search.py", search_args)
         print(output)
         if code != 0:
@@ -672,13 +831,13 @@ Environment:
 
     elif args.command == "bulk":
         bulk_args = [args.bulk_cmd]
-        if hasattr(args, 'dry_run') and args.dry_run:
+        if hasattr(args, "dry_run") and args.dry_run:
             bulk_args.append("--dry-run")
-        if hasattr(args, 'stale') and args.stale:
+        if hasattr(args, "stale") and args.stale:
             bulk_args.append("--stale")
-        if hasattr(args, 'confidence') and args.confidence is not None:
+        if hasattr(args, "confidence") and args.confidence is not None:
             bulk_args.extend(["--confidence", str(args.confidence)])
-        if hasattr(args, 'type') and args.type:
+        if hasattr(args, "type") and args.type:
             bulk_args.extend(["--type", args.type])
         code, output = run_script("bulk.py", bulk_args)
         print(output)
@@ -768,14 +927,16 @@ Environment:
         if args.table_cmd in {"show", "schema"}:
             table_args.append(args.table)
         elif args.table_cmd == "ask":
-            table_args.extend([
-                args.table,
-                args.question,
-                "--page",
-                str(args.page),
-                "--page-size",
-                str(args.page_size),
-            ])
+            table_args.extend(
+                [
+                    args.table,
+                    args.question,
+                    "--page",
+                    str(args.page),
+                    "--page-size",
+                    str(args.page_size),
+                ]
+            )
         code, output = run_script("table.py", table_args)
         print(output)
         if code != 0:

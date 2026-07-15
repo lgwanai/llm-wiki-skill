@@ -34,7 +34,9 @@ class TestFilterSensitive:
         assert "bob@company.co.uk" not in filtered
 
     def test_redacts_private_keys(self):
-        content = "-----BEGIN RSA PRIVATE KEY-----\nMIICXAIBAAKBgQC...\n-----END RSA PRIVATE KEY-----"
+        content = (
+            "-----BEGIN RSA PRIVATE KEY-----\nMIICXAIBAAKBgQC...\n-----END RSA PRIVATE KEY-----"
+        )
         filtered = ingest.strip_sensitive(content)
         assert "PRIVATE KEY" not in filtered
 
@@ -56,6 +58,61 @@ class TestIngestSource:
             "课程大纲：学员完成模块与考核。研究方法包括实验、公式和变量定义。"
         )
         assert {item["id"] for item in mixed} >= {"curriculum", "academic"}
+
+    @pytest.mark.parametrize(
+        ("source_name", "content"),
+        [
+            (
+                "七年级数学课本.pdf",
+                "本章知识点包括一元一次方程的定义、例题、习题和易错点。",
+            ),
+            (
+                "2026期末试卷.pdf",
+                "选择题第1题，题干与选项如下。答案A，解析考查函数的知识点。",
+            ),
+            (
+                "physics-textbook.pdf",
+                "Each chapter contains worked examples, prerequisite knowledge points, "
+                "exercises, and common mistakes.",
+            ),
+        ],
+    )
+    def test_study_material_expert_routes_textbooks_and_exams(self, source_name, content):
+        matches = ingest.match_domain_experts(content, source_name)
+
+        assert "study_material" in {item["id"] for item in matches}
+
+    def test_study_material_strong_filename_signal_routes_without_preview_text(self):
+        matches = ingest.match_domain_experts("", "七年级生物课本.pdf")
+
+        assert matches[0]["id"] == "study_material"
+
+    def test_study_material_guidance_builds_question_knowledge_mapping(self):
+        guidance = ingest.build_domain_expert_guidance(
+            "试卷包含题号、题干、选项、答案、解析、考点和易错点。",
+            "九年级数学期末试卷.pdf",
+        )
+
+        assert "知识学习与课本试卷解析专家" in guidance
+        assert "题目页链接知识点" in guidance
+        assert "知识点页反向汇总例题/真题" in guidance
+        assert "来源追溯" in guidance
+        assert "一个或多个页码" in guidance
+        assert "禁止机械地一页一知识点" in guidance
+        assert "待核验" in guidance
+        assert "对应原图" in guidance
+        assert "不得伪造官方解析" in guidance
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "- 先修知识：[一元一次方程](/concepts/linear-equation.md)",
+            "- 前置知识：[整式运算](/concepts/algebra.md)",
+            "- prerequisite: [fractions](/concepts/fractions.md)",
+        ],
+    )
+    def test_study_prerequisite_links_become_dependency_edges(self, line):
+        assert ingest.extract_edge_type(line) == "depends_on"
 
     @pytest.mark.parametrize(
         ("content", "expected"),
