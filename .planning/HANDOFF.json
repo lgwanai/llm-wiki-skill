@@ -1,0 +1,54 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-07-15T13:58:40Z",
+  "phase": null,
+  "phase_name": null,
+  "phase_dir": null,
+  "plan": null,
+  "task": null,
+  "total_tasks": null,
+  "status": "paused",
+  "completed_tasks": [
+    {"id": 1, "name": "Phase 1 code review (/code-review)", "status": "done", "commit": null},
+    {"id": 2, "name": "Fix #1 persisted image links absolute->relative", "status": "done", "commit": null},
+    {"id": 3, "name": "Fix #2 image links with titles never resolve", "status": "done", "commit": null},
+    {"id": 4, "name": "Fix #3 MinerU page marker boundary placement", "status": "done", "commit": null},
+    {"id": 5, "name": "Fix #4 _extract_cited_pages over-matches non-citations", "status": "done", "commit": null},
+    {"id": 6, "name": "Fix #5 EPUB extraction zip-bomb total-bytes cap", "status": "done", "commit": null},
+    {"id": 7, "name": "Fix #6 _version_tuple drops pre-release suffix (Python side only)", "status": "done", "commit": null},
+    {"id": 8, "name": "Fix #7 test indexes images[0] without non-empty guard", "status": "done", "commit": null},
+    {"id": 9, "name": "Fix #8 add missing type annotations", "status": "done", "commit": null},
+    {"id": 10, "name": "Phase 2: external ocr review (OpenCodeReview CLI, DeepSeek deepseek-v4-pro) - 16 files, 19 comments, exit 0", "status": "done", "commit": null}
+  ],
+  "remaining_tasks": [
+    {"id": 11, "name": "Fix ocr-review item A: install.ps1:179 pre-release version ValueError (PowerShell mirror of #6)", "status": "not_started", "priority": "high"},
+    {"id": 12, "name": "Fix ocr-review item B: ocr/cli.py:306 expected_pages stays None when source_pages unknown but max_pages set -> misleading status:complete / coverage_complete:null", "status": "not_started", "priority": "high"},
+    {"id": 13, "name": "Fix ocr-review item C: ocr/cli.py:437 batch --output collides (MinerU overwrite across files)", "status": "not_started", "priority": "high"},
+    {"id": 14, "name": "Fix ocr-review item D: compile_v2.py:764 _readonly_working_copy finally masks original exception with integrity RuntimeError (raised 2x)", "status": "not_started", "priority": "medium"},
+    {"id": 15, "name": "Fix ocr-review items E-G (wiki.py import guard, _load_backend install guidance, _ensure_mineru_config setdefault)", "status": "not_started", "priority": "low"},
+    {"id": 16, "name": "Decide ocr-review design items (_has_meaningful_ocr_text 40-char threshold x2; _merge_cross_chunk_page unbounded LLM calls x2; 来源图片 image cap) - likely leave as-is or document", "status": "not_started", "priority": "low"},
+    {"id": 17, "name": "Commit the 8 completed fixes (uncommitted) + any new fixes", "status": "not_started", "priority": "high"}
+  ],
+  "blockers": [
+    {"description": "Context window nearly exhausted (~25% remaining when pausing). Do not attempt all 19 ocr-review items in one resumed session - prioritize remaining tasks A-D.", "type": "technical", "workaround": "Fix A-D first, commit, then optionally continue E-G in a fresh session."}
+  ],
+  "human_actions_pending": [],
+  "decisions": [
+    {"decision": "Use os.path.relpath relative links from page_anchor=PAGES_DIR/concepts for persisted images", "rationale": "Pages always live one dir below pages/ (concepts/ or entities/); ../assets/<key>/<name> is portable and idempotent through _attach_source_media", "phase": null},
+    {"decision": "Reject pre-release MinerU versions (rc/dev/a/b) via new _is_prerelease in ocr/cli.py", "rationale": "README claims >=3.4.4,<4 is enforced before a long parse; 3.4.4rc1 was passing the gate", "phase": null},
+    {"decision": "Tighten _extract_cited_pages patterns to require provenance vocabulary + word boundaries", "rationale": "bare 'Page N' matched HTTP 404, Python 3.12, v2.0.4, Figure 2.1 -> bogus provenance", "phase": null},
+    {"decision": "Did NOT touch the markdown/okf files (README/SKILL) in the ocr-review path - those are excluded by ocr tool and not code", "rationale": "scope discipline", "phase": null}
+  ],
+  "uncommitted_files": [
+    "scripts/compile_v2.py (fixes 1,2,3,4,8 + make_relative symlink fix)",
+    "scripts/query.py (fix 2: _strip_image_title + extract_page_images)",
+    "scripts/epub.py (fix 5: extracted_total cap)",
+    "ocr/cli.py (fix 6: _version_tuple + _is_prerelease + gate)",
+    "tests/test_compile_sources.py (updated 2 tests + 1 new regression test)",
+    "tests/test_query.py (fix 7: non-empty guards)",
+    "tests/test_ingest.py (pre-existing, not touched by me - part of larger in-flight diff)",
+    "scripts/wiki.py, ocr/_mineru_ocr.py, ocr/__init__.py, ocr/mineru.json, install.ps1, pyproject.toml, requirements.txt, README.md, SKILL.md, scripts/SCRIPT_LIST.md, scripts/epub.py, scripts/ocr.py, tests/test_mineru_ocr.py (all pre-existing in-flight, NOT all mine)"
+  ],
+  "next_action": "Resume by fixing ocr-review item A (install.ps1:179) - it is the PowerShell mirror of already-completed fix #6. Change v.split('.')[:3] int() to a regex extraction of the numeric triplet so 3.4.4rc1 does not raise ValueError. Then proceed to B, C, D. Full review output is at /tmp/ocr_review.txt (328 lines).",
+  "context_notes": "This session had two phases: (1) my own /code-review found 8 issues, all fixed and tested (257 tests pass, ruff clean). (2) external `ocr review` (OpenCodeReview CLI via system shell `ocr` command) independently reviewed the whole uncommitted diff and returned 19 comments - 4 real bugs (A-D) I had missed, plus robustness/design/test-quality items. No conflicts between the two reviews; ocr-review supplemented mine. IMPORTANT: install.ps1 pre-release bug (item A) is the same class as my #6 but on the PowerShell side - I only fixed Python. The git working tree contains a large pre-existing in-flight diff (the whole study-material/EPUB/OCR feature) that is NOT solely my work - only the 6 files I edited + tests are mine."
+}
