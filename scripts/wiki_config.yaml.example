@@ -63,14 +63,17 @@ query:
 # OpenAI-compatible vision endpoint or a provider preset.
 ocr:
   mode: local              # local | api
-  backend: mineru          # mineru | deepseek | logics | paddle
+  backend: ovis            # ovis | mineru | deepseek | logics | paddle
 
   # Backend-specific local options. Change only when needed.
   options:
-    models_path: models/mineru/models
-    lang: ch
-    formula: true
-    table: true
+    project_path: /Users/wuliang/workspace/OvisOCR2
+    python_path: /Users/wuliang/workspace/OvisOCR2/.venv/bin/python
+    model_path: /Users/wuliang/workspace/OvisOCR2/models/OvisOCR2-MLX-4bit
+    dpi: 200
+    max_tokens: 8192
+    crop_padding_x: 0
+    crop_padding_y: 0
 
   # API OCR example:
   # mode: api
@@ -79,14 +82,14 @@ ocr:
   # api_model: deepseek-ai/DeepSeek-OCR
   # api_url: https://api.siliconflow.cn/v1/chat/completions
   # api_prompt: "<image>\n<|grounding|>OCR this image."
-  pdf_dpi: 150
+  pdf_dpi: 200
 
 # Optional image understanding for `wiki compile <image-or-directory>`.
 # When enabled, images are first analyzed by a VL/omni model; OCR can then
 # add dense text extraction for screenshots or document images.
 #
-# NOTE: This Python-side vision API is only used in `--mode llm`. The default
-# agent mode prefers the `vision_skill` below (an Agent-side Claude Code skill).
+# NOTE: This Python-side vision API is only used in `--mode llm`. Default agent
+# mode runs the configured OCR backend first.
 image_analysis:
   enabled: false
   api_provider: ""         # siliconflow | openai | deepseek | paddleocr-vl
@@ -96,12 +99,10 @@ image_analysis:
   ocr_fallback: true
   ocr_min_chars: 800
 
-# vision-skill is the declared dependency for image-source compilation in the
-# default agent mode. Precedence: vision-skill → OCR → Agent's own capability.
-# Set scripts_path to the vision-skill project's scripts dir so the compile
-# task can emit a concrete `vision_cli.py recognize ...` command for the Agent.
+# vision-skill is only the fallback after configured OCR fails or returns
+# insufficient document text. It must not replace successful OvisOCR2 output.
 vision_skill:
-  enabled: true                                # set false to skip vision-skill and use OCR first
+  enabled: true                                # fallback enabled; OCR still always runs first
   scripts_path: ""                             # dir containing vision_cli.py; empty = invoke skill by name only
   recognize_format: markdown_note              # vision_cli --format preset (markdown_note | ocr | analysis | ...)
 

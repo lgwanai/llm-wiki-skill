@@ -22,7 +22,6 @@ from __future__ import annotations
 import logging
 import os
 import re
-import sys
 from pathlib import Path
 from typing import Optional
 
@@ -66,9 +65,7 @@ class DeepSeekOCR2:
     @classmethod
     def from_config(cls, path: Optional[Path] = None) -> "DeepSeekOCR2":
         """Create instance from unified OCR config."""
-        _scripts_dir = Path(__file__).resolve().parent.parent / "scripts"
-        sys.path.insert(0, str(_scripts_dir))
-        from config import get_ocr_config
+        from scripts.config import get_ocr_config
 
         deepseek_config = get_ocr_config().get("options", {})
         

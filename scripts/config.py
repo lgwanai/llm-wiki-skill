@@ -42,13 +42,13 @@ DEFAULT_CONFIG = {
     },
     "ocr": {
         "mode": "local",
-        "backend": "mineru",
+        "backend": "ovis",
         "api_provider": "",
         "api_url": "",
         "api_key": "",
         "api_model": "",
         "api_prompt": "Convert the document to clean markdown format.",
-        "pdf_dpi": 150,
+        "pdf_dpi": 200,
         "options": {},
     },
     "image_analysis": {
@@ -163,7 +163,7 @@ def get_project_root() -> Path:
 def _expand_env_vars(value: Any) -> Any:
     """Recursively expand environment variables in config values."""
     if isinstance(value, str):
-        pattern = r'\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*)'
+        pattern = r"\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*)"
 
         def replace_var(match):
             var_name = match.group(1) or match.group(2)
@@ -227,9 +227,10 @@ def _normalize_config(config: dict) -> dict:
     ocr = normalized.get("ocr", {}).copy()
     if "backend" not in ocr and "ocr_mode" in normalized:
         ocr["backend"] = normalized["ocr_mode"]
-    backend = ocr.get("backend", "mineru")
+    backend = ocr.get("backend", "ovis")
     options = ocr.get("options", {}) or {}
     legacy_sections = {
+        "ovis": "ovisocr",
         "mineru": "mineru",
         "deepseek": "deepseek_ocr",
         "logics": "logics_parsing",
@@ -357,13 +358,16 @@ def get_api_url() -> str:
 def get_query_config() -> dict:
     """Get query configuration."""
     config = get_config()
-    return config.get("query", {
-        "llm_synthesis": True,
-        "default_format": "markdown",
-        "max_results": 5,
-        "search_streams": "metadata,bm25,graph,ledger",
-        "llm_query_expansion": False,
-    })
+    return config.get(
+        "query",
+        {
+            "llm_synthesis": True,
+            "default_format": "markdown",
+            "max_results": 5,
+            "search_streams": "metadata,bm25,graph,ledger",
+            "llm_query_expansion": False,
+        },
+    )
 
 
 def get_embeddings_config() -> dict:
@@ -383,7 +387,7 @@ def get_ocr_config() -> dict:
 
     return {
         "mode": ocr.get("mode", "local"),
-        "backend": ocr.get("backend", "mineru"),
+        "backend": ocr.get("backend", "ovis"),
         "api_provider": ocr.get("api_provider", ""),
         "api_url": ocr.get("api_url", ""),
         "api_key": ocr.get("api_key", ""),
@@ -392,7 +396,7 @@ def get_ocr_config() -> dict:
             "api_prompt",
             "Convert the document to clean markdown format.",
         ),
-        "pdf_dpi": ocr.get("pdf_dpi", 150),
+        "pdf_dpi": ocr.get("pdf_dpi", 200),
         "options": ocr.get("options", {}) or {},
     }
 
@@ -415,13 +419,7 @@ def get_image_analysis_config() -> dict:
 
 
 def get_vision_skill_config() -> dict:
-    """Get the vision-skill dependency configuration for image sources.
-
-    Image files prefer the ``vision-skill`` (an Agent-side Claude Code skill)
-    for recognition. OCR is the fallback; the Agent's own image-parsing
-    capability is the last resort. ``scripts_path`` points at the vision-skill
-    CLI (``vision_cli.py``) so the compile task can emit a concrete command.
-    """
+    """Get the vision-skill OCR-failure fallback configuration."""
     config = get_config()
     vs = config.get("vision_skill", {})
 
@@ -448,6 +446,7 @@ def create_default_config(dest: Path | None = None) -> Path:
     example_path = Path(__file__).parent / "wiki_config.yaml.example"
     if example_path.exists():
         import shutil
+
         shutil.copy2(example_path, dest)
         return dest
 
@@ -481,16 +480,20 @@ def validate_config(config: dict) -> list[str]:
         if provider not in ("ollama",):
             key = model.get("api_key", "")
             if not key:
-                issues.append(f"model.api_key: required for provider '{provider}' — "
-                              f"set api_key or DEEPSEEK_API_KEY env var")
+                issues.append(
+                    f"model.api_key: required for provider '{provider}' — "
+                    f"set api_key or DEEPSEEK_API_KEY env var"
+                )
             elif not isinstance(key, str):
                 issues.append("model.api_key: must be a string")
             elif key.startswith("${") and key.endswith("}"):
                 # Env-var reference — check it resolves
                 env_var = key[2:-1]
                 if env_var not in os.environ:
-                    issues.append(f"model.api_key: references ${{{env_var}}} but "
-                                  f"env var '{env_var}' is not set")
+                    issues.append(
+                        f"model.api_key: references ${{{env_var}}} but "
+                        f"env var '{env_var}' is not set"
+                    )
 
         if provider == "ollama":
             _v.check_type("model.num_ctx", model.get("num_ctx"), int, "model")
@@ -501,16 +504,16 @@ def validate_config(config: dict) -> list[str]:
     if isinstance(query, dict):
         _v.check_type("query.max_results", query.get("max_results"), int, "query")
         _v.check_positive("query.max_results", query.get("max_results"), "query")
-        _v.check_type(
-            "query.parallel_search", query.get("parallel_search", True), bool, "query"
-        )
+        _v.check_type("query.parallel_search", query.get("parallel_search", True), bool, "query")
         streams = query.get("search_streams", "")
         if isinstance(streams, str) and streams not in ("all", "*"):
             for s in streams.split(","):
                 s = s.strip()
                 if s and s not in _VALID_SEARCH_STREAMS:
-                    issues.append(f"query.search_streams: unknown stream '{s}' "
-                                  f"(valid: {', '.join(sorted(_VALID_SEARCH_STREAMS))})")
+                    issues.append(
+                        f"query.search_streams: unknown stream '{s}' "
+                        f"(valid: {', '.join(sorted(_VALID_SEARCH_STREAMS))})"
+                    )
 
     embeddings = config.get("embeddings", {})
     if isinstance(embeddings, dict):
@@ -521,9 +524,7 @@ def validate_config(config: dict) -> list[str]:
     reranker = config.get("reranker", {})
     if isinstance(reranker, dict):
         _v.check_type("reranker.enabled", reranker.get("enabled", False), bool, "reranker")
-        _v.check_enum(
-            "reranker.backend", reranker.get("backend"), ("flagembedding",), "reranker"
-        )
+        _v.check_enum("reranker.backend", reranker.get("backend"), ("flagembedding",), "reranker")
         _v.check_positive(
             "reranker.candidate_count", reranker.get("candidate_count", 20), "reranker"
         )
@@ -532,8 +533,12 @@ def validate_config(config: dict) -> list[str]:
     ocr = config.get("ocr", {})
     if isinstance(ocr, dict):
         _v.check_enum("ocr.mode", ocr.get("mode"), ("local", "api"), "ocr")
-        _v.check_enum("ocr.backend", ocr.get("backend"),
-                      ("mineru", "deepseek", "logics", "paddle", "api"), "ocr")
+        _v.check_enum(
+            "ocr.backend",
+            ocr.get("backend"),
+            ("ovis", "mineru", "deepseek", "logics", "paddle", "api"),
+            "ocr",
+        )
         if ocr.get("mode") == "api":
             _v.check_type("ocr.api_provider", ocr.get("api_provider"), str, "ocr")
             _v.check_type("ocr.api_model", ocr.get("api_model"), str, "ocr")
@@ -542,10 +547,8 @@ def validate_config(config: dict) -> list[str]:
     img = config.get("image_analysis", {})
     if isinstance(img, dict):
         if img.get("enabled"):
-            _v.check_type("image_analysis.api_model", img.get("api_model"), str,
-                          "image_analysis")
-            _v.check_type("image_analysis.api_key", img.get("api_key"), str,
-                          "image_analysis")
+            _v.check_type("image_analysis.api_model", img.get("api_model"), str, "image_analysis")
+            _v.check_type("image_analysis.api_key", img.get("api_key"), str, "image_analysis")
 
     # ── Compile ──
     compile_cfg = config.get("compile", {})
@@ -553,12 +556,23 @@ def validate_config(config: dict) -> list[str]:
         _v.check_enum("compile.mode", compile_cfg.get("mode"), ("agent", "llm"), "compile")
 
     # ── Unknown top-level keys ──
-    known_keys = {"wiki_dir", "model", "query", "ocr", "image_analysis",
-                  "reranker", "embeddings", "quality", "logging", "compile"}
+    known_keys = {
+        "wiki_dir",
+        "model",
+        "query",
+        "ocr",
+        "image_analysis",
+        "reranker",
+        "embeddings",
+        "quality",
+        "logging",
+        "compile",
+    }
     for key in config:
         if key not in known_keys:
-            issues.append(f"unknown top-level key '{key}' — valid keys: "
-                          f"{', '.join(sorted(known_keys))}")
+            issues.append(
+                f"unknown top-level key '{key}' — valid keys: " f"{', '.join(sorted(known_keys))}"
+            )
 
     return issues
 
@@ -566,8 +580,7 @@ def validate_config(config: dict) -> list[str]:
 # ── Schema validation helpers ─────────────────────────────────────────
 
 _VALID_PROVIDERS = ("deepseek", "openai", "ollama", "custom")
-_VALID_SEARCH_STREAMS = {"metadata", "bm25", "graph", "ledger", "chunk", "vector",
-                         "chunk_vector"}
+_VALID_SEARCH_STREAMS = {"metadata", "bm25", "graph", "ledger", "chunk", "vector", "chunk_vector"}
 
 
 class _SchemaValidator:
@@ -581,18 +594,14 @@ class _SchemaValidator:
         if value is None:
             return
         if not isinstance(value, expected):
-            exp_name = getattr(expected, '__name__', str(expected))
-            self._issues.append(
-                f"{path}: expected {exp_name}, got {type(value).__name__}"
-            )
+            exp_name = getattr(expected, "__name__", str(expected))
+            self._issues.append(f"{path}: expected {exp_name}, got {type(value).__name__}")
 
     def check_enum(self, path: str, value, valid: tuple, section: str = ""):
         if value is None:
             return
         if value not in valid:
-            self._issues.append(
-                f"{path}: '{value}' is invalid — must be one of {list(valid)}"
-            )
+            self._issues.append(f"{path}: '{value}' is invalid — must be one of {list(valid)}")
 
     def check_positive(self, path: str, value, section: str = ""):
         if value is None:
@@ -606,6 +615,7 @@ class _SchemaValidator:
 def print_config():
     """Print effective compact configuration (for debugging)."""
     import json
+
     config = get_config()
     compact = {
         "wiki_dir": config.get("wiki_dir", ".wiki"),

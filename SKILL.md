@@ -39,31 +39,30 @@ Schema (schema.md + wiki_config.yaml) — single source of truth for types & rul
 
 ## Dependencies
 
-### `vision-skill` (optional, recommended for image sources)
+### OvisOCR2 first; `vision-skill` is fallback only
 
-Image-source compilation (`python scripts/compile_v2.py diagram.png`) recognizes images with
+Image-source compilation (`python scripts/compile_v2.py exam.png`) recognizes images with
 this precedence:
 
-1. **vision-skill (preferred)** — the Agent invokes the `vision-skill` skill,
-   which provides vision recognition (OCR, object detection, image
-   description) via an OpenAI-compatible VL model. If `vision_skill.scripts_path`
-   is set in `wiki_config.yaml`, the compile task also emits a concrete Python
-   script command for the Agent:
+1. **Configured OCR (required first)** — OvisOCR2 is the default. Exam pages,
+   worksheets, textbook screenshots, scanned documents, and image-backed Markdown
+   pages must use OvisOCR2 before any visual skill. Successful OCR Markdown and its
+   figure crops are authoritative extraction evidence; do not invoke vision-skill
+   afterward.
+
+2. **vision-skill (OCR failure fallback only)** — use it only for an individual
+   image after OvisOCR2 is unavailable, exits with an error, or returns insufficient
+   document text. If `vision_skill.scripts_path` is set, the fallback command is:
 
    ```bash
    python <vision_skill.scripts_path>/vision_cli.py recognize \
      "<image>" --format markdown_note --wait
    ```
 
-   Set `vision_skill.scripts_path` to the directory containing `vision_cli.py`
-   from your vision-skill install. When left empty, the Agent invokes the skill
-   by name only.
+   Record the OCR failure before invoking this fallback. When `scripts_path` is
+   empty, invoke the skill by name only.
 
-2. **OCR fallback** — if the vision-skill is not available, the configured
-   `ocr` backend (mineru / paddle / deepseek / API) is used. OCR text is
-   pre-extracted and attached to the compile task.
-
-3. **Agent native capability** — if neither is available, the Agent reads the
+3. **Agent native capability** — if neither OCR nor vision fallback is available, the Agent reads the
    image directly with its own image-parsing capability.
 
 The Python-side `image_analysis` vision API is **not** used in agent mode — it
@@ -95,7 +94,7 @@ the compile standard. No configured model/API key is required.
 python scripts/compile_v2.py source.md
 python scripts/compile_v2.py docs/                 # recursively compile supported files
 python scripts/compile_v2.py docs/ --depth 1       # only direct files + one directory level
-python scripts/compile_v2.py diagram.png           # vision-skill → OCR → Agent native (see Dependencies)
+python scripts/compile_v2.py exam.png              # OvisOCR2 → vision fallback → Agent native
 python scripts/compile_v2.py handbook.pdf          # every page rendered; OCR/vision/Agent fallback
 python scripts/compile_v2.py handbook.docx         # Word pages rendered through PDF, with page provenance
 python scripts/compile_v2.py slides.pptx           # every slide rendered; never first-slide-only
@@ -104,13 +103,90 @@ python scripts/compile_v2.py source.md --force     # re-compile + detect contrad
 python scripts/compile_v2.py source.md --mode llm  # optional legacy path using configured model
 ```
 
+#### Mandatory completeness protocol
+
+Treat every supplied source as an all-or-incomplete job. Never report successful
+ingestion after sampling, previewing, partially OCRing, or compiling only the first
+model-context window.
+
+Agent mode creates an immutable run directory containing `task.md`,
+`todolist.json`, and, for large readable sources, ordered `chunks/part-NNNN.md`
+artifacts. Creating these files is only planning; it is **not completion**. The
+current Agent must continue immediately:
+
+1. Open `task.md` and `todolist.json`. Use the todo manifest as the authoritative
+   inventory; previews and displayed source lists may be abbreviated.
+2. Process tasks strictly in ascending `order`, one at a time. Mark each task
+   `in_progress` before reading it.
+3. Read the complete task artifact. Cover every heading, paragraph, list item,
+   table row/cell, footnote, formula, caption, image, page, and appendix. Compile
+   complete semantic knowledge blocks rather than arbitrary chunk summaries.
+   Image-backed Markdown captures are split by their `Page N` / `第 N 页`
+   headings. Each todo item carries concrete absolute `image_paths`; open every
+   listed image and treat the pixels as the source. Missing pre-extracted OCR text
+   is never a valid reason to fail, skip, deduplicate, or substitute another PDF.
+4. Mark a task `completed` only after recording every affected Concept ID as an
+   output. Reading or summarizing a chunk is not sufficient. For image-bearing
+   study materials, `complete` requires exact page/EPUB-section citations and
+   deterministically attaches the cited and adjacent source images to those pages;
+   missing citations or missing image files fail the task instead of degrading to text.
+5. If one task is too large for the current context, recursively run
+   `compile_v2.py` on that immutable task artifact, finish its child todo, then
+   resume the parent. Never silently truncate or skip forward.
+6. After all tasks have been attempted, reconcile the source inventory
+   (headings/pages/tables and checksums) against compiled pages. Add remediation
+   tasks for uncovered content.
+7. Run the final gate:
+
+   ```bash
+   python scripts/compile_todo.py verify "<run-dir>/todolist.json"
+   ```
+
+   Success requires `coverage_complete: true` and zero `pending`, `in_progress`,
+   `failed`, or `blocked` items. Do not update the final index/graph/audit state
+   or tell the user ingestion succeeded until this command passes. Preserve the
+   todo manifest on failure so work can resume without hiding omissions.
+
+Useful task-state commands:
+
+```bash
+python scripts/compile_todo.py show "<run-dir>/todolist.json"
+python scripts/compile_todo.py start "<run-dir>/todolist.json" chunk-0001
+python scripts/compile_todo.py complete "<run-dir>/todolist.json" chunk-0001 \
+  --output concepts/example
+python scripts/compile_todo.py fail "<run-dir>/todolist.json" chunk-0001 \
+  --error "reason"
+```
+
+Pages compiled before deterministic Agent media finalization can be repaired
+without regenerating their text. Preview first, then apply the citation-driven
+migration (it only uses page/EPUB locators already present in each page):
+
+```bash
+python scripts/backfill_source_media.py --wiki-dir <root>/.wiki \
+  --source <ocr-markdown> --material-id <material-id>
+python scripts/backfill_source_media.py --wiki-dir <root>/.wiki \
+  --source <ocr-markdown> --material-id <material-id> --apply
+```
+
+LLM mode follows the same fail-closed contract automatically: large sources are
+split into ordered persistent tasks, each task is retried up to three times, and
+pages are published only after every task passes the todo verification. Directory
+compilation is forced to run sequentially for deterministic coverage.
+
 **What happens:**
 - Source sanitized (API keys, tokens, passwords, emails stripped)
 - Directories are expanded recursively by default; `.wiki` and `.git` are skipped
+- Every source/chunk is entered into a persistent ordered todo manifest; no displayed
+  preview or file-list limit can remove an item from the authoritative inventory
+- Large readable sources are split below the model-context budget and processed in
+  order; failed chunks are retried and remain visibly incomplete instead of being skipped
+- Compilation has a final coverage gate: all todo items must record concrete output
+  Concept IDs and retain matching source checksums before the run can report success
 - PDF/DOC/DOCX/PPT/PPTX are treated as paginated documents:
   - Render every page/slide to images first
   - If OCR is installed/configured, OCR each page image in order
-  - If page rendering fails for a PDF, run the configured backend (MinerU by
+  - If page rendering fails for a PDF, run the configured backend (OvisOCR2 by
     default) against the complete PDF before trying MarkItDown
   - MarkItDown output from a scanned PDF is partial evidence only; short,
     header-only, or page-incomplete output must never be compiled as the source
@@ -119,8 +195,9 @@ python scripts/compile_v2.py source.md --mode llm  # optional legacy path using 
     and require the Agent to inspect them or ask the user
   - Never trust first-page-only extraction; every rendered page/slide must appear in the task output
   - Copy referenced/rendered images into `.wiki/pages/assets/` so the OKF bundle remains portable
-  - For MinerU Markdown, retain the sibling `*_content_list.json`; compile restores page
-    boundaries from its `page_idx` fields before creating knowledge pages
+  - For MinerU Markdown, retain the sibling `*_content_list.json` or
+    `*_content_list_v2.json`; compile restores page boundaries and source captions
+    before creating knowledge pages
 - EPUB follows its OPF spine order, extracts cover/chapter images into persistent assets,
   writes an auditable Markdown intermediate under `.wiki/source/epub_markdown/`, and
   keeps each image reference in the converted Markdown. Use `EPUB Section` and
@@ -408,14 +485,17 @@ compile:
 
 ocr:
   mode: local
-  backend: mineru
+  backend: ovis
   options:
-    models_path: models/mineru/models
-    lang: ch
-    formula: true
-    table: true
+    project_path: /Users/wuliang/workspace/OvisOCR2
+    python_path: /Users/wuliang/workspace/OvisOCR2/.venv/bin/python
+    model_path: /Users/wuliang/workspace/OvisOCR2/models/OvisOCR2-MLX-4bit
+    dpi: 200
+    max_tokens: 8192
+    crop_padding_x: 0
+    crop_padding_y: 0
 
-image_analysis:                    # --mode llm only; agent mode uses vision_skill below
+image_analysis:                    # --mode llm only; agent mode uses OCR first
   enabled: false                  # true to analyze image sources before OCR
   api_provider: openai            # siliconflow | openai | deepseek | paddleocr-vl
   api_url: ""                     # optional OpenAI-compatible API URL
@@ -423,7 +503,7 @@ image_analysis:                    # --mode llm only; agent mode uses vision_ski
   api_model: gpt-4o
   ocr_fallback: true              # append OCR text for dense screenshots/docs
 
-vision_skill:                     # agent-mode image sources: vision-skill → OCR → Agent
+vision_skill:                     # fallback only after configured OCR fails/is insufficient
   enabled: true
   scripts_path: ""                # dir containing vision_cli.py; empty = invoke skill by name only
   recognize_format: markdown_note              # vision_cli --format preset
@@ -445,7 +525,7 @@ quality:
 
 Pluggable backends, default via `ocr.backend` config.
 
-Use the unified command below. Do not inspect MinerU ad hoc, write a temporary OCR
+Use the unified command below. Do not inspect OvisOCR2 ad hoc, write a temporary OCR
 harness, or guess which Python environment is active. The preflight and manifest are
 the stable contracts for Agent use.
 
@@ -465,12 +545,12 @@ python scripts/ocr.py document.pdf --backend deepseek
 
 # PDF → Wiki full pipeline
 python scripts/ocr.py paper.pdf -o .wiki/source/paper/
-python scripts/compile_v2.py .wiki/source/paper/paper/pipeline/paper.md
+python scripts/compile_v2.py .wiki/source/paper/paper.md
 ```
 
-For MinerU, `--doctor` must report `ready: true` and version `>=3.4.4,<4` before
-parsing. If it fails, run the exact `repair_command` returned by the report in the
-reported Python interpreter. Never silently fall back to another interpreter.
+For OvisOCR2, `--doctor` must report `ready: true` before parsing. It verifies the
+standalone project, dedicated Python interpreter, MLX dependencies, and local model.
+If it fails, use the exact paths and `repair_command` returned by the report.
 
 For PDF, Word, and PowerPoint runs, read the automatically generated
 `<source>_ocr_manifest.json` rather than inferring success from process output. Treat
@@ -481,7 +561,8 @@ are the inputs to compile and source registration.
 
 | Backend | Engine | Strengths | GPU |
 |---------|--------|-----------|-----|
-| `mineru` ★ | MinerU 3.4.4 | Formula→LaTeX, table→HTML, multi-column, all formats | No (4GB RAM) |
+| `ovis` ★ | OvisOCR2 MLX 4-bit | Markdown, LaTeX math, validated model-grounded figure crops | Apple Silicon MLX |
+| `mineru` | MinerU 3.4.4 | Formula→LaTeX, table→HTML, multi-column, all formats | No (4GB RAM) |
 | `paddle` | PaddleOCR 3.5 | 109 languages, doc unwarping, orientation fix | No |
 | `deepseek` | DeepSeek-OCR | Grounding + image crop | GPU or API |
 
@@ -499,6 +580,8 @@ are the inputs to compile and source registration.
 │   ├── .bm25_index.json   # Disk-cached search index
 │   └── embeddings.json    # Vector embeddings
 ├── source/                # Raw source documents (immutable)
+├── agent_tasks/           # Agent task.md + persistent todolist + chunk artifacts
+├── compile_runs/          # LLM/directory ordered task manifests and chunk artifacts
 ├── memory/                # Consolidation tiers
 ├── audit.json             # Full operation log
 ├── log.md                 # Chronological log
@@ -511,6 +594,7 @@ are the inputs to compile and source registration.
 |--------|---------|
 | `wiki.py` | Unified script entry for init/status and grouped commands |
 | `compile_v2.py` | Source → wiki pages + graph |
+| `compile_todo.py` | Ordered compile task state + final completeness gate |
 | `query.py` | Search + synthesize + file-back (6 formats) |
 | `search.py` | Hybrid search: BM25 + graph + RRF |
 | `graph.py` | Knowledge graph: entities, edges, traversal |
@@ -519,6 +603,7 @@ are the inputs to compile and source registration.
 | `crystallize.py` | Session → digest |
 | `bulk.py` | Bulk operations |
 | `ocr/cli.py` | Stable OCR interface, preflight, smoke test, and manifest |
+| `_ovis_ocr.py` | OvisOCR2 standalone-project adapter |
 | `_mineru_ocr.py` | MinerU wrapper |
 | `_paddle_ocr.py` | PaddleOCR wrapper |
 | `_deepseek_ocr.py` | DeepSeek-OCR wrapper |

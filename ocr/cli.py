@@ -30,14 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-_project_root = Path(__file__).resolve().parent.parent
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
-_scripts_dir = _project_root / "scripts"
-if str(_scripts_dir) not in sys.path:
-    sys.path.insert(0, str(_scripts_dir))
-
-from config import get_ocr_config  # noqa: E402
+from scripts.config import get_ocr_config
 
 MIN_MINERU_VERSION = (3, 4, 4)
 MAX_MINERU_VERSION = (4, 0, 0)
@@ -64,7 +57,7 @@ def _get_default_backend() -> str:
     ocr_config = get_ocr_config()
     if ocr_config.get("mode", "local") == "api":
         return "api"
-    return str(ocr_config.get("backend", "mineru"))
+    return str(ocr_config.get("backend", "ovis"))
 
 
 def resolve_output_dir(
@@ -223,12 +216,34 @@ def _print_doctor(report: dict[str, Any]) -> None:
         print(f"Repair: {report['repair_command']}", file=sys.stderr)
 
 
+def _print_ovis_doctor(report: dict[str, Any]) -> None:
+    """Print the standalone OvisOCR2 readiness report."""
+    status = "READY" if report["ready"] else "NOT READY"
+    print(f"OvisOCR2: {status}")
+    print(f"Project: {report['project']}")
+    print(
+        f"Python: {report['python']['version'] or '-'} "
+        f"({report['python']['executable']})"
+    )
+    print(f"Model: {report['model']['path']}")
+    for warning in report["warnings"]:
+        print(f"Warning: {warning}")
+    for error in report["errors"]:
+        print(f"Error: {error}", file=sys.stderr)
+    if not report["ready"]:
+        print(f"Repair: {report['repair_command']}", file=sys.stderr)
+
+
 def _load_backend(name: str) -> Any:
     """Lazily instantiate one OCR backend."""
     if name == "api":
         from ocr._ocr_api import OCRApiBackend
 
         return OCRApiBackend.from_config()
+    if name == "ovis":
+        from ocr._ovis_ocr import OvisOCR2
+
+        return OvisOCR2.from_config()
     if name == "mineru":
         from ocr._mineru_ocr import MinerUOCR
 
@@ -322,6 +337,13 @@ def write_ocr_manifest(
         if path.is_file() and path.suffix.lower() in _SOURCE_LIKE_SUFFIXES - {".pdf"}
     )
     runtime: dict[str, Any] = {"python": sys.executable}
+    if backend == "ovis":
+        from ocr._ovis_ocr import inspect_ovis_runtime
+
+        doctor = inspect_ovis_runtime()
+        runtime["ovis_project"] = doctor["project"]
+        runtime["ovis_python"] = doctor["python"]["executable"]
+        runtime["ovis_model"] = doctor["model"]["path"]
     if backend == "mineru":
         doctor = inspect_mineru_runtime()
         runtime["mineru_version"] = doctor["mineru"]["version"]
@@ -364,7 +386,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("file", nargs="?", help="Image or PDF file path")
     parser.add_argument(
         "--backend",
-        choices=["mineru", "deepseek", "logics", "paddle", "api"],
+        choices=["ovis", "mineru", "deepseek", "logics", "paddle", "api"],
         default=default_backend,
         help=f"OCR backend (default: {default_backend})",
     )
@@ -400,7 +422,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.doctor:
-        if args.backend != "mineru":
+        if args.backend == "ovis":
+            from ocr._ovis_ocr import inspect_ovis_runtime
+
+            report = inspect_ovis_runtime()
+        elif args.backend != "mineru":
             report = {
                 "ready": True,
                 "backend": args.backend,
@@ -412,6 +438,8 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(report, ensure_ascii=False, indent=2))
         elif args.backend == "mineru":
             _print_doctor(report)
+        elif args.backend == "ovis":
+            _print_ovis_doctor(report)
         else:
             print(f"{args.backend} OCR: READY (loaded lazily when a file is processed)")
         return 0 if report["ready"] else 2
@@ -422,6 +450,16 @@ def main(argv: list[str] | None = None) -> int:
     max_pages = args.smoke_pages if args.smoke_pages is not None else args.max_pages
     try:
         _validate_positive_pages(max_pages)
+        if args.backend == "ovis":
+            from ocr._ovis_ocr import inspect_ovis_runtime
+
+            readiness = inspect_ovis_runtime()
+            if not readiness["ready"]:
+                if args.json:
+                    print(json.dumps(readiness, ensure_ascii=False, indent=2))
+                else:
+                    _print_ovis_doctor(readiness)
+                return 2
         if args.backend == "mineru":
             readiness = inspect_mineru_runtime()
             if not readiness["ready"]:

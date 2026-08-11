@@ -75,6 +75,14 @@ class TestIngestSource:
                 "Each chapter contains worked examples, prerequisite knowledge points, "
                 "exercises, and common mistakes.",
             ),
+            (
+                "初中语文学习资料.md",
+                "# 目录\n\n## 文言文\n\n包含原文、注解、通假字、特殊句式和逐句翻译。",
+            ),
+            (
+                "英语复习资料.md",
+                "# Unit 3\n\n## 单词表\n\n单词、音标、词性、释义、固定搭配和例句。",
+            ),
         ],
     )
     def test_study_material_expert_routes_textbooks_and_exams(self, source_name, content):
@@ -86,6 +94,13 @@ class TestIngestSource:
         matches = ingest.match_domain_experts("", "七年级生物课本.pdf")
 
         assert matches[0]["id"] == "study_material"
+
+    def test_study_material_filename_signal_survives_other_high_frequency_signals(self):
+        content = "数据 指标 统计 样本 数据源 " * 200
+
+        matches = ingest.match_domain_experts(content, "七年级地理电子课本.md")
+
+        assert "study_material" in {item["id"] for item in matches}
 
     def test_study_material_guidance_builds_question_knowledge_mapping(self):
         guidance = ingest.build_domain_expert_guidance(
@@ -102,6 +117,35 @@ class TestIngestSource:
         assert "待核验" in guidance
         assert "对应原图" in guidance
         assert "不得伪造官方解析" in guidance
+
+    def test_study_material_guidance_preserves_whole_blocks_and_search_tags(self):
+        guidance = ingest.build_domain_expert_guidance(
+            "# 目录\n\n第一章 力\n\n## 牛顿第二定律\nF=ma，例题与推导如下。",
+            "八年级物理学习资料.md",
+        )
+
+        assert "目录导航页" in guidance
+        assert "目录项→知识块" in guidance
+        assert "完整知识块" in guidance
+        assert "跨标题、跨相邻页" in guidance
+        assert "成立条件、符号/变量、单位、适用范围" in guidance
+        assert "不得只摘公式而丢掉条件" in guidance
+        assert "4–8 个去重 tags" in guidance
+        assert "内容类型/知识点" in guidance
+        assert "主题/一元一次方程" in guidance
+        assert "无区分度标签" in guidance
+
+    def test_study_material_guidance_handles_vocabulary_and_classical_chinese(self):
+        guidance = ingest.build_domain_expert_guidance(
+            "单词表包含音标、词性、释义和例句。文言文包含通假字和古今异义。",
+            "语文英语知识清单.md",
+        )
+
+        assert "不要默认一词一页" in guidance
+        assert "可整体复习和筛选的词表知识块" in guidance
+        assert "逐句对齐原文、断句、读音、注解和译文" in guidance
+        assert "通假字、古今异义、一词多义、词类活用、特殊句式" in guidance
+        assert "注解必须绑定具体原句" in guidance
 
     @pytest.mark.parametrize(
         "line",

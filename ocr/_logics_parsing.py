@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 from pathlib import Path
 from typing import Optional
 
@@ -63,9 +62,7 @@ class LogicsParsingOCR:
     @classmethod
     def from_config(cls, path: Optional[Path] = None) -> "LogicsParsingOCR":
         """Create instance from unified OCR config."""
-        _scripts_dir = Path(__file__).resolve().parent.parent / "scripts"
-        sys.path.insert(0, str(_scripts_dir))
-        from config import get_ocr_config
+        from scripts.config import get_ocr_config
 
         logics_config = get_ocr_config().get("options", {})
         

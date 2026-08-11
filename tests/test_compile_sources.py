@@ -15,6 +15,33 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import scripts.compile_v2 as compile_v2
 
 
+def test_compile_import_path_prefers_real_ocr_package() -> None:
+    project_root = Path(__file__).resolve().parent.parent
+    scripts_dir = project_root / "scripts"
+
+    assert sys.path.index(str(project_root)) < sys.path.index(str(scripts_dir))
+    import ocr
+
+    assert Path(ocr.__file__).resolve() == project_root / "ocr" / "__init__.py"
+
+
+def test_ovis_image_uses_managed_temporary_document_route(monkeypatch) -> None:
+    image = Path("/tmp/exam-page.png")
+    monkeypatch.setattr(compile_v2, "get_ocr_config", lambda: {"backend": "ovis"})
+    monkeypatch.setattr(
+        compile_v2,
+        "_ocr_pdf_with_config",
+        lambda path: f"managed OCR for {path.name}",
+    )
+    monkeypatch.setattr(
+        compile_v2,
+        "_create_ocr_backend",
+        lambda: pytest.fail("Ovis image OCR must not create a sibling work directory"),
+    )
+
+    assert compile_v2._ocr_image_with_config(image) == "managed OCR for exam-page.png"
+
+
 def _write_test_epub(path: Path) -> bytes:
     """Create a minimal spine-ordered EPUB with cover and chapter images."""
     cover = b"cover-image-bytes"
@@ -291,8 +318,7 @@ def test_cited_epub_section_image_is_attached_to_compiled_page(tmp_path):
 
 def test_epub_traceability_uses_section_when_fixed_pages_do_not_exist():
     source_content = (
-        "## EPUB Section 2: 机械运动\n\n"
-        "> EPUB locator: `OEBPS/Text/motion.xhtml`\n\n正文。\n"
+        "## EPUB Section 2: 机械运动\n\n" "> EPUB locator: `OEBPS/Text/motion.xhtml`\n\n正文。\n"
     )
     page_content = "# 速度\n\n内容。\n\n- EPUB Section 2\n"
 
@@ -336,9 +362,7 @@ def test_image_link_with_title_is_persisted(tmp_path, monkeypatch):
     image.parent.mkdir(parents=True)
     image.write_bytes(b"png-image")
     # A CommonMark title must not become part of the resolved filename.
-    source.write_text(
-        '![实验装置](images/diagram.png "Figure 1: Apparatus")\n', encoding="utf-8"
-    )
+    source.write_text('![实验装置](images/diagram.png "Figure 1: Apparatus")\n', encoding="utf-8")
     pages_dir = tmp_path / ".wiki" / "pages"
     monkeypatch.setattr(compile_v2, "PAGES_DIR", pages_dir)
 
@@ -361,11 +385,11 @@ def test_mineru_content_list_restores_page_boundaries(tmp_path):
     )
     source.with_name("physics_content_list.json").write_text(
         json.dumps(
-                [
-                    {"type": "text", "text": "第一章", "text_level": 1, "page_idx": 0},
-                    {"type": "text", "text": "第一页内容。", "page_idx": 0},
-                    {"type": "text", "text": "第二章", "text_level": 1, "page_idx": 1},
-                    {"type": "text", "text": "第二页内容。", "page_idx": 1},
+            [
+                {"type": "text", "text": "第一章", "text_level": 1, "page_idx": 0},
+                {"type": "text", "text": "第一页内容。", "page_idx": 0},
+                {"type": "text", "text": "第二章", "text_level": 1, "page_idx": 1},
+                {"type": "text", "text": "第二页内容。", "page_idx": 1},
             ],
             ensure_ascii=False,
         ),
@@ -377,6 +401,161 @@ def test_mineru_content_list_restores_page_boundaries(tmp_path):
     assert content.startswith("## Page 1")
     assert content.count("## Page ") == 2
     assert content.index("## Page 2") < content.index("# 第二章")
+
+
+def test_mineru_v2_content_list_restores_page_boundaries(tmp_path):
+    source = tmp_path / "geography.md"
+    image = tmp_path / "images" / "weather-map.png"
+    image.parent.mkdir()
+    image.write_bytes(b"map")
+    source.write_text(
+        "# 天气与气候\n\n天气符号。\n\n"
+        "![](images/weather-map.png)\n\n# 世界气候\n\n气候分布。\n",
+        encoding="utf-8",
+    )
+    source.with_name("geography_content_list_v2.json").write_text(
+        json.dumps(
+            [
+                [
+                    {
+                        "type": "title",
+                        "content": {
+                            "title_content": [{"type": "text", "content": "天气与气候"}],
+                            "level": 1,
+                        },
+                    },
+                    {
+                        "type": "image",
+                        "content": {
+                            "image_source": {"path": "images/weather-map.png"},
+                            "image_caption": [
+                                {"type": "text", "content": "某地天气图（教材原图）"}
+                            ],
+                        },
+                    },
+                ],
+                [
+                    {
+                        "type": "title",
+                        "content": {
+                            "title_content": [{"type": "text", "content": "世界气候"}],
+                            "level": 1,
+                        },
+                    }
+                ],
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    content, _ = compile_v2.read_source_content(source)
+
+    assert content.startswith("## Page 1")
+    assert content.count("## Page ") == 2
+    assert content.index("## Page 2") < content.index("# 世界气候")
+    assert "![某地天气图（教材原图）](images/weather-map.png)" in content
+
+
+def test_agent_compile_uses_original_mineru_v2_sidecar_and_persists_images(tmp_path, monkeypatch):
+    wiki = tmp_path / ".wiki"
+    pages = wiki / "pages"
+    monkeypatch.setattr(compile_v2, "WIKI_DIR", wiki)
+    monkeypatch.setattr(compile_v2, "PAGES_DIR", pages)
+    monkeypatch.setattr(compile_v2, "SCHEMA_PATH", wiki / "schema.md")
+
+    source = tmp_path / "geography.md"
+    image = tmp_path / "images" / "contour.png"
+    image.parent.mkdir()
+    image.write_bytes(b"contour")
+    source.write_text(
+        "# 等高线地形图\n\n等高线判读。\n\n![](images/contour.png)\n",
+        encoding="utf-8",
+    )
+    source.with_name("geography_content_list_v2.json").write_text(
+        json.dumps(
+            [
+                [
+                    {
+                        "type": "title",
+                        "content": {
+                            "title_content": [{"type": "text", "content": "等高线地形图"}],
+                            "level": 1,
+                        },
+                    },
+                    {
+                        "type": "image",
+                        "content": {"image_source": {"path": "images/contour.png"}},
+                    },
+                ]
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = compile_v2.create_agent_compile_task(str(source))
+    manifest = json.loads(Path(result["todo"]).read_text(encoding="utf-8"))
+    artifact = Path(manifest["items"][0]["artifact_path"]).read_text(encoding="utf-8")
+
+    assert "## Page 1" in artifact
+    assert "../assets/" in artifact
+    assert len(list((pages / "assets").rglob("contour.png"))) == 1
+
+
+def test_image_backed_markdown_creates_page_tasks_with_concrete_image_paths(tmp_path, monkeypatch):
+    wiki = tmp_path / ".wiki"
+    pages = wiki / "pages"
+    monkeypatch.setattr(compile_v2, "WIKI_DIR", wiki)
+    monkeypatch.setattr(compile_v2, "PAGES_DIR", pages)
+    monkeypatch.setattr(compile_v2, "SCHEMA_PATH", wiki / "schema.md")
+    monkeypatch.setattr(compile_v2, "_ocr_backend_available", lambda: True)
+    ocr_calls: list[str] = []
+
+    def fake_ovis_ocr(image_path: Path) -> str:
+        ocr_calls.append(str(image_path))
+        return (
+            "## Page 1\n\n"
+            "题目完整正文与条件均已识别。数学公式为 $x^2+y^2=1$，"
+            "不得遗漏题号、选项、图注和单位。"
+        )
+
+    monkeypatch.setattr(compile_v2, "_ocr_image_with_config", fake_ovis_ocr)
+
+    source = tmp_path / "content.md"
+    images = tmp_path / "images"
+    images.mkdir()
+    (images / "page-001.jpg").write_bytes(b"one")
+    (images / "page-002-a.jpg").write_bytes(b"two-a")
+    (images / "page-002-b.jpg").write_bytes(b"two-b")
+    source.write_text(
+        "# 图片试卷\n\n## 第 1 页\n\n![](images/page-001.jpg)\n\n"
+        "## 第 2 页\n\n![](images/page-002-a.jpg)\n![](images/page-002-b.jpg)\n",
+        encoding="utf-8",
+    )
+
+    result = compile_v2.create_agent_compile_task(str(source))
+    manifest = json.loads(Path(result["todo"]).read_text(encoding="utf-8"))
+    task = Path(result["agent_task"]).read_text(encoding="utf-8")
+
+    assert len(manifest["items"]) == 2
+    assert [item["image_count"] for item in manifest["items"]] == [1, 2]
+    assert all(item["requires_image_inspection"] for item in manifest["items"])
+    assert all(Path(path).is_file() for item in manifest["items"] for path in item["image_paths"])
+    assert len(ocr_calls) == 3
+    assert all(item["ocr_backend"] == "ovis" for item in manifest["items"])
+    assert all(item["ocr_status"] == "success" for item in manifest["items"])
+    assert all(item["vision_fallback_allowed"] is False for item in manifest["items"])
+    assert "`OvisOCR2` has already processed every source image" in task
+    assert "vision_fallback_allowed=false" in task
+    assert "vision_cli.py" not in task
+    assert "Fallback precedence" not in task
+    for item in manifest["items"]:
+        artifact = Path(item["artifact_path"]).read_text(encoding="utf-8")
+        assert "OvisOCR2 OCR Markdown (primary)" in artifact
+        assert "$x^2+y^2=1$" in artifact
+        assert "## Page 1" not in artifact
+        assert "#### OvisOCR2 Page 1" in artifact
 
 
 def test_cited_source_page_image_is_attached_to_compiled_page(tmp_path):
@@ -393,8 +572,7 @@ def test_cited_source_page_image_is_attached_to_compiled_page(tmp_path):
         for page_number, image in zip((11, 12, 13), images)
     )
     page_content = (
-        "# 密度\n\n## 来源追溯\n\n"
-        "- 原始资料：`八年级物理课本.pdf`\n- 页码：第 12 页\n"
+        "# 密度\n\n## 来源追溯\n\n" "- 原始资料：`八年级物理课本.pdf`\n- 页码：第 12 页\n"
     )
 
     rendered = compile_v2._attach_source_media(page_content, source_content, page_path)
@@ -404,6 +582,23 @@ def test_cited_source_page_image_is_attached_to_compiled_page(tmp_path):
     assert "../assets/book/page-011.png" in rendered
     assert "../assets/book/page-013.png" in rendered
     assert "相邻页上下文" in rendered
+
+
+def test_material_id_digits_are_not_mistaken_for_cited_pages():
+    content = "## 来源追溯\n\n" "- 主要页码：`mat-中图版-七年级上册-2024秋版--e032993b#p89-98`\n"
+
+    assert compile_v2._extract_cited_pages(content) == list(range(89, 99))
+
+
+def test_attached_image_page_labels_do_not_expand_cited_page_range():
+    content = (
+        "## 来源追溯\n\n- 页码：mat-geo#p89-98\n\n"
+        "## 来源图片\n\n"
+        "![原始资料第 88 页（相邻页上下文）：天气符号](../assets/weather.png)\n"
+        "![原始资料第 99 页（相邻页上下文）：气候图](../assets/climate.png)\n"
+    )
+
+    assert compile_v2._extract_cited_pages(content) == list(range(89, 99))
 
 
 def test_study_page_keeps_knowledge_when_exact_page_is_unknown():
@@ -462,8 +657,7 @@ def test_same_knowledge_point_across_chunks_is_merged_without_losing_sources(mon
         "facts": 1,
         "relationships": 0,
         "_content": (
-            "---\ntype: concept\ntitle: 密度\n---\n# 密度\n\n"
-            "## 来源追溯\n\n- 页码：第 10 页\n"
+            "---\ntype: concept\ntitle: 密度\n---\n# 密度\n\n" "## 来源追溯\n\n- 页码：第 10 页\n"
         ),
     }
     incoming = {
@@ -471,8 +665,7 @@ def test_same_knowledge_point_across_chunks_is_merged_without_losing_sources(mon
         "facts": 1,
         "relationships": 0,
         "_content": (
-            "---\ntype: concept\ntitle: 密度\n---\n# 密度\n\n"
-            "## 来源追溯\n\n- 页码：第 11 页\n"
+            "---\ntype: concept\ntitle: 密度\n---\n# 密度\n\n" "## 来源追溯\n\n- 页码：第 11 页\n"
         ),
     }
     monkeypatch.setattr(
@@ -549,6 +742,11 @@ def test_paginated_document_ocr_runs_for_every_page(tmp_path, monkeypatch):
     monkeypatch.setattr(compile_v2, "_ocr_backend_available", lambda: True)
     monkeypatch.setattr(
         compile_v2,
+        "get_ocr_config",
+        lambda: {"mode": "local", "backend": "paddle"},
+    )
+    monkeypatch.setattr(
+        compile_v2,
         "_ocr_image_with_config",
         lambda image_path: f"OCR text for {image_path.name}",
     )
@@ -559,6 +757,55 @@ def test_paginated_document_ocr_runs_for_every_page(tmp_path, monkeypatch):
     assert "OCR text for page-001.png" in content
     assert "OCR text for page-002.png" in content
     assert "OCR text for page-003.png" in content
+
+
+def test_ovis_pdf_compile_uses_one_document_run_and_keeps_page_images(tmp_path, monkeypatch):
+    source = tmp_path / "handbook.pdf"
+    source.write_bytes(b"%PDF fake")
+    wiki_dir = tmp_path / ".wiki"
+    monkeypatch.setattr(compile_v2, "WIKI_DIR", wiki_dir)
+
+    output_dir = wiki_dir / "source" / "document_images" / "handbook-test"
+    output_dir.mkdir(parents=True)
+    pages = [output_dir / "page-001.png", output_dir / "page-002.png"]
+    for page in pages:
+        page.write_bytes(b"image")
+
+    monkeypatch.setattr(
+        compile_v2,
+        "_render_paginated_document_to_images",
+        lambda path, storage_source_path=None: (pages, "pdf-pages"),
+    )
+    monkeypatch.setattr(compile_v2, "_ocr_backend_available", lambda: True)
+    monkeypatch.setattr(
+        compile_v2,
+        "get_ocr_config",
+        lambda: {"mode": "local", "backend": "ovis"},
+    )
+    calls: list[Path] = []
+
+    def fake_ocr_pdf(path: Path) -> str:
+        calls.append(path)
+        return (
+            "## Page 1\n\n第一页识别文本，内容足够用于有效性检查。"
+            "\n\n## Page 2\n\n第二页识别文本，内容同样足够用于检查。"
+        )
+
+    monkeypatch.setattr(compile_v2, "_ocr_pdf_with_config", fake_ocr_pdf)
+    monkeypatch.setattr(
+        compile_v2,
+        "_ocr_image_with_config",
+        lambda _path: pytest.fail("OvisOCR2 PDF must not reload once per page"),
+    )
+
+    content = compile_v2._read_paginated_document_for_compile(source)
+
+    assert len(calls) == 1
+    assert "one model load" in content
+    assert f"![Page 1]({pages[0].resolve()})" in content
+    assert f"![Page 2]({pages[1].resolve()})" in content
+    assert "第一页识别文本" in content
+    assert "第二页识别文本" in content
 
 
 def test_pdf_render_failure_uses_direct_ocr_before_markitdown(tmp_path, monkeypatch):
@@ -685,8 +932,8 @@ def test_llm_mode_image_without_vision_or_ocr_hands_off(tmp_path, monkeypatch):
     assert str((images_dir / "diagram.png").resolve()) in content
 
 
-def test_agent_mode_image_prefers_vision_skill_with_ocr_fallback(tmp_path, monkeypatch):
-    """Agent mode: vision-skill is primary, OCR text is pre-extracted as fallback."""
+def test_agent_mode_image_uses_ovis_without_invoking_vision(tmp_path, monkeypatch):
+    """Agent mode: successful document OCR is primary and blocks vision routing."""
     image = tmp_path / "diagram.png"
     image.write_bytes(b"fake image bytes")
 
@@ -705,28 +952,24 @@ def test_agent_mode_image_prefers_vision_skill_with_ocr_fallback(tmp_path, monke
     monkeypatch.setattr(
         compile_v2,
         "_ocr_image_with_config",
-        lambda _image_path: "OCR fallback text",
+        lambda _image_path: "OvisOCR2 extracted complete exam text. " * 3,
     )
 
     content, readable = compile_v2._read_agent_visible_source(image)
 
     assert readable is True
-    # Precedence header and vision-skill as tier 1.
-    assert "vision-skill → OCR → your own capability" in content
-    assert "vision-skill (preferred)" in content
-    # Concrete CLI command emitted using the configured scripts_path.
-    assert "vision_cli.py recognize" in content
-    assert "--format markdown_note --wait" in content
-    assert str(tmp_path / "vs-scripts" / "vision_cli.py") in content
-    # OCR fallback text is attached.
-    assert "### OCR Text (fallback)" in content
-    assert "OCR fallback text" in content
+    assert "Required path completed: OvisOCR2 OCR" in content
+    assert "OvisOCR2 OCR Markdown (primary)" in content
+    assert "Do not invoke vision-skill" in content
+    assert "OvisOCR2 extracted complete exam text" in content
+    assert "vision_cli.py" not in content
+    assert "vision-skill (preferred)" not in content
     # Image link is present for the Agent.
     assert f"![{image.stem}]" in content
 
 
 def test_agent_mode_image_without_ocr_keeps_native_fallback(tmp_path, monkeypatch):
-    """Agent mode with vision-skill but no OCR backend: native capability is last resort."""
+    """Agent mode permits vision-skill only after OCR is unavailable."""
     image = tmp_path / "photo.jpg"
     image.write_bytes(b"fake image bytes")
 
@@ -742,9 +985,10 @@ def test_agent_mode_image_without_ocr_keeps_native_fallback(tmp_path, monkeypatc
     content, readable = compile_v2._read_agent_visible_source(image)
 
     assert readable is True
-    assert "vision-skill (preferred)" in content
+    assert "OCR was unavailable or insufficient" in content
+    assert "vision-skill (OCR fallback only)" in content
     assert "Native capability" in content
-    assert "[No OCR backend configured" in content
+    assert "did not return usable document text" in content
     # No scripts_path → no CLI command, but the skill is still referenced by name.
     assert "vision_cli.py" not in content
 

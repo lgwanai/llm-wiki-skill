@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -13,6 +15,59 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ocr import cli as ocr_cli
 from scripts import wiki
+
+
+def test_ocr_module_entry_survives_spawn_without_package_shadowing(tmp_path):
+    """A fresh spawn worker must resolve ``ocr/``, never ``scripts/ocr.py``."""
+    project_root = Path(__file__).resolve().parent.parent
+    probe = tmp_path / "spawn_probe.py"
+    probe.write_text(
+        """
+import multiprocessing
+from pathlib import Path
+
+from ocr._mineru_ocr import MinerUOCR
+
+
+def worker(queue):
+    import ocr
+    import ocr.cli
+
+    queue.put(str(Path(ocr.__file__).resolve()))
+
+
+if __name__ == "__main__":
+    MinerUOCR.from_config()
+    context = multiprocessing.get_context("spawn")
+    queue = context.Queue()
+    process = context.Process(target=worker, args=(queue,))
+    process.start()
+    process.join(30)
+    if process.exitcode != 0:
+        raise SystemExit(process.exitcode or 1)
+    resolved = queue.get(timeout=5)
+    if not resolved.endswith("/ocr/__init__.py"):
+        raise SystemExit(f"wrong ocr package: {resolved}")
+""".lstrip(),
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    existing = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = (
+        f"{project_root}{os.pathsep}{existing}" if existing else str(project_root)
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(probe)],
+        cwd=project_root,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=45,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_console_scripts_declared():

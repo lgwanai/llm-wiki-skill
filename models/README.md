@@ -22,7 +22,13 @@ models/
 
 ## Model Backends
 
-### 1. MinerU (Default)
+### Default: OvisOCR2 (external)
+
+The default MLX model is managed by the standalone project at
+`/Users/wuliang/workspace/OvisOCR2/models/OvisOCR2-MLX-4bit` and is intentionally
+not duplicated in this directory.
+
+### 1. MinerU (optional)
 
 - High-precision PDF parsing
 - Formula → LaTeX conversion
@@ -71,12 +77,13 @@ ls -la models/*/
 Configure in `wiki_config.yaml`:
 
 ```yaml
-# MinerU (default)
-mineru:
-  models_path: models/mineru/models
-  lang: ch
-  formula: true
-  table: true
+# OvisOCR2 (default)
+ocr:
+  backend: ovis
+  options:
+    project_path: /Users/wuliang/workspace/OvisOCR2
+    python_path: /Users/wuliang/workspace/OvisOCR2/.venv/bin/python
+    model_path: /Users/wuliang/workspace/OvisOCR2/models/OvisOCR2-MLX-4bit
 
 # DeepSeek-OCR-2
 deepseek_ocr:
@@ -97,8 +104,11 @@ paddleocr:
 ## Usage
 
 ```bash
-# Use default (MinerU)
+# Use default (OvisOCR2)
 python scripts/ocr.py document.pdf
+
+# Use legacy MinerU
+python scripts/ocr.py document.pdf --backend mineru
 
 # Use DeepSeek-OCR-2 (GPU/MPS required for local inference)
 python scripts/ocr.py document.pdf --backend deepseek

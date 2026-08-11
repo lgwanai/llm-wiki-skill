@@ -14,9 +14,12 @@ sentence-transformers>=2.2     # Embedding generation for vector search
 faiss-cpu>=1.7                # Vector index for similarity search
 
 # OCR
-PyMuPDF>=1.24               # PDF page rendering (deepseek/paddle backends)
+PyMuPDF>=1.24               # PDF page rendering (compile/deepseek/paddle backends)
 
-# MinerU — high-precision PDF/DOCX/PPTX/XLSX/image parsing (default backend)
+# OvisOCR2 — default backend; dependencies live in its standalone MLX venv:
+# /Users/wuliang/workspace/OvisOCR2/.venv
+
+# MinerU — optional legacy PDF/DOCX/PPTX/XLSX/image backend
 # Install: uv pip install -U "mineru[all]>=3.4.4,<4"
 # mineru[all]>=3.4.4,<4  # Uncomment to install the optional local backend
 

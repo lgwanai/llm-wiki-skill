@@ -35,12 +35,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-_project_root = Path(__file__).resolve().parent.parent
-if str(_project_root) not in sys.path:
-    # Keep the top-level ``ocr`` package ahead of the legacy scripts/ocr.py
-    # wrapper when this file is executed directly.
-    sys.path.insert(0, str(_project_root))
-sys.path.insert(1, str(Path(__file__).parent))
+_script_dir = Path(__file__).resolve().parent
+_project_root = _script_dir.parent
+for _import_path in (str(_project_root), str(_script_dir)):
+    while _import_path in sys.path:
+        sys.path.remove(_import_path)
+# Keep the top-level ``ocr`` package ahead of the legacy scripts/ocr.py
+# wrapper in direct, ``python -m``, and installed CLI execution alike.
+sys.path.insert(0, str(_project_root))
+sys.path.insert(1, str(_script_dir))
 
 from config import (  # noqa: E402
     CONFIG_FILENAME,
@@ -424,7 +427,9 @@ Environment:
         help="OCR preflight and document parsing with a verifiable manifest",
     )
     ocr_parser.add_argument("file", nargs="?", help="PDF, Word, PowerPoint, or image file")
-    ocr_parser.add_argument("--backend", choices=["mineru", "deepseek", "logics", "paddle", "api"])
+    ocr_parser.add_argument(
+        "--backend", choices=["ovis", "mineru", "deepseek", "logics", "paddle", "api"]
+    )
     ocr_parser.add_argument("--batch", help="Process all supported files in a directory")
     ocr_parser.add_argument("-o", "--output", help="Output directory")
     ocr_pages = ocr_parser.add_mutually_exclusive_group()

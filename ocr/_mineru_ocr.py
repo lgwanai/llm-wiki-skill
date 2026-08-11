@@ -24,7 +24,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import sys
 import tempfile
 from pathlib import Path
 
@@ -88,9 +87,7 @@ class MinerUOCR:
     @classmethod
     def from_config(cls, path: Path | None = None) -> MinerUOCR:
         """Create instance from unified OCR config (wiki_config.yaml)."""
-        _scripts_dir = Path(__file__).resolve().parent.parent / "scripts"
-        sys.path.insert(0, str(_scripts_dir))
-        from config import get_ocr_config
+        from scripts.config import get_ocr_config
 
         mineru_config = get_ocr_config().get("options", {})
 

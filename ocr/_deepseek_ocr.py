@@ -22,7 +22,6 @@ import io
 import logging
 import os
 import re
-import sys
 import time
 from pathlib import Path
 
@@ -67,9 +66,7 @@ class DeepSeekOCR:
     @classmethod
     def from_config(cls, path: Path | None = None) -> "DeepSeekOCR":
         """Create instance from unified OCR config or environment variables."""
-        _scripts_dir = Path(__file__).resolve().parent.parent / "scripts"
-        sys.path.insert(0, str(_scripts_dir))
-        from config import get_ocr_config
+        from scripts.config import get_ocr_config
 
         ocr = get_ocr_config()
 

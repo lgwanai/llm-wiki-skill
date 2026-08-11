@@ -158,11 +158,7 @@ class OCRApiBackend:
         Raises:
             RuntimeError: If mode is 'api' but api_url is not configured.
         """
-        # Use the project's config module
-        _project_root = Path(__file__).resolve().parent.parent
-        sys.path.insert(0, str(_project_root / "scripts"))
-
-        from config import get_ocr_config  # noqa: E402
+        from scripts.config import get_ocr_config
 
         ocr_config = get_ocr_config()
 

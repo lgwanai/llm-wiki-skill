@@ -22,9 +22,26 @@ from typing import Any
 
 import yaml
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).parent))
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_PROJECT_ROOT = _SCRIPT_DIR.parent
+
+# ``scripts/ocr.py`` is a compatibility CLI wrapper whose filename collides
+# with the real top-level ``ocr`` package.  Direct script execution puts the
+# scripts directory first on sys.path, which made ``import ocr._ovis_ocr`` load
+# that wrapper and incorrectly report OvisOCR2 as unavailable.  Normalise the
+# order explicitly for both direct and package execution.
+for _import_path in (str(_PROJECT_ROOT), str(_SCRIPT_DIR)):
+    while _import_path in sys.path:
+        sys.path.remove(_import_path)
+sys.path.insert(0, str(_PROJECT_ROOT))
+sys.path.insert(1, str(_SCRIPT_DIR))
 from _llm_utils import call_llm, get_chunk_threshold, llm_fuse_pages
+from compile_todo import (
+    create_manifest,
+    sha256_file,
+    update_task,
+    verify_manifest,
+)
 from config import (
     get_config,
     get_image_analysis_config,
@@ -292,10 +309,34 @@ DOMAIN_EXPERTS = {
             "exam paper",
             "question paper",
             "answer key",
+            "学习资料",
+            "复习资料",
+            "教材目录",
+            "知识清单",
+            "单词表",
+            "生词表",
+            "词汇表",
+            "文言文注解",
+            "课文注释",
+            "通假字",
+            "古今异义",
+            "一词多义",
+            "词类活用",
+            "vocabulary list",
+            "formula sheet",
         ),
         "signals": (
+            "目录",
+            "章末小结",
+            "本章小结",
             "知识点",
             "考点",
+            "定义",
+            "定律",
+            "法则",
+            "公式",
+            "推导",
+            "证明",
             "题号",
             "题干",
             "选项",
@@ -314,23 +355,58 @@ DOMAIN_EXPERTS = {
             "易错点",
             "先修知识",
             "章节练习",
+            "音标",
+            "词性",
+            "释义",
+            "固定搭配",
+            "文言文",
+            "注解",
+            "句读",
+            "特殊句式",
+            "逐句翻译",
             "multiple choice",
             "short answer",
             "worked example",
             "common mistake",
             "knowledge point",
+            "table of contents",
+            "theorem",
+            "law",
+            "derivation",
+            "glossary",
+            "part of speech",
         ),
         "instructions": (
             "以‘可学习、可检索、可关联、可复习’为目标。先保留学科、学段/年级、"
             "教材版本、册次、章/节/单元或试卷年份、地区、考试类型等来源语境。"
-            "课本/教材按实际知识点编译：区分定义、原理、公式/定理、条件、推导、例题、"
-            "反例、方法、易错点与应用场景；章节只作来源定位，不得机械地一节一页。"
+            "先解析目录：逐级保留篇/章/节/课/单元的原编号、标题、层级、顺序和页码，"
+            "建立目录导航页及‘目录项→知识块’链接；目录是结构证据，不得直接把每个"
+            "标题机械拆成知识点。"
+            "以‘完整知识块’为最小编译单元：同一主题的定义、解释、定律/法则、公式、"
+            "变量、条件、推导/证明、图表、例题、反例、方法、易错点、应用和注解必须"
+            "合并理解；即使跨标题、跨相邻页或被表格/图片分隔，也不得切成失去上下文的"
+            "碎片。只有能独立回答不同检索问题时才拆页，并用链接保持原目录顺序与依赖。"
+            "知识点页须给出规范名称、原文别名、定义、前提、核心结论、辨析、先修与应用。"
+            "定律/公式页须逐字保留名称和表达式，说明成立条件、符号/变量、单位、适用范围、"
+            "推导或证明、变式、限制与配套例题；不得只摘公式而丢掉条件。"
+            "例题页须完整保留题号、题干、已知/所求、图表、解题方法、逐步过程、答案、"
+            "验算、得分点、易错原因及所用知识点；原文缺项明确标注‘未提供’。"
+            "单词表/词汇表按原分组整体解析，保留单词、音标/读音、词性、释义、词形变化、"
+            "搭配、例句和翻译；不要默认一词一页，优先形成可整体复习和筛选的词表知识块。"
+            "文言文按篇章和语义段整体解析，逐句对齐原文、断句、读音、注解和译文，单列"
+            "通假字、古今异义、一词多义、词类活用、特殊句式、文化常识与主旨；注解必须"
+            "绑定具体原句，不得把编译者解释冒充原注。"
             "为每个知识点建立稳定概念页，记录别名/同义词、先修、后续、并列、"
             "包含、对比、推导和应用关系，用标准 Markdown 链接连接关联知识点。"
             "试卷/习题按题号保留题干、材料、选项、图表、分值、答案、解析、"
             "解题步骤与得分点，并提取主考点、次考点、所需先修知识、题型、"
             "难度依据、解题方法、易错原因和可迁移技巧。题目页链接知识点，"
             "知识点页反向汇总例题/真题，便于按考点找题和由错题回溯知识缺口。"
+            "每页 YAML frontmatter 必须提供 4–8 个去重 tags，使用稳定的分面格式："
+            "学科/数学、学段/初中、内容类型/知识点（或目录、定律、公式、例题、词汇、"
+            "文言文注解）、章节/第三章、主题/一元一次方程；题型/计算题、难度/基础、"
+            "语言/英语等仅在原文有依据时添加。标签须采用读者会检索的原文术语、规范名"
+            "和必要同义词，不得使用‘学习’‘知识’等无区分度标签，不得猜测缺失元数据。"
             "每个知识点页和题目页都必须包含‘来源追溯’小节，逐项写明原始资料文件名、"
             "一个或多个页码/连续页范围、可核验的原文摘录；有相关图、表、实验装置或题图时，"
             "必须保留并引用对应原图及相邻页上下文。知识边界优先于页面边界：定义在前页、"
@@ -594,11 +670,18 @@ def match_domain_experts(content: str, source_name: str = "") -> list[dict[str, 
     """Select one or more domain lenses from evidence in the document itself."""
     sample = f"{source_name}\n{content[:120_000]}".lower()
     ranked: list[tuple[int, str]] = []
+    explicit_matches: list[str] = []
     for key, profile in DOMAIN_EXPERTS.items():
         score = sum(sample.count(signal.lower()) for signal in profile["signals"])
-        score += 2 * sum(
+        strong_score = sum(
             sample.count(signal.lower()) for signal in profile.get("strong_signals", ())
         )
+        score += 2 * strong_score
+        if strong_score:
+            # A filename such as “地理电子课本” is authoritative routing
+            # evidence even when the book body contains many generic signals
+            # from other domains. Never let the relative top-3 cutoff discard it.
+            explicit_matches.append(key)
         if score:
             ranked.append((score, key))
     ranked.sort(reverse=True)
@@ -606,7 +689,11 @@ def match_domain_experts(content: str, source_name: str = "") -> list[dict[str, 
         return []
     best = ranked[0][0]
     # Multi-label routing handles mixed documents; weak incidental matches are excluded.
-    selected = [key for score, key in ranked if score >= max(2, best // 3)][:3]
+    selected = list(explicit_matches)
+    selected.extend(
+        key for score, key in ranked if score >= max(2, best // 3) and key not in explicit_matches
+    )
+    selected = selected[:3]
     return [
         {
             "id": key,
@@ -876,12 +963,16 @@ def iter_source_files(root: Path, max_depth: int | None = None) -> list[Path]:
 def _create_ocr_backend() -> Any:
     """Instantiate the configured OCR backend."""
     ocr_config = get_ocr_config()
-    backend = ocr_config.get("backend", "mineru")
+    backend = ocr_config.get("backend", "ovis")
 
     if ocr_config.get("mode") == "api" or backend == "api":
         from ocr._ocr_api import OCRApiBackend
 
         return OCRApiBackend.from_config()
+    if backend == "ovis":
+        from ocr._ovis_ocr import OvisOCR2
+
+        return OvisOCR2.from_config()
     if backend == "deepseek":
         from ocr._deepseek_ocr2 import DeepSeekOCR2
 
@@ -901,6 +992,11 @@ def _create_ocr_backend() -> Any:
 
 def _ocr_image_with_config(image_path: Path) -> str:
     """Run the configured OCR backend on an image and return markdown text."""
+    if str(get_ocr_config().get("backend", "ovis")) == "ovis":
+        # Ovis's low-level image API writes a sibling work tree. Route it
+        # through managed temporary output so feed never leaves OCR internals
+        # beside the source image or inside the final pages/assets directory.
+        return _ocr_pdf_with_config(image_path)
     return _create_ocr_backend().ocr_image(str(image_path))
 
 
@@ -911,12 +1007,40 @@ def _ocr_pdf_with_config(pdf_path: Path) -> str:
         report_path = Path(backend.ocr_pdf(str(pdf_path), Path(tmpdir)))
         if not report_path.is_file():
             raise RuntimeError(f"OCR backend did not produce Markdown: {report_path}")
-        return report_path.read_text(encoding="utf-8").strip()
+        content = report_path.read_text(encoding="utf-8").strip()
+
+        # OCR backends may emit crop assets under their temporary output tree.
+        # Move those source assets into the wiki before the temporary directory
+        # disappears, and return absolute references for the normal compile-time
+        # asset persistence pass.
+        def preserve_temp_asset(target: str, _alt: str) -> str:
+            local_path = _local_image_path(target, report_path.parent)
+            if local_path is None or not local_path.is_file():
+                return target
+            return str(_copy_to_source_images(local_path).resolve())
+
+        return _rewrite_markdown_image_targets(content, preserve_temp_asset).strip()
+
+
+def _attach_rendered_pages_to_ocr(content: str, page_images: list[Path]) -> str:
+    """Attach each rendered full-page image below its OCR page heading."""
+    enriched = content
+    for page_number, image_path in enumerate(page_images, start=1):
+        heading = re.compile(
+            rf"^##\s+Page\s+{page_number}\s*$",
+            flags=re.MULTILINE | re.IGNORECASE,
+        )
+        replacement = f"## Page {page_number}\n\n" f"![Page {page_number}]({image_path.resolve()})"
+        enriched, count = heading.subn(replacement, enriched, count=1)
+        if count == 0:
+            enriched += f"\n\n{replacement}\n\n[No OCR text extracted for this page.]"
+    return enriched.strip()
 
 
 def _has_meaningful_ocr_text(content: str) -> bool:
     """Reject empty/header-only OCR output without penalising short documents."""
-    visible = re.sub(r"[\s#>*_`\-]+", "", content or "")
+    text_only = MARKDOWN_IMAGE_RE.sub("", content or "")
+    visible = re.sub(r"[\s#>*_`\-]+", "", text_only)
     return len(visible) >= 40
 
 
@@ -945,7 +1069,7 @@ def _copy_to_source_images(image_path: Path) -> Path:
 MARKDOWN_IMAGE_RE = re.compile(r"!\[(?P<alt>[^\]]*)\]\((?P<target><[^>]+>|[^)\n]+)\)")
 
 
-_TITLE_RE = re.compile(r'''\s+(".*"|'.*?'|\(.*\))\s*$''')
+_TITLE_RE = re.compile(r"""\s+(".*"|'.*?'|\(.*\))\s*$""")
 
 
 def _clean_image_target(target: str) -> str:
@@ -983,9 +1107,7 @@ def _local_image_path(target: str, base_dir: Path) -> Path | None:
     return candidate.resolve()
 
 
-def _rewrite_markdown_image_targets(
-    content: str, rewrite: Callable[[str, str], str]
-) -> str:
+def _rewrite_markdown_image_targets(content: str, rewrite: Callable[[str, str], str]) -> str:
     """Rewrite Markdown image targets with *rewrite(target, alt)*."""
 
     def replace(match: re.Match[str]) -> str:
@@ -1055,6 +1177,114 @@ def _source_page_image_map(content: str) -> dict[int, list[tuple[str, str]]]:
     return result
 
 
+AGENT_PAGE_HEADING_RE = re.compile(
+    r"(?m)^##\s+(?:Page|Slide|第)\s*\d+\s*(?:页|张)?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _split_image_markdown_for_agent(content: str) -> list[str]:
+    """Create one ordered Agent artifact per captured page/slide when possible."""
+    if not MARKDOWN_IMAGE_RE.search(content):
+        return [content]
+    headings = list(AGENT_PAGE_HEADING_RE.finditer(content))
+    if not headings:
+        return [content]
+    preamble = content[: headings[0].start()].strip()
+    chunks: list[str] = []
+    for index, heading in enumerate(headings):
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(content)
+        section = content[heading.start() : end].strip()
+        if index == 0 and preamble:
+            section = f"{preamble}\n\n{section}"
+        chunks.append(section + "\n")
+    return chunks
+
+
+def _agent_image_paths(content: str) -> list[str]:
+    """Resolve portable page links to concrete files for direct Agent inspection."""
+    page_anchor = (PAGES_DIR / "concepts").resolve()
+    paths: list[str] = []
+    for match in MARKDOWN_IMAGE_RE.finditer(content):
+        target = _clean_image_target(match.group("target"))
+        local = _local_image_path(target, page_anchor)
+        if local is not None and local.is_file() and str(local) not in paths:
+            paths.append(str(local))
+    return paths
+
+
+def _preextract_agent_markdown_images(content: str) -> tuple[str, dict[str, Any]]:
+    """Run configured OCR for local images embedded in captured Markdown.
+
+    Feed inputs commonly arrive as a Markdown shell whose real source pages are
+    local images.  OCR must happen while creating the task, not be left to an
+    Agent routing decision.  The returned markers make that completed route
+    executable metadata for the todo manifest.
+    """
+    ocr_config = get_ocr_config()
+    backend_name = str(ocr_config.get("backend", "ovis"))
+    backend_label = "OvisOCR2" if backend_name == "ovis" else backend_name
+    report: dict[str, Any] = {
+        "backend": backend_name,
+        "attempted": 0,
+        "succeeded": 0,
+        "failed": [],
+    }
+
+    source_images: list[tuple[re.Match[str], Path]] = []
+    seen: set[str] = set()
+    page_anchor = (PAGES_DIR / "concepts").resolve()
+    for match in MARKDOWN_IMAGE_RE.finditer(content):
+        target = _clean_image_target(match.group("target"))
+        local_path = _local_image_path(target, page_anchor)
+        if local_path is None or not local_path.is_file():
+            continue
+        identity = str(local_path.resolve())
+        if identity in seen:
+            continue
+        seen.add(identity)
+        source_images.append((match, local_path.resolve()))
+
+    if not source_images or not _ocr_backend_available():
+        return content, report
+
+    additions: dict[int, str] = {}
+    for match, image_path in source_images:
+        report["attempted"] += 1
+        try:
+            ocr_text = _ocr_image_with_config(image_path)
+            if not _has_meaningful_ocr_text(ocr_text):
+                raise RuntimeError("OCR returned insufficient document text")
+            # A captured page already owns the page boundary.  Demote Ovis's
+            # single-image page heading so it cannot create duplicate todo pages.
+            ocr_text = re.sub(
+                r"(?m)^##\s+Page\s+(\d+)\s*$",
+                rf"#### {backend_label} Page \1",
+                ocr_text.strip(),
+            )
+            additions[match.end()] = (
+                f"\n\n<!-- llm-wiki-ocr backend={backend_name} status=success -->\n"
+                f"### {backend_label} OCR Markdown (primary)\n\n{ocr_text}\n"
+            )
+            report["succeeded"] += 1
+        except Exception as exc:
+            detail = re.sub(r"\s+", " ", str(exc)).strip()
+            additions[match.end()] = (
+                f"\n\n<!-- llm-wiki-ocr backend={backend_name} status=failed -->\n"
+                f"> {backend_label} OCR failed for this image: {detail}\n"
+            )
+            report["failed"].append(str(image_path))
+
+    pieces: list[str] = []
+    cursor = 0
+    for position in sorted(additions):
+        pieces.append(content[cursor:position])
+        pieces.append(additions[position])
+        cursor = position
+    pieces.append(content[cursor:])
+    return "".join(pieces), report
+
+
 def _source_epub_section_map(
     content: str,
 ) -> dict[int, tuple[str, list[tuple[str, str]]]]:
@@ -1101,10 +1331,16 @@ def _extract_cited_pages(content: str) -> list[int]:
     ``页码:``) so version strings, HTTP status codes, and figure numbers are
     not mistaken for source page citations.
     """
+    # Attached source-image alt text itself contains labels such as
+    # “原始资料第 88 页”. Those are outputs, not new citations. Ignoring image
+    # markup prevents the one-page context halo from expanding on every verify
+    # or migration run.
+    content = MARKDOWN_IMAGE_RE.sub("", content)
     pages: set[int] = set()
     range_patterns = (
         r"第?\s*(\d+)\s*[-–—~至]\s*(\d+)\s*页",
         r"\b(?:Pages?|Slides?)\s*(\d+)\s*[-–—~]\s*(\d+)\b",
+        r"#p(\d+)\s*[-–—~]\s*(\d+)\b",
     )
     for pattern in range_patterns:
         for start_value, end_value in re.findall(pattern, content, re.IGNORECASE):
@@ -1117,7 +1353,12 @@ def _extract_cited_pages(content: str) -> list[int]:
         content,
         re.IGNORECASE,
     ):
-        pages.update(int(value) for value in re.findall(r"\d+", field))
+        # Only accept an unlabelled field when it is purely a comma-separated
+        # page list. A provenance value such as
+        # ``mat-七年级-2024-e032993#p89-98`` contains unrelated identifier
+        # digits; the explicit #p/Page/第N页 patterns below handle its pages.
+        if re.fullmatch(r"\s*\d+(?:\s*[,，、/]\s*\d+)*\s*", field):
+            pages.update(int(value) for value in re.findall(r"\d+", field))
 
     # Single-page citations: require provenance vocabulary, not a bare number.
     # ``第N页`` and ``页码/第N`` are unambiguous; ``Page/Slide N`` is anchored
@@ -1125,6 +1366,7 @@ def _extract_cited_pages(content: str) -> list[int]:
     patterns = (
         r"第\s*(\d+)\s*页",
         r"页码\s*[:：]\s*(?:第\s*)?(\d+)",
+        r"#p(\d+)\b",
         r"\bPage\s*(\d+)\b",
         r"\bSlide\s*(\d+)\b",
         r"幻灯片(?:编号)?\s*[:：]\s*(?:第\s*)?(\d+)",
@@ -1219,7 +1461,11 @@ def _ensure_study_traceability(
             additions.append(f"- EPUB章节定位：{'、'.join(locators)}")
         if additions:
             replacement = block + "\n" + "\n".join(additions) + "\n\n"
-            return page_content[: trace_match.start()] + replacement + page_content[trace_match.end() :]
+            return (
+                page_content[: trace_match.start()]
+                + replacement
+                + page_content[trace_match.end() :]
+            )
         return page_content
     return page_content.rstrip() + "\n\n## 来源追溯\n\n" + required_block
 
@@ -1230,9 +1476,14 @@ def _attach_source_media(page_content: str, source_content: str, page_path: Path
     # paths from _local_image_path; otherwise a symlinked wiki dir (common on
     # macOS, where /var -> /private/var) yields a convoluted non-portable link.
     page_dir = page_path.parent.resolve()
+
+    def media_identity(target: str) -> str:
+        cleaned = _clean_image_target(target)
+        local_path = _local_image_path(cleaned, page_path.parent)
+        return str(local_path) if local_path is not None else cleaned
+
     existing_targets = {
-        _clean_image_target(match.group("target"))
-        for match in MARKDOWN_IMAGE_RE.finditer(page_content)
+        media_identity(match.group("target")) for match in MARKDOWN_IMAGE_RE.finditer(page_content)
     }
 
     def make_relative(target: str, _alt: str) -> str:
@@ -1253,28 +1504,30 @@ def _attach_source_media(page_content: str, source_content: str, page_path: Path
         media_pages.update({page_number - 1, page_number + 1})
     for media_page in sorted(page for page in media_pages if page > 0):
         for alt, target in page_map.get(media_page, []):
-            if target in existing_targets:
+            identity = media_identity(target)
+            if identity in existing_targets:
                 continue
             relative_target = make_relative(target, alt)
             relation = "直接引用页" if media_page in cited_pages else "相邻页上下文"
             additions.append(
                 f"![原始资料第 {media_page} 页（{relation}）：{alt}]({relative_target})"
             )
-            existing_targets.add(target)
+            existing_targets.add(identity)
     cited_sections = _extract_cited_epub_sections(page_content)
     if not cited_sections and len(epub_map) == 1:
         cited_sections = list(epub_map)
     for section in cited_sections:
         locator, refs = epub_map.get(section, ("", []))
         for alt, target in refs:
-            if target in existing_targets:
+            identity = media_identity(target)
+            if identity in existing_targets:
                 continue
             relative_target = make_relative(target, alt)
             locator_label = f"，{locator}" if locator else ""
             additions.append(
                 f"![原始资料 EPUB Section {section}{locator_label}：{alt}]({relative_target})"
             )
-            existing_targets.add(target)
+            existing_targets.add(identity)
     if additions:
         page_content = page_content.rstrip() + "\n\n## 来源图片\n\n" + "\n\n".join(additions) + "\n"
     return page_content
@@ -1284,14 +1537,13 @@ def analyze_image_for_compile(image_path: Path, for_agent: bool = False) -> str:
     """Convert an image source to markdown for wiki compilation.
 
     Image recognition precedence:
-      1. vision-skill (Agent-side, preferred) — declared dependency, used in
-         agent mode when the Agent has the skill available.
-      2. OCR — configured OCR backend (Python-side fallback).
+      1. OCR — configured OCR backend (OvisOCR2 by default).
+      2. vision-skill — fallback only when OCR is unavailable or insufficient.
       3. Agent's own image-parsing capability — last resort.
 
     In agent mode (``for_agent=True``, the default compile mode), emit a
-    precedence instruction for the Agent and pre-extract OCR text as a
-    fallback. The ``image_analysis`` vision API is NOT used here — it is
+    precedence instruction for the Agent and pre-extract OCR text as the
+    primary evidence. The ``image_analysis`` vision API is NOT used here — it is
     reserved for ``--mode llm`` where no Agent is in the loop to invoke a
     skill.
 
@@ -1378,31 +1630,50 @@ def _build_llm_image_task(image_path: Path, stored_path: Path) -> str:
 
 
 def _build_agent_image_task(image_path: Path, stored_path: Path) -> str:
-    """Agent-mode image task: vision-skill → OCR → Agent's own capability.
-
-    The vision-skill is the declared dependency for image sources and the
-    preferred recognition path. OCR is pre-extracted by Python as a fallback
-    (the Agent cannot run OCR backends itself). The Agent's native
-    image-parsing capability is the last resort.
-    """
+    """Agent-mode image task: OCR first, vision only after OCR failure."""
     vision_config = get_vision_skill_config()
     vision_enabled = bool(vision_config.get("enabled"))
+    ocr_config = get_ocr_config()
+    ocr_backend = str(ocr_config.get("backend", "ovis"))
+    ocr_label = "OvisOCR2" if ocr_backend == "ovis" else ocr_backend
 
-    # Pre-extract OCR fallback only when a backend is usable, to avoid
-    # warning noise when the user relies solely on the vision-skill.
     ocr_text = ""
     if _ocr_backend_available():
         try:
             ocr_text = _ocr_image_with_config(image_path)
         except Exception as e:
-            print(f"  WARNING: OCR fallback failed for {image_path}: {e}", file=sys.stderr)
+            print(f"  WARNING: primary OCR failed for {image_path}: {e}", file=sys.stderr)
 
     sections = _image_source_header(image_path, stored_path)
+    if _has_meaningful_ocr_text(ocr_text):
+        sections.extend(
+            [
+                f"<!-- llm-wiki-ocr backend={ocr_backend} status=success -->",
+                "## Image Recognition",
+                "",
+                f"**Required path completed: {ocr_label} OCR.**",
+                "",
+                "Use the OCR Markdown below as the primary extraction. Do not invoke "
+                "vision-skill or replace this result with native vision when OCR has "
+                "succeeded. Keep the original image link and all OCR-generated figure "
+                "references in the compiled page.",
+                "",
+                f"![{image_path.stem}]({stored_path.resolve()})",
+                "",
+                f"### {ocr_label} OCR Markdown (primary)",
+                "",
+                ocr_text.strip(),
+                "",
+            ]
+        )
+        return "\n".join(sections).strip() + "\n"
+
     sections.extend(
         [
             "## Image Recognition",
             "",
-            "**Precedence: vision-skill → OCR → your own capability.**",
+            "**OCR was unavailable or insufficient. Fallback precedence: "
+            "vision-skill → native capability.**",
             "",
         ]
     )
@@ -1411,10 +1682,9 @@ def _build_agent_image_task(image_path: Path, stored_path: Path) -> str:
     if vision_enabled:
         sections.extend(
             [
-                f"{tier}. **vision-skill (preferred)** — This skill depends on the "
-                "`vision-skill` skill. If it is available in this environment, use it to "
-                "analyze the image and compile its visible content (text, structure, "
-                "diagrams, charts, tables) into the wiki page.",
+                f"{tier}. **vision-skill (OCR fallback only)** — OCR did not return "
+                "enough readable document content. If vision-skill is available, use it "
+                "to recover the missing content.",
                 "",
             ]
         )
@@ -1437,16 +1707,8 @@ def _build_agent_image_task(image_path: Path, stored_path: Path) -> str:
 
     sections.extend(
         [
-            f"{tier}. **OCR fallback** — If the vision-skill is unavailable, use the OCR "
-            "text below (pre-extracted by the configured OCR backend).",
-            "",
-        ]
-    )
-    tier += 1
-    sections.extend(
-        [
-            f"{tier}. **Native capability** — If OCR is also unavailable, read the image "
-            "directly with your own image-parsing capability.",
+            f"{tier}. **Native capability** — If the OCR and vision-skill fallback are "
+            "both unavailable, read the image directly.",
             "",
             f"![{image_path.stem}]({stored_path.resolve()})",
             "",
@@ -1454,13 +1716,13 @@ def _build_agent_image_task(image_path: Path, stored_path: Path) -> str:
     )
 
     if ocr_text:
-        sections.extend(["### OCR Text (fallback)", "", ocr_text.strip(), ""])
+        sections.extend(["### Partial OCR Evidence", "", ocr_text.strip(), ""])
     else:
         sections.extend(
             [
-                "### OCR Text (fallback)",
+                "### OCR Status",
                 "",
-                "[No OCR backend configured — vision-skill or your own capability is required.]",
+                "[The configured OCR backend did not return usable document text.]",
                 "",
             ]
         )
@@ -1572,7 +1834,7 @@ def _ocr_backend_available() -> bool:
     env-var keys and provider-preset models are recognised.
     """
     ocr_config = get_ocr_config()
-    backend = ocr_config.get("backend", "mineru")
+    backend = ocr_config.get("backend", "ovis")
 
     if ocr_config.get("mode") == "api" or backend == "api":
         provider = ocr_config.get("api_provider", "") or ocr_config.get("provider", "")
@@ -1610,7 +1872,9 @@ def _ocr_backend_available() -> bool:
         return api_url_ok and api_key_ok and api_model_ok
 
     try:
-        if backend == "deepseek":
+        if backend == "ovis":
+            import ocr._ovis_ocr  # noqa: F401
+        elif backend == "deepseek":
             import ocr._deepseek_ocr2  # noqa: F401
         elif backend == "logics":
             import ocr._logics_parsing  # noqa: F401
@@ -1779,6 +2043,49 @@ def _read_paginated_document_for_compile(source_path: Path) -> str:
         return "\n".join(sections).strip() + "\n"
 
     if _ocr_backend_available():
+        ocr_config = get_ocr_config()
+        if (
+            ocr_config.get("mode", "local") == "local"
+            and ocr_config.get("backend", "ovis") == "ovis"
+            and source_path.suffix.lower() in {".pdf", ".doc", ".docx", ".ppt", ".pptx"}
+        ):
+            try:
+                ovis_source = source_path
+                if source_path.suffix.lower() != ".pdf":
+                    converted_pdfs = sorted(
+                        _document_images_dir(source_path).glob(f"{source_path.stem}*.pdf")
+                    )
+                    if not converted_pdfs:
+                        raise RuntimeError("LibreOffice conversion did not retain its PDF output")
+                    ovis_source = converted_pdfs[0]
+                with _readonly_working_copy(ovis_source) as work_path:
+                    ovis_markdown = _ocr_pdf_with_config(work_path)
+                if not _has_meaningful_ocr_text(ovis_markdown):
+                    raise RuntimeError("OvisOCR2 returned only empty/header-like content")
+                sections.extend(
+                    [
+                        "## Extraction Mode",
+                        "",
+                        "OvisOCR2 processed the complete PDF in one model load; full-page "
+                        "renders and detected visual-region crops are retained below.",
+                        "",
+                        _attach_rendered_pages_to_ocr(ovis_markdown, page_images),
+                        "",
+                    ]
+                )
+                return "\n".join(sections).strip() + "\n"
+            except Exception as ovis_error:
+                sections.extend(
+                    [
+                        "## Whole-document OvisOCR2 Failed",
+                        "",
+                        f"{ovis_error}",
+                        "",
+                        "Falling back to page-by-page OCR while retaining every page image.",
+                        "",
+                    ]
+                )
+
         sections.extend(["## Extraction Mode", "", "OCR on every rendered page/slide.", ""])
         for page_number, image_path in enumerate(page_images, start=1):
             try:
@@ -1967,6 +2274,38 @@ def _preprocess_svg(svg_path: Path) -> str:
     return result
 
 
+def _mineru_visible_text(value: Any) -> str:
+    """Flatten MinerU v1/v2 caption or text structures without inventing text."""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, list):
+        parts = [_mineru_visible_text(item) for item in value]
+        return "".join(part for part in parts if part).strip()
+    if isinstance(value, dict):
+        direct = value.get("content")
+        if isinstance(direct, str) and direct.strip():
+            return direct.strip()
+        for nested_key in (
+            "title_content",
+            "paragraph_content",
+            "page_header_content",
+            "page_footer_content",
+            "page_number_content",
+            "page_footnote_content",
+            "item_content",
+            "list_items",
+            "image_caption",
+            "table_caption",
+            "chart_caption",
+            "math_content",
+            "html",
+        ):
+            nested = _mineru_visible_text(value.get(nested_key))
+            if nested:
+                return nested
+    return ""
+
+
 def _mineru_page_anchor(entry: dict) -> str:
     """Return a stable Markdown anchor for one MinerU content-list entry."""
     for key in ("text", "table_body", "latex"):
@@ -1974,7 +2313,95 @@ def _mineru_page_anchor(entry: dict) -> str:
         if isinstance(value, str) and value.strip():
             return value.strip()
     image_path = entry.get("img_path")
-    return str(image_path).strip() if image_path else ""
+    if image_path:
+        return str(image_path).strip()
+
+    # MinerU 2.x content_list_v2 stores each page as a list of blocks and nests
+    # visible text/image paths under ``content``. Prefer stable visible text;
+    # fall back to the image path, which also occurs verbatim in Markdown links.
+    content = entry.get("content")
+    if not isinstance(content, dict):
+        return ""
+
+    text_anchor = _mineru_visible_text(content)
+    if text_anchor:
+        return text_anchor
+    image_source = content.get("image_source")
+    if isinstance(image_source, dict):
+        return str(image_source.get("path", "")).strip()
+    return ""
+
+
+def _mineru_content_list_path(source_path: Path) -> Path | None:
+    """Return the supported MinerU content-list sidecar for Markdown."""
+    candidates = (
+        source_path.with_name(f"{source_path.stem}_content_list.json"),
+        source_path.with_name(f"{source_path.stem}_content_list_v2.json"),
+    )
+    return next((path for path in candidates if path.is_file()), None)
+
+
+def _group_mineru_pages(entries: Any) -> dict[int, list[dict]]:
+    """Normalize MinerU v1 flat blocks and v2 page-grouped blocks."""
+    if not isinstance(entries, list):
+        return {}
+    if entries and all(isinstance(page, list) for page in entries):
+        return {
+            page_number: [entry for entry in page if isinstance(entry, dict)]
+            for page_number, page in enumerate(entries, start=1)
+        }
+    grouped: dict[int, list[dict]] = {}
+    for entry in entries:
+        if not isinstance(entry, dict) or not isinstance(entry.get("page_idx"), int):
+            continue
+        grouped.setdefault(int(entry["page_idx"]) + 1, []).append(entry)
+    return grouped
+
+
+def _mineru_image_caption_map(entries: Any) -> dict[str, str]:
+    """Return OCR image path -> source caption for MinerU v1/v2 manifests."""
+    captions: dict[str, str] = {}
+    for page_entries in _group_mineru_pages(entries).values():
+        for entry in page_entries:
+            image_path = entry.get("img_path")
+            caption_value: Any = entry.get("image_caption")
+            content = entry.get("content")
+            if isinstance(content, dict):
+                image_source = content.get("image_source")
+                if isinstance(image_source, dict):
+                    image_path = image_source.get("path") or image_path
+                caption_value = (
+                    content.get("image_caption")
+                    or content.get("chart_caption")
+                    or content.get("table_caption")
+                    or caption_value
+                )
+            caption = re.sub(r"\s+", " ", _mineru_visible_text(caption_value)).strip()
+            if not image_path or not caption:
+                continue
+            normalized = Path(str(image_path)).as_posix().lstrip("./")
+            # Markdown alt text cannot contain a literal closing bracket.
+            captions[normalized] = caption.replace("]", "）")
+    return captions
+
+
+def _restore_mineru_image_captions(markdown: str, entries: Any) -> str:
+    """Fill empty OCR image alt text from MinerU's own caption metadata."""
+    captions = _mineru_image_caption_map(entries)
+    if not captions:
+        return markdown
+
+    def replace(match: re.Match[str]) -> str:
+        if match.group("alt").strip():
+            return match.group(0)
+        target = _clean_image_target(match.group("target"))
+        normalized = Path(target).as_posix().lstrip("./")
+        caption = captions.get(normalized)
+        if not caption:
+            return match.group(0)
+        return f"![{caption}]({match.group('target')})"
+
+    return MARKDOWN_IMAGE_RE.sub(replace, markdown)
 
 
 def _inject_mineru_page_markers(markdown: str, source_path: Path) -> str:
@@ -1985,24 +2412,19 @@ def _inject_mineru_page_markers(markdown: str, source_path: Path) -> str:
     original Markdown preserves MinerU's rich formatting while restoring exact
     page provenance for downstream study compilation.
     """
-    if _source_page_numbers(markdown):
-        return markdown
-    manifest = source_path.with_name(f"{source_path.stem}_content_list.json")
-    if not manifest.is_file():
+    manifest = _mineru_content_list_path(source_path)
+    if manifest is None:
         return markdown
     try:
         entries = json.loads(manifest.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return markdown
-    if not isinstance(entries, list):
+    grouped = _group_mineru_pages(entries)
+    if not grouped:
         return markdown
 
-    grouped: dict[int, list[dict]] = {}
-    for entry in entries:
-        if not isinstance(entry, dict) or not isinstance(entry.get("page_idx"), int):
-            continue
-        grouped.setdefault(int(entry["page_idx"]) + 1, []).append(entry)
-    if not grouped:
+    markdown = _restore_mineru_image_captions(markdown, entries)
+    if _source_page_numbers(markdown):
         return markdown
 
     insertions: list[tuple[int, int]] = []
@@ -2088,9 +2510,8 @@ def _read_agent_visible_source(source_path: Path) -> tuple[str, bool]:
         if is_paginated_document_source(source_path):
             return _read_paginated_document_for_compile(source_path), True
         if is_image_source(source_path):
-            # Reuses the full image pipeline: vision-skill (preferred) with
-            # OCR fallback pre-extracted, and the Agent's own capability as a
-            # last resort.
+            # Reuses the full image pipeline: configured OCR first, then
+            # vision-skill/native fallback only if OCR is insufficient.
             return analyze_image_for_compile(source_path, for_agent=True), True
         if is_document_source(source_path):
             content = (
@@ -2109,7 +2530,10 @@ def _read_agent_visible_source(source_path: Path) -> tuple[str, bool]:
                     f"Agent should read the file directly.]",
                     False,
                 )
-            return source_path.read_text(encoding="utf-8"), True
+            content = source_path.read_text(encoding="utf-8")
+            if source_path.suffix.lower() in {".md", ".markdown"}:
+                content = _inject_mineru_page_markers(content, source_path)
+            return content, True
         return "", False
     except (OSError, UnicodeDecodeError):
         return "", False
@@ -2148,6 +2572,13 @@ def create_agent_compile_task(
     WIKI_DIR.mkdir(parents=True, exist_ok=True)
     task_dir = WIKI_DIR / "agent_tasks"
     task_dir.mkdir(parents=True, exist_ok=True)
+
+    image_ocr_report: dict[str, Any] = {
+        "backend": str(get_ocr_config().get("backend", "ovis")),
+        "attempted": 0,
+        "succeeded": 0,
+        "failed": [],
+    }
 
     if path.is_dir():
         try:
@@ -2188,15 +2619,27 @@ def create_agent_compile_task(
         else:
             task_source_path = _agent_source_snapshot(path)
             content, readable = _read_agent_visible_source(task_source_path)
+        if readable and path.suffix.lower() in {".md", ".markdown"}:
+            # The immutable Markdown snapshot intentionally excludes sibling
+            # files. Restore page boundaries from the original MinerU sidecar
+            # before chunking so every Agent artifact retains page/image mapping.
+            content = _inject_mineru_page_markers(content, path)
         if readable and not dry_run:
             content = _persist_source_image_references(content, path)
+            if path.suffix.lower() in {".md", ".markdown"} and MARKDOWN_IMAGE_RE.search(content):
+                content, image_ocr_report = _preextract_agent_markdown_images(content)
+                # OvisOCR2 may add absolute bbox crop references. Persist them
+                # into pages/assets just like the captured source page images.
+                content = _persist_source_image_references(content, path)
         readable_content = strip_sensitive(content) if readable else ""
         source_entries = f"- `{task_source_path}`"
         source_name = path.name
         source_hint = infer_source_type(path)
 
     selected_type = source_type if source_type != "auto" else "Agent must decide"
+    matched_experts = match_domain_experts(readable_content, source_name)
     expert_guidance = build_domain_expert_guidance(readable_content, source_name)
+    study_material = any(expert["id"] == "study_material" for expert in matched_experts)
     schema_text = ""
     if SCHEMA_PATH.is_file():
         schema_text = SCHEMA_PATH.read_text(encoding="utf-8")[:12000]
@@ -2205,59 +2648,124 @@ def create_agent_compile_task(
         if template_schema.is_file():
             schema_text = template_schema.read_text(encoding="utf-8")[:12000]
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
     safe_name = re.sub(r"[^a-zA-Z0-9_.-]+", "-", source_name).strip("-") or "source"
-    task_path = task_dir / f"compile-{timestamp}-{safe_name}.md"
+    run_dir = task_dir / f"compile-{timestamp}-{safe_name}"
+    task_path = run_dir / "task.md"
+    todo_path = run_dir / "todolist.json"
+    todo_items: list[dict[str, Any]] = []
+
+    if path.is_dir():
+        for index, snapshot in enumerate(snapshots, start=1):
+            todo_items.append(
+                {
+                    "id": f"source-{index:04d}",
+                    "label": snapshot.name,
+                    "source_path": str(snapshot),
+                    "artifact_path": str(snapshot),
+                    "artifact_sha256": sha256_file(snapshot),
+                    "source_bytes": snapshot.stat().st_size,
+                }
+            )
+    elif readable:
+        agent_chunk_tokens = max(2_000, min(get_chunk_threshold(), 12_000))
+        lang = detect_language(readable_content)
+        image_bearing_markdown = path.suffix.lower() in {".md", ".markdown"} and bool(
+            MARKDOWN_IMAGE_RE.search(readable_content)
+        )
+        if image_bearing_markdown:
+            chunks = _split_image_markdown_for_agent(readable_content)
+        else:
+            chunks = (
+                _split_by_headings(readable_content, agent_chunk_tokens, lang)
+                if _estimate_tokens(readable_content, lang) > agent_chunk_tokens
+                else [readable_content]
+            )
+        for index, chunk in enumerate(chunks, start=1):
+            chunk_path = run_dir / "chunks" / f"part-{index:04d}.md"
+            if not dry_run:
+                atomic_write(chunk_path, chunk)
+            image_paths = _agent_image_paths(chunk)
+            item = {
+                "id": f"chunk-{index:04d}",
+                "label": f"{source_name} [part {index}/{len(chunks)}]",
+                "source_path": str(task_source_path),
+                "artifact_path": str(chunk_path),
+                "artifact_sha256": (
+                    sha256_file(chunk_path)
+                    if not dry_run
+                    else hashlib.sha256(chunk.encode("utf-8")).hexdigest()
+                ),
+                "source_chars": len(chunk),
+                "estimated_tokens": _estimate_tokens(chunk, lang),
+            }
+            if image_paths:
+                ocr_success_markers = chunk.count("status=success -->")
+                ocr_failure_markers = chunk.count("status=failed -->")
+                ocr_complete = ocr_success_markers > 0 and ocr_failure_markers == 0
+                item.update(
+                    {
+                        "requires_image_inspection": True,
+                        "image_count": len(image_paths),
+                        "image_paths": image_paths,
+                        "ocr_backend": image_ocr_report["backend"],
+                        "ocr_status": "success" if ocr_complete else "fallback_allowed",
+                        "vision_fallback_allowed": not ocr_complete,
+                    }
+                )
+            todo_items.append(item)
+    else:
+        todo_items.append(
+            {
+                "id": "source-0001",
+                "label": source_name,
+                "source_path": str(task_source_path),
+                "artifact_path": str(task_source_path),
+                "artifact_sha256": sha256_file(task_source_path),
+                "source_bytes": task_source_path.stat().st_size,
+                "requires_direct_inspection": True,
+            }
+        )
+
+    if not dry_run:
+        create_manifest(
+            todo_path,
+            source=str(path),
+            mode="agent",
+            items=todo_items,
+            metadata={
+                "task_file": str(task_path),
+                "wiki_dir": str(WIKI_DIR),
+                "study_material": study_material,
+                "ordered_execution": True,
+                "publish_only_after_verification": True,
+            },
+        )
 
     content_block = ""
     if path.is_file() and readable:
+        preview = readable_content[:4_000]
         if (
             is_paginated_document_source(path)
             or is_image_source(path)
             or path.suffix.lower() == ".epub"
         ):
-            # Raw markdown (not code-fenced) so embedded image links render
-            # for the Agent — pages and image sources both rely on this.
-            max_preview_chars = 200_000
-            preview = readable_content[:max_preview_chars]
-            if len(readable_content) > len(preview):
-                omitted = len(readable_content) - max_preview_chars
-                if is_paginated_document_source(path):
-                    truncated = (
-                        f"\n\n[TRUNCATED: {omitted:,} additional characters omitted. "
-                        "Agent should inspect the rendered page images under "
-                        f"{_document_images_dir(path).resolve()}.]"
-                    )
-                elif is_image_source(path):
-                    truncated = (
-                        f"\n\n[TRUNCATED: {omitted:,} additional characters omitted. "
-                        "Agent should read the source image directly.]"
-                    )
-                else:
-                    truncated = (
-                        f"\n\n[TRUNCATED: {omitted:,} additional EPUB characters omitted. "
-                        "Use the extracted EPUB assets and source snapshot if more context is needed.]"
-                    )
-            else:
-                truncated = ""
-            content_block = f"""## Source Content Preview
+            content_block = f"""## Source Content Preview (non-authoritative)
 
 {preview}
-{truncated}
+
+The preview is deliberately limited. The authoritative, complete source is represented
+by every ordered artifact in `{todo_path}`. Never infer completion from this preview.
 """
         else:
-            preview = readable_content[:50000]
-            truncated = (
-                "\n\n[TRUNCATED: Agent should read the source file directly.]"
-                if len(readable_content) > len(preview)
-                else ""
-            )
-            content_block = f"""## Source Content Preview
+            content_block = f"""## Source Content Preview (non-authoritative)
 
 ```text
 {preview}
 ```
-{truncated}
+
+The preview is deliberately limited. The authoritative, complete source is represented
+by every ordered artifact in `{todo_path}`. Never infer completion from this preview.
 """
     elif path.is_file():
         content_block = """## Source Readability
@@ -2265,6 +2773,50 @@ def create_agent_compile_task(
 The script did not extract text from this source without OCR/vision/model calls.
 The Agent should try to inspect/read the file with available capabilities. If the
 Agent cannot read it, ask the user to provide a text export or summary.
+"""
+
+    image_task_guidance = ""
+    if any(item.get("requires_image_inspection") for item in todo_items):
+        configured_ocr_backend = str(get_ocr_config().get("backend", "ovis"))
+        configured_ocr_label = (
+            "OvisOCR2" if configured_ocr_backend == "ovis" else configured_ocr_backend
+        )
+        ocr_complete = all(
+            item.get("ocr_status") == "success"
+            for item in todo_items
+            if item.get("requires_image_inspection")
+        )
+        if ocr_complete:
+            image_task_guidance = f"""### Image-backed Markdown / captured pages (mandatory)
+
+- `{configured_ocr_label}` has already processed every source image while this
+  task was created. Its primary Markdown is embedded in each artifact.
+- Use that OCR Markdown and retain every original-page and generated crop reference.
+- `vision_fallback_allowed=false` is authoritative: do not invoke vision-skill or
+  native visual recognition for these successfully processed images.
+- Complete a task only after all OCR text, formulas, tables, captions, and referenced
+  crops are represented in the output. This run contains
+  {sum(int(item.get('image_count', 0)) for item in todo_items)} persisted image asset(s).
+
+"""
+        else:
+            image_task_guidance = f"""### Image-backed Markdown / captured pages (mandatory)
+
+- This run contains image-backed source tasks. Each such todo item has
+  `requires_image_inspection=true` and concrete absolute `image_paths`.
+- For every path in `image_paths`, run the configured `{configured_ocr_backend}`
+  backend ({configured_ocr_label}) through `{Path(__file__).resolve().parent / 'ocr.py'}`
+  before any visual skill. Use its Markdown as the primary extraction and retain all
+  generated crop references. Do not invoke vision-skill when OCR succeeds.
+- vision-skill is permitted only for a specific image after its OCR command fails or
+  returns insufficient document text. Record that OCR failure before using the fallback.
+- The image itself remains authoritative. OCR failure is not permission to skip the
+  task; use the fallback only for the failed image and preserve its provenance.
+- Do not substitute, deduplicate away, or mark failed merely because another PDF or
+  source URL appears similar. Compile this source and preserve its own provenance.
+- A task may be completed only after every listed image has been read and represented
+  in its output pages. This run contains {sum(int(item.get('image_count', 0)) for item in todo_items)} image(s).
+
 """
 
     task = f"""# Agent Compile Task
@@ -2284,6 +2836,36 @@ This task was generated in Agent mode. Do not call the configured LLM API.
 
 ## Agent Responsibilities
 
+### Completeness Todo Protocol (highest priority, fail closed)
+
+- The authoritative ordered worklist is `{todo_path}` and contains
+  **all {len(todo_items)} source task(s)**. The source list or preview in this file may
+  be abbreviated; the todo list may not be abbreviated.
+- Process exactly one task at a time in ascending `order`. Before reading a task run:
+  `python {Path(__file__).resolve().parent / "compile_todo.py"} start "{todo_path}" <task-id>`
+- Read the task's complete `artifact_path`, including every heading, paragraph, list,
+  table row/cell, footnote, formula, caption, and image/page reference. If a directory
+  item is itself too large for context, invoke `compile_v2.py` on that immutable
+  snapshot to create and finish its child todo before completing the parent item.
+- Write/merge all knowledge from that task into OKF pages. Record every affected
+  Concept ID only after the task is fully represented:
+  `python {Path(__file__).resolve().parent / "compile_todo.py"} complete "{todo_path}" <task-id> --output <concept-id>`
+- For image-bearing study materials, `complete` is an executable media gate: every
+  output must cite exact source pages/EPUB sections; it then attaches images from the
+  cited and adjacent pages and records their hashes. This cannot be satisfied by a
+  prose claim that images were reviewed.
+- Never mark a task completed merely because it was read or summarized. A completed
+  task requires concrete output page IDs. On failure, mark it `failed`/`blocked`;
+  never skip it and never claim the source was compiled.
+- After every item has been attempted, run:
+  `python {Path(__file__).resolve().parent / "compile_todo.py"} verify "{todo_path}"`
+  Verification must return `coverage_complete: true` with zero pending, in-progress,
+  failed, or blocked tasks. Only then update index/graph/audit and report success.
+- Before final verification, compare the source inventory (headings/pages/tables and
+  task hashes) with compiled pages. Add remediation tasks for any uncovered content.
+
+{image_task_guidance}
+
 ### Source Protection (highest priority, non-negotiable)
 
 - The paths under **Source** are immutable snapshots, not output targets.
@@ -2300,7 +2882,7 @@ This task was generated in Agent mode. Do not call the configured LLM API.
 
 - For PDF/DOC/DOCX/PPT/PPTX, use the page-by-page OCR content already embedded below.
 - If the embedded extraction reports a failure, retry the configured OCR backend
-  (`mineru` when configured) before using any generic document converter.
+  before using any generic document converter.
 - NEVER use MarkItDown as the primary extractor for a scanned PDF. A short or
   header-only MarkItDown result is partial evidence, not compile-ready content.
 - Do not compile an incomplete extraction. OCR every page, or stop and report the
@@ -2376,6 +2958,9 @@ This task was generated in Agent mode. Do not call the configured LLM API.
         "source": str(path),
         "mode": "agent",
         "agent_task": str(task_path) if not dry_run else "(dry-run — task not written)",
+        "todo": str(todo_path) if not dry_run else "(dry-run — todo not written)",
+        "tasks_total": len(todo_items),
+        "coverage_complete": False,
         "needs_agent": True,
         "readable": readable,
         "pages_created": 0,
@@ -2861,12 +3446,8 @@ def _merge_cross_chunk_page(existing: dict, incoming: dict) -> None:
     """Merge the same knowledge point found in multiple document chunks in place."""
     existing_content = existing.get("_content", "")
     incoming_content = incoming.get("_content", "")
-    existing_match = re.match(
-        r"^---\s*\n(.*?)\n---\s*\n?(.*)$", existing_content, flags=re.DOTALL
-    )
-    incoming_match = re.match(
-        r"^---\s*\n(.*?)\n---\s*\n?(.*)$", incoming_content, flags=re.DOTALL
-    )
+    existing_match = re.match(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", existing_content, flags=re.DOTALL)
+    incoming_match = re.match(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", incoming_content, flags=re.DOTALL)
     if not existing_match or not incoming_match:
         existing["_content"] = existing_content.rstrip() + "\n\n" + incoming_content.lstrip()
         return
@@ -2878,11 +3459,7 @@ def _merge_cross_chunk_page(existing: dict, incoming: dict) -> None:
     except Exception:
         fused_body = None
     if not fused_body:
-        fused_body = (
-            existing_body.rstrip()
-            + "\n\n## 跨页补充内容\n\n"
-            + incoming_body.lstrip()
-        )
+        fused_body = existing_body.rstrip() + "\n\n## 跨页补充内容\n\n" + incoming_body.lstrip()
 
     # Fusion is semantic, but provenance and media must be lossless. Re-attach
     # exact source sections and image references from both chunk variants.
@@ -2898,8 +3475,8 @@ def _merge_cross_chunk_page(existing: dict, incoming: dict) -> None:
             if section not in evidence_sections:
                 evidence_sections.append(section)
     if evidence_sections:
-        fused_body = fused_body.rstrip() + "\n\n## 跨页来源证据\n\n" + "\n\n".join(
-            evidence_sections
+        fused_body = (
+            fused_body.rstrip() + "\n\n## 跨页来源证据\n\n" + "\n\n".join(evidence_sections)
         )
 
     existing_image_targets = {
@@ -2915,9 +3492,7 @@ def _merge_cross_chunk_page(existing: dict, incoming: dict) -> None:
             missing_images.append(match.group(0))
             existing_image_targets.add(target)
     if missing_images:
-        fused_body = fused_body.rstrip() + "\n\n## 跨页来源图片\n\n" + "\n\n".join(
-            missing_images
-        )
+        fused_body = fused_body.rstrip() + "\n\n## 跨页来源图片\n\n" + "\n\n".join(missing_images)
 
     merged_content = "---\n" + existing_match.group(1) + "\n---\n" + fused_body.lstrip()
     existing["_content"] = merged_content
@@ -2939,33 +3514,92 @@ def _compile_chunked(
     focus_desc: str,
     entity_type_str: str,
 ) -> dict:
-    """Compile a large document in chunks, merging cross-page knowledge."""
+    """Compile every large-document task in order and publish only after verification."""
     all_created: list[dict] = []
     all_updated: list[dict] = []
     pages_by_id: dict[str, dict] = {}
+    failed_chunks: list[dict[str, Any]] = []
+    todo_path: Path | None = None
+
+    if not dry_run:
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+        safe_name = re.sub(r"[^a-zA-Z0-9_.-]+", "-", source_name).strip("-") or "source"
+        run_dir = WIKI_DIR / "compile_runs" / f"compile-{timestamp}-{safe_name}"
+        todo_path = run_dir / "todolist.json"
+        todo_items: list[dict[str, Any]] = []
+        for index, chunk in enumerate(chunks, start=1):
+            chunk_path = run_dir / "chunks" / f"part-{index:04d}.md"
+            atomic_write(chunk_path, chunk)
+            todo_items.append(
+                {
+                    "id": f"chunk-{index:04d}",
+                    "label": f"{source_name} [part {index}/{len(chunks)}]",
+                    "artifact_path": str(chunk_path),
+                    "artifact_sha256": sha256_file(chunk_path),
+                    "source_chars": len(chunk),
+                    "estimated_tokens": _estimate_tokens(chunk, lang),
+                }
+            )
+        create_manifest(
+            todo_path,
+            source=source_name,
+            mode="llm",
+            items=todo_items,
+            metadata={
+                "ordered_execution": True,
+                "publish_only_after_verification": True,
+                "max_attempts_per_task": 3,
+            },
+        )
 
     for i, chunk in enumerate(chunks):
         chunk_name = f"{source_name} [part {i + 1}/{len(chunks)}]"
+        task_id = f"chunk-{i + 1:04d}"
         print(f"  Compiling chunk {i + 1}/{len(chunks)} ({len(chunk)} chars)...", file=sys.stderr)
 
-        try:
-            result = _compile_single_chunk(
-                chunk,
-                chunk_name,
-                source_type,
-                force,
-                dry_run,
-                lang,
-                entity_types,
-                entity_type_lines,
-                rel_type_lines,
-                focus_types,
-                focus_desc,
-                entity_type_str,
-                source_name,
-            )
-        except Exception as e:
-            print(f"  ERROR: chunk {i + 1}/{len(chunks)} failed: {e}", file=sys.stderr)
+        result: dict[str, Any] | None = None
+        last_error = ""
+        for attempt in range(1, 4):
+            if todo_path is not None:
+                update_task(
+                    todo_path,
+                    task_id,
+                    "in_progress",
+                    note=f"attempt {attempt}/3",
+                )
+            try:
+                result = _compile_single_chunk(
+                    chunk,
+                    chunk_name,
+                    source_type,
+                    force,
+                    dry_run,
+                    lang,
+                    entity_types,
+                    entity_type_lines,
+                    rel_type_lines,
+                    focus_types,
+                    focus_desc,
+                    entity_type_str,
+                    source_name,
+                )
+                result_pages = result.get("created_pages", []) + result.get("updated_pages", [])
+                if not result_pages:
+                    raise RuntimeError("model returned no valid pages for this source task")
+                break
+            except Exception as exc:
+                last_error = str(exc)
+                print(
+                    f"  ERROR: chunk {i + 1}/{len(chunks)} attempt {attempt}/3 failed: {exc}",
+                    file=sys.stderr,
+                )
+                result = None
+
+        if result is None:
+            failure = {"task": task_id, "chunk": i + 1, "error": last_error}
+            failed_chunks.append(failure)
+            if todo_path is not None:
+                update_task(todo_path, task_id, "failed", error=last_error)
             continue
 
         # The same concept appearing in adjacent chunks is usually continuation,
@@ -2983,10 +3617,44 @@ def _compile_chunked(
                 else:
                     _merge_cross_chunk_page(existing, page)
 
+        if todo_path is not None:
+            task_outputs = [
+                page["id"]
+                for collection_name in ("created_pages", "updated_pages")
+                for page in result.get(collection_name, [])
+            ]
+            update_task(
+                todo_path,
+                task_id,
+                "completed",
+                outputs=task_outputs,
+                note=f"compiled {len(task_outputs)} page(s)",
+            )
+
+    if todo_path is not None:
+        verification = verify_manifest(todo_path)
+        if not verification.get("coverage_complete"):
+            write_audit(
+                "compile_incomplete",
+                {
+                    "source": source_name,
+                    "chunked": True,
+                    "chunks": len(chunks),
+                    "failed_chunks": failed_chunks,
+                    "todo": str(todo_path),
+                },
+            )
+            raise RuntimeError(
+                f"Compilation incomplete; no pages published. Resolve every task in {todo_path}"
+            )
+    elif failed_chunks:
+        raise RuntimeError(
+            f"Compilation incomplete in dry-run: {len(failed_chunks)}/{len(chunks)} tasks failed"
+        )
+
     all_pages = all_created + all_updated
     if not all_pages:
-        print("  WARNING: No pages extracted from any chunk!", file=sys.stderr)
-        return {"source": source_name, "pages_created": 0, "pages_updated": 0, "pages": []}
+        raise RuntimeError("Compilation incomplete: no pages extracted from any source task")
 
     # Post-processing: write pages (unless dry_run), update index/graph
     if not dry_run:
@@ -3006,6 +3674,8 @@ def _compile_chunked(
                 "chunks": len(chunks),
                 "pages_created": len(all_created),
                 "pages_updated": len(all_updated),
+                "coverage_complete": True,
+                "todo": str(todo_path) if todo_path is not None else "",
             },
         )
 
@@ -3019,6 +3689,10 @@ def _compile_chunked(
         "pages": all_pages,
         "chunked": True,
         "chunks": len(chunks),
+        "tasks_total": len(chunks),
+        "tasks_completed": len(chunks),
+        "coverage_complete": True,
+        "todo": str(todo_path) if todo_path is not None else "",
     }
 
 
@@ -3496,8 +4170,7 @@ def compile_source(
     domain_guidance = build_domain_expert_guidance(content, source_name)
     media_guidance = build_media_fidelity_guidance(lang)
     study_material = any(
-        expert["id"] == "study_material"
-        for expert in match_domain_experts(content, source_name)
+        expert["id"] == "study_material" for expert in match_domain_experts(content, source_name)
     )
     entity_types, entity_type_lines, rel_type_lines = load_entity_types_from_schema()
     focus_types, focus_desc = load_ingest_rules_from_schema(source_type)
@@ -4045,11 +4718,29 @@ Output pages separated by ===PAGE_END==="""
 
     all_pages = created_pages + updated_pages
     if not all_pages:
+        if _skipped[0] and existing_source_pages:
+            output_ids = sorted(existing_source_pages)
+            print(
+                f"  Complete: {len(output_ids)} existing page(s) were unchanged",
+                file=sys.stderr,
+            )
+            return {
+                "source": source_name,
+                "pages_created": 0,
+                "pages_updated": 0,
+                "pages_skipped": _skipped[0],
+                "pages": [],
+                "output_ids": output_ids,
+                "coverage_complete": True,
+            }
         print(
-            "  WARNING: No pages parsed from LLM response! Raw output (500 chars):", file=sys.stderr
+            "  ERROR: No pages parsed from LLM response! Raw output (500 chars):", file=sys.stderr
         )
         print(f"    {response[:500]}", file=sys.stderr)
-        return {"source": source_name, "pages_created": 0, "pages_updated": 0, "pages": []}
+        raise RuntimeError(
+            "Compilation incomplete: the source produced no valid wiki pages; "
+            "the run was not successfully completed"
+        )
 
     # ── Incremental: track unchanged pages ──
     new_page_ids: set[str] = {p["id"] for p in all_pages}
@@ -4066,6 +4757,8 @@ Output pages separated by ===PAGE_END==="""
             "pages_skipped": skipped_pages,
             "pages": all_pages,
             "dry_run": True,
+            "output_ids": sorted(new_page_ids),
+            "coverage_complete": True,
         }
 
     # ── 概念聚合：为每个实体组创建/更新概念页（同名异实保护） ──
@@ -4220,6 +4913,8 @@ provenance: 跨文档聚合
         "pages_skipped": skipped_pages,
         "pages_pruned": len(pruned_pages),
         "pages": all_pages,
+        "output_ids": sorted(new_page_ids),
+        "coverage_complete": True,
         "contradictions_found": contradictions_found,
     }
 
@@ -4295,15 +4990,48 @@ def compile_path(
             "failed": [],
             "pages_created": 0,
             "pages_updated": 0,
+            "coverage_complete": True,
         }
 
     compiled = []
     failed = []
     pages_created = 0
     pages_updated = 0
+    directory_todo_path: Path | None = None
+    if not dry_run:
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+        safe_name = re.sub(r"[^a-zA-Z0-9_.-]+", "-", path.name).strip("-") or "directory"
+        run_dir = WIKI_DIR / "compile_runs" / f"directory-{timestamp}-{safe_name}"
+        directory_todo_path = run_dir / "todolist.json"
+        create_manifest(
+            directory_todo_path,
+            source=str(path),
+            mode="llm-directory",
+            items=[
+                {
+                    "id": f"source-{index:04d}",
+                    "label": source.name,
+                    "artifact_path": str(source.resolve()),
+                    "artifact_sha256": sha256_file(source),
+                    "source_bytes": source.stat().st_size,
+                }
+                for index, source in enumerate(sources, start=1)
+            ],
+            metadata={
+                "ordered_execution": True,
+                "publish_only_after_verification": True,
+            },
+        )
 
     # ── Concurrent workers (default 1 = serial, configurable) ──
-    workers = _get_compile_workers()
+    requested_workers = _get_compile_workers()
+    workers = 1
+    if requested_workers > 1:
+        print(
+            "  Completeness mode forces sequential directory compilation; "
+            f"ignoring requested worker count {requested_workers}.",
+            file=sys.stderr,
+        )
 
     if workers > 1 and len(sources) > 1:
         print(
@@ -4347,18 +5075,47 @@ def compile_path(
                     traceback.print_exc()
     else:
         print(f"Compiling directory {path} ({len(sources)} files)...", file=sys.stderr)
-        for source in sources:
+        for source_index, source in enumerate(sources, start=1):
+            task_id = f"source-{source_index:04d}"
+            if directory_todo_path is not None:
+                update_task(directory_todo_path, task_id, "in_progress")
             try:
                 result = compile_source(
                     str(source), source_type=source_type, force=force, dry_run=dry_run
                 )
+                output_ids = [page["id"] for page in result.get("pages", []) if page.get("id")] or [
+                    str(value) for value in result.get("output_ids", [])
+                ]
+                if not output_ids:
+                    raise RuntimeError("source task produced no recorded wiki outputs")
                 compiled.append(result)
                 pages_created += result.get("pages_created", 0)
                 pages_updated += result.get("pages_updated", 0)
+                if directory_todo_path is not None:
+                    update_task(
+                        directory_todo_path,
+                        task_id,
+                        "completed",
+                        outputs=output_ids,
+                    )
             except Exception as e:
                 failed.append({"source": str(source), "error": str(e)})
+                if directory_todo_path is not None:
+                    update_task(directory_todo_path, task_id, "failed", error=str(e))
                 print(f"  ERROR: failed to compile {source}: {e}", file=sys.stderr)
                 traceback.print_exc()
+
+    if directory_todo_path is not None:
+        verification = verify_manifest(directory_todo_path)
+        if not verification.get("coverage_complete"):
+            raise RuntimeError(
+                "Directory compilation incomplete; one or more source tasks failed. "
+                f"Resolve every task in {directory_todo_path}"
+            )
+    elif failed:
+        raise RuntimeError(
+            f"Directory dry-run incomplete: {len(failed)}/{len(sources)} source tasks failed"
+        )
 
     return {
         "source": str(path),
@@ -4369,6 +5126,10 @@ def compile_path(
         "pages_created": pages_created,
         "pages_updated": pages_updated,
         "workers": workers if workers > 1 else 1,
+        "tasks_total": len(sources),
+        "tasks_completed": len(sources),
+        "coverage_complete": True,
+        "todo": str(directory_todo_path) if directory_todo_path is not None else "",
     }
 
 
@@ -4612,7 +5373,11 @@ def main():
     if result.get("mode") == "agent":
         print(f"\nAgent compile task created for {result['source']}")
         print(f"  → {result['agent_task']}")
-        print("  → No configured LLM was called. The Agent should execute this task.")
+        print(f"  → Todo: {result.get('todo')} ({result.get('tasks_total', 0)} ordered tasks)")
+        print(
+            "  → No configured LLM was called. The current Agent must execute every todo "
+            "and pass the final completeness check."
+        )
         if not result.get("readable", True):
             print(
                 "  → Source text was not extracted; Agent must inspect it or ask for readable content."

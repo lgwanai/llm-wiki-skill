@@ -82,7 +82,8 @@ wiki benchmark <eval_file.jsonl> --method both -k 5    # Both methods
 ## OCR
 
 ```bash
-python ocr/cli.py <file.pdf>                  # MinerU (default, CPU)
+python ocr/cli.py <file.pdf>                  # OvisOCR2 (default, Apple Silicon)
+python ocr/cli.py <file.pdf> --backend mineru  # Legacy MinerU backend
 python ocr/cli.py <file.pdf> --backend paddle  # PaddleOCR
 python ocr/cli.py <file.pdf> --backend deepseek # DeepSeek-OCR-2 (GPU/MPS)
 python ocr/cli.py <file.pdf> --backend logics  # Logics-Parsing (GPU/MPS)

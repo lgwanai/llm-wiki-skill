@@ -155,7 +155,7 @@ wiki doctor --list                                 # 列出未解决问题
 | [架构与生命周期](docs/ARCHITECTURE.md) | 三层设计、知识生命周期 |
 | [评测详情](docs/BENCHMARK.md) | RAGAS 评测、业界对比、逐题分数 |
 | [台账管理](docs/LEDGER.md) | 结构化表格、CSV 导入、NL→SQL |
-| [OCR 后端](docs/OCR.md) | MinerU、DeepSeek-OCR、Logics、PaddleOCR |
+| [OCR 后端](docs/OCR.md) | OvisOCR2（默认）、MinerU、DeepSeek-OCR、Logics、PaddleOCR |
 | [CLI 参考](docs/CLI.md) | 完整命令参考 |
 
 ## 项目结构

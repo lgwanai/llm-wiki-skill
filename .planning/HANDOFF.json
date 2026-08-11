@@ -1,13 +1,14 @@
 {
   "version": "1.0",
-  "timestamp": "2026-07-15T13:58:40Z",
+  "timestamp": "2026-07-15T16:58:09Z",
   "phase": null,
   "phase_name": null,
   "phase_dir": null,
   "plan": null,
   "task": null,
   "total_tasks": null,
-  "status": "paused",
+  "status": "committed",
+  "commit": "4c09fbc",
   "completed_tasks": [
     {"id": 1, "name": "Phase 1 code review (/code-review)", "status": "done", "commit": null},
     {"id": 2, "name": "Fix #1 persisted image links absolute->relative", "status": "done", "commit": null},
@@ -18,37 +19,48 @@
     {"id": 7, "name": "Fix #6 _version_tuple drops pre-release suffix (Python side only)", "status": "done", "commit": null},
     {"id": 8, "name": "Fix #7 test indexes images[0] without non-empty guard", "status": "done", "commit": null},
     {"id": 9, "name": "Fix #8 add missing type annotations", "status": "done", "commit": null},
-    {"id": 10, "name": "Phase 2: external ocr review (OpenCodeReview CLI, DeepSeek deepseek-v4-pro) - 16 files, 19 comments, exit 0", "status": "done", "commit": null}
+    {"id": 10, "name": "Phase 2: external ocr review (OpenCodeReview CLI, DeepSeek deepseek-v4-pro) - 16 files, 19 comments, exit 0", "status": "done", "commit": null},
+    {"id": 11, "name": "Fix ocr-review item A: install.ps1:179 pre-release version ValueError (PowerShell mirror of #6)", "status": "done", "commit": null, "note": "Regex-extract numeric triplet AND reject pre-releases (mirrors fix #6 gate). Single-quoted PS string. Verified via stubbed version()."},
+    {"id": 12, "name": "Fix ocr-review item B: ocr/cli.py expected_pages stays None when source_pages unknown but max_pages set", "status": "done", "commit": null, "note": "Fallback to max_pages; also exposed expected_pages in manifest. Regression test added."},
+    {"id": 13, "name": "Fix ocr-review item C: ocr/cli.py batch --output collides (MinerU overwrite across files)", "status": "done", "commit": null, "note": "Append {stem}_ocr subdir when args.output set; resolve_output_dir validation preserved. Regression test added."},
+    {"id": 14, "name": "Fix ocr-review item D: compile_v2.py _readonly_working_copy finally masks original exception", "status": "done", "commit": null, "note": "Capture sys.exc_info() at top of finally; chain original_exc in both OSError and not-unchanged branches. Regression test added."},
+    {"id": 15, "name": "Fix ocr-review item E: wiki.py ocr import guard", "status": "done", "commit": null, "note": "try/except ImportError around `from ocr.cli import main` -> clear stderr message + sys.exit(1) (matches main's sys.exit convention). Regression test added."},
+    {"id": 16, "name": "Fix ocr-review item F: _load_backend install guidance", "status": "done_noop", "commit": null, "note": "Review premise INCORRECT - investigated and rejected. _load_backend never imports external pkgs (all lazy in methods); paddle (_paddle_ocr.py:81-84), deepseek (_deepseek_ocr2.py:130-134), logics (_logics_parsing.py:123-127) ALREADY self-handle missing deps via try/except ImportError->RuntimeError with ACCURATE install guidance. Review's suggested package names (deepseek-ocr2, logics-parsing) DON'T EXIST as imports - real deps are torch/transformers/paddleocr. Applying the review's patch would have injected wrong install commands. No code change."},
+    {"id": 17, "name": "Fix ocr-review item G: _ensure_mineru_config setdefault", "status": "done", "commit": null, "note": "Both os.environ writes (MINERU_TOOLS_CONFIG_JSON line 43, MINERU_MODEL_SOURCE line 56) -> os.environ.setdefault to close TOCTOU window. Semantically equivalent inside the existing `not in` guards; existing mineru tests pass unchanged."}
   ],
   "remaining_tasks": [
-    {"id": 11, "name": "Fix ocr-review item A: install.ps1:179 pre-release version ValueError (PowerShell mirror of #6)", "status": "not_started", "priority": "high"},
-    {"id": 12, "name": "Fix ocr-review item B: ocr/cli.py:306 expected_pages stays None when source_pages unknown but max_pages set -> misleading status:complete / coverage_complete:null", "status": "not_started", "priority": "high"},
-    {"id": 13, "name": "Fix ocr-review item C: ocr/cli.py:437 batch --output collides (MinerU overwrite across files)", "status": "not_started", "priority": "high"},
-    {"id": 14, "name": "Fix ocr-review item D: compile_v2.py:764 _readonly_working_copy finally masks original exception with integrity RuntimeError (raised 2x)", "status": "not_started", "priority": "medium"},
-    {"id": 15, "name": "Fix ocr-review items E-G (wiki.py import guard, _load_backend install guidance, _ensure_mineru_config setdefault)", "status": "not_started", "priority": "low"},
-    {"id": 16, "name": "Decide ocr-review design items (_has_meaningful_ocr_text 40-char threshold x2; _merge_cross_chunk_page unbounded LLM calls x2; 来源图片 image cap) - likely leave as-is or document", "status": "not_started", "priority": "low"},
-    {"id": 17, "name": "Commit the 8 completed fixes (uncommitted) + any new fixes", "status": "not_started", "priority": "high"}
+    {"id": 18, "name": "Decide ocr-review design items (_has_meaningful_ocr_text 40-char threshold x2; _merge_cross_chunk_page unbounded LLM calls x2; 来源图片 image cap) - likely leave as-is or document", "status": "not_started", "priority": "low"},
+    {"id": 19, "name": "Commit all completed fixes (#1-#8, A-D, E, G) - F was a no-op", "status": "done", "commit": "4c09fbc", "note": "Committed as 4c09fbc 'feat: study-material/EPUB/OCR pipeline + code-review fixes'. Scope chosen by user: code+tests+docs+config + dist zip deletion + 3 new files. Excluded (still uncommitted): .codegraph/daemon.pid (runtime), .planning/STATE.md + HANDOFF.json (session bookkeeping). Bundled the in-flight feature with the fixes (inseparable). 261 tests pass on the committed tree."}
   ],
   "blockers": [
-    {"description": "Context window nearly exhausted (~25% remaining when pausing). Do not attempt all 19 ocr-review items in one resumed session - prioritize remaining tasks A-D.", "type": "technical", "workaround": "Fix A-D first, commit, then optionally continue E-G in a fresh session."}
+    {"description": "Pre-existing ruff format debt in scripts/compile_v2.py and tests/test_compile_sources.py (in-flight feature code NOT touched by A-D: _TITLE_RE, EPUB traceability tests, llm_fuse_pages regex). ruff check is clean; only `ruff format` wants to reflow pre-existing lines. Decision deferred to commit time - either a separate `ruff format` pass or leave as-is.", "type": "technical", "workaround": "Do NOT bundle a whole-file reformat into the A-D commit; keep A-D focused. Optionally run `ruff format` as its own commit."}
   ],
   "human_actions_pending": [],
   "decisions": [
     {"decision": "Use os.path.relpath relative links from page_anchor=PAGES_DIR/concepts for persisted images", "rationale": "Pages always live one dir below pages/ (concepts/ or entities/); ../assets/<key>/<name> is portable and idempotent through _attach_source_media", "phase": null},
     {"decision": "Reject pre-release MinerU versions (rc/dev/a/b) via new _is_prerelease in ocr/cli.py", "rationale": "README claims >=3.4.4,<4 is enforced before a long parse; 3.4.4rc1 was passing the gate", "phase": null},
     {"decision": "Tighten _extract_cited_pages patterns to require provenance vocabulary + word boundaries", "rationale": "bare 'Page N' matched HTTP 404, Python 3.12, v2.0.4, Figure 2.1 -> bogus provenance", "phase": null},
-    {"decision": "Did NOT touch the markdown/okf files (README/SKILL) in the ocr-review path - those are excluded by ocr tool and not code", "rationale": "scope discipline", "phase": null}
+    {"decision": "Did NOT touch the markdown/okf files (README/SKILL) in the ocr-review path - those are excluded by ocr tool and not code", "rationale": "scope discipline", "phase": null},
+    {"decision": "Item A (install.ps1): regex-extract triplet AND reject pre-releases (NOT the review's regex-only suggestion), to mirror fix #6's gate. Pre-release 3.4.4rc1 still reports 'not installed (optional)' but now deliberately (unsupported) rather than via a ValueError crash. Kept the original >=3.4.4 lower-bound only (did NOT add <4 upper bound - out of scope, pre-existing installer behavior).", "rationale": "handoff framed A as 'PowerShell mirror of fix #6' + 'I only fixed Python'; consistency with the runtime gate (source of truth for 'is MinerU usable') beats the review's regex-only pass-through, which would green-light a setup the runtime rejects.", "phase": null},
+    {"decision": "Item C: kept resolve_output_dir validation by appending {stem}_ocr AFTER calling it (validates base --output dir), rather than the review's bypass-resolve_output_dir form", "rationale": "preserves is-dir / source-like-suffix / source-collision checks on --output; minimal diff; fixes collision", "phase": null},
+    {"decision": "Item D: chain original_exc in BOTH the OSError ('became unavailable') and not-unchanged ('changed') branches, going beyond the review's literal patch (which only fixed not-unchanged)", "rationale": "review's stated principle was 'chain the original instead of letting the finally-block exception win'; applying it to both branches is strictly more correct and removes masking in the OSError path too", "phase": null},
+    {"decision": "Item E (wiki.py): sys.exit(1) on ImportError, NOT try/except-pass like the dream guards", "rationale": "dream imports are tolerable-to-skip (cancel/log best-effort); OCR is the whole point of the ocr subcommand - if ocr.cli can't load there's nothing to fall back to, so fail fast with a clear message. Matches main()'s sys.exit convention (lines 733/808/823 etc.)", "phase": null},
+    {"decision": "Item F (_load_backend): REJECTED the review's patch - no code change", "rationale": "Investigation showed the review's premise is wrong: _load_backend never imports external packages (only the project's own ocr._X modules, stdlib at top level); every backend defers external imports to methods AND already self-handles via try/except ImportError->RuntimeError with ACCURATE guidance (paddle: paddleocr paddlepaddle; deepseek/logics: torch transformers). The review's suggested package names (deepseek-ocr2, logics-parsing) do not exist as imports - applying them would inject wrong install commands. Verifying before applying mattered here.", "phase": null},
+    {"decision": "Item G (_ensure_mineru_config): applied setdefault to BOTH env writes (MINERU_TOOLS_CONFIG_JSON + MINERU_MODEL_SOURCE), not just the one the review flagged", "rationale": "same TOCTOU class, same file, same function - leaving one inconsistent would be odd; setdefault is semantically equivalent inside the existing `not in` guards and existing mineru tests pass unchanged", "phase": null}
   ],
   "uncommitted_files": [
-    "scripts/compile_v2.py (fixes 1,2,3,4,8 + make_relative symlink fix)",
+    "scripts/compile_v2.py (fixes 1,2,3,4,8 + D exception chaining + make_relative symlink fix + large pre-existing in-flight feature diff)",
     "scripts/query.py (fix 2: _strip_image_title + extract_page_images)",
     "scripts/epub.py (fix 5: extracted_total cap)",
-    "ocr/cli.py (fix 6: _version_tuple + _is_prerelease + gate)",
-    "tests/test_compile_sources.py (updated 2 tests + 1 new regression test)",
+    "scripts/wiki.py (fix E: ocr import guard + large pre-existing in-flight feature diff)",
+    "ocr/cli.py (fix 6: _version_tuple + _is_prerelease + gate; fix B: expected_pages fallback + manifest field; fix C: batch per-source subdir + large pre-existing in-flight feature diff)",
+    "ocr/_mineru_ocr.py (fix G: setdefault x2 + large pre-existing in-flight feature diff)",
+    "install.ps1 (fix A: regex + pre-release rejection)",
+    "tests/test_compile_sources.py (updated 2 tests + 1 new regression test #7 + D regression test + pre-existing in-flight)",
     "tests/test_query.py (fix 7: non-empty guards)",
-    "tests/test_ingest.py (pre-existing, not touched by me - part of larger in-flight diff)",
-    "scripts/wiki.py, ocr/_mineru_ocr.py, ocr/__init__.py, ocr/mineru.json, install.ps1, pyproject.toml, requirements.txt, README.md, SKILL.md, scripts/SCRIPT_LIST.md, scripts/epub.py, scripts/ocr.py, tests/test_mineru_ocr.py (all pre-existing in-flight, NOT all mine)"
+    "tests/test_cli.py (B + C + E regression tests)",
+    "PRE-EXISTING in-flight, NOT mine: ocr/__init__.py, ocr/mineru.json, pyproject.toml, requirements.txt, README.md, SKILL.md, scripts/SCRIPT_LIST.md, scripts/ocr.py, tests/test_mineru_ocr.py, tests/test_ingest.py"
   ],
-  "next_action": "Resume by fixing ocr-review item A (install.ps1:179) - it is the PowerShell mirror of already-completed fix #6. Change v.split('.')[:3] int() to a regex extraction of the numeric triplet so 3.4.4rc1 does not raise ValueError. Then proceed to B, C, D. Full review output is at /tmp/ocr_review.txt (328 lines).",
-  "context_notes": "This session had two phases: (1) my own /code-review found 8 issues, all fixed and tested (257 tests pass, ruff clean). (2) external `ocr review` (OpenCodeReview CLI via system shell `ocr` command) independently reviewed the whole uncommitted diff and returned 19 comments - 4 real bugs (A-D) I had missed, plus robustness/design/test-quality items. No conflicts between the two reviews; ocr-review supplemented mine. IMPORTANT: install.ps1 pre-release bug (item A) is the same class as my #6 but on the PowerShell side - I only fixed Python. The git working tree contains a large pre-existing in-flight diff (the whole study-material/EPUB/OCR feature) that is NOT solely my work - only the 6 files I edited + tests are mine."
+  "next_action": "COMMITTED as 4c09fbc (feat: study-material/EPUB/OCR pipeline + code-review fixes). 261 tests pass on the committed tree. ALL review work is done and banked. Remaining is OPTIONAL/low-priority only: (1) task 18 - ocr-review design items (_has_meaningful_ocr_text 40-char threshold x2; unbounded llm_fuse_pages LLM calls x2; 来源图片 image cap) - likely leave as-is or document; (2) housekeeping - .planning/STATE.md is stale (says '44 passed/6 skipped', actually 261 passed/0 skipped) and .codegraph/daemon.pid is a runtime file that shouldn't be tracked (add to .gitignore + git rm --cached). Neither blocks anything. Full external review still at /tmp/ocr_review.txt (328 lines).",
+  "context_notes": "Resumed session completed ocr-review items A-D (first resume) then E-G (second resume). E-G findings: E was a clean win (wiki.py import guard + test). G was a clean defensive refactor (setdefault, existing tests green). F was REJECTED after investigation - the review assumed _load_backend raises ImportError on missing optional deps, but all backends defer external imports to methods AND already self-handle with try/except ImportError->RuntimeError + accurate install guidance; the review's suggested package names (deepseek-ocr2, logics-parsing) don't exist as imports. This is a case where verifying the review before applying mattered - blindly applying would have introduced wrong install commands. Pre-existing ruff format debt in compile_v2.py/test_compile_sources.py (in-flight feature code, not mine) still untouched. The git working tree still contains the large pre-existing in-flight study-material/EPUB/OCR feature diff that is NOT solely this work."
 }

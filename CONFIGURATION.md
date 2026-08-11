@@ -24,10 +24,11 @@ model:
 
 ocr:
   mode: local
-  backend: mineru
+  backend: ovis
   options:
-    models_path: models/mineru/models
-    lang: ch
+    project_path: /Users/wuliang/workspace/OvisOCR2
+    python_path: /Users/wuliang/workspace/OvisOCR2/.venv/bin/python
+    model_path: /Users/wuliang/workspace/OvisOCR2/models/OvisOCR2-MLX-4bit
 
 query:
   llm_synthesis: true
@@ -107,12 +108,15 @@ OCR 统一使用一个 `ocr` 段。常规用户只需要改 `mode/backend/option
 ```yaml
 ocr:
   mode: local
-  backend: mineru          # mineru | deepseek | logics | paddle
+  backend: ovis            # ovis | mineru | deepseek | logics | paddle
   options:
-    models_path: models/mineru/models
-    lang: ch
-    formula: true
-    table: true
+    project_path: /Users/wuliang/workspace/OvisOCR2
+    python_path: /Users/wuliang/workspace/OvisOCR2/.venv/bin/python
+    model_path: /Users/wuliang/workspace/OvisOCR2/models/OvisOCR2-MLX-4bit
+    dpi: 200
+    max_tokens: 8192
+    crop_padding_x: 0
+    crop_padding_y: 0
 ```
 
 不同本地后端复用同一个 `options` 段：
@@ -216,6 +220,6 @@ embeddings:
 - `llm:` 会自动映射到 `model:`
 - `ollama:` 和 `custom:` 会按 `model.provider` 合并
 - `ocr_mode:` 会自动映射到 `ocr.backend`
-- `mineru:`、`deepseek_ocr:`、`logics_parsing:`、`paddleocr:` 会自动合并到 `ocr.options`
+- `ovisocr:`、`mineru:`、`deepseek_ocr:`、`logics_parsing:`、`paddleocr:` 会自动合并到 `ocr.options`
 
 新配置只写 `model` 和 `ocr`，不要再同时维护多套模型配置。

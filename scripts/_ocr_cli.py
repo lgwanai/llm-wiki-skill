@@ -6,7 +6,7 @@ all CLI invocations to ``ocr.cli.main`` so existing scripts continue
 to work.
 
 Usage (unchanged):
-    python scripts/ocr.py document.pdf --backend mineru
+    python scripts/ocr.py document.pdf --backend ovis
     python scripts/ocr.py document.pdf --backend api -o results/
     python scripts/ocr.py --batch screenshots/
 """
@@ -16,8 +16,10 @@ from pathlib import Path
 
 # Ensure the project root is on sys.path so the 'ocr' package is importable.
 _project_root = Path(__file__).resolve().parent.parent
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
+_project_root_text = str(_project_root)
+while _project_root_text in sys.path:
+    sys.path.remove(_project_root_text)
+sys.path.insert(0, _project_root_text)
 
 from ocr.cli import main
 
