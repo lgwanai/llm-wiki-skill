@@ -79,6 +79,7 @@ def test_console_scripts_declared():
 
     assert scripts["wiki"] == "scripts.wiki:main"
     assert scripts["llm-wiki"] == "scripts.wiki:main"
+    assert scripts["ocr"] == "ocr.cli:main"
     assert scripts["llm-wiki-ocr"] == "ocr.cli:main"
 
 
@@ -320,3 +321,15 @@ def test_ocr_doctor_exit_code_is_machine_readable(monkeypatch, capsys):
 
     assert code == 2
     assert json.loads(capsys.readouterr().out)["errors"] == ["wrong version"]
+
+
+def test_ocr_parser_accepts_paddlevl_as_default(monkeypatch):
+    monkeypatch.setattr(
+        ocr_cli,
+        "get_ocr_config",
+        lambda: {"mode": "local", "backend": "paddlevl"},
+    )
+
+    args = ocr_cli.build_parser().parse_args(["--doctor"])
+
+    assert args.backend == "paddlevl"

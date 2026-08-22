@@ -85,10 +85,11 @@ class OvisOCR2:
 
     @classmethod
     def from_config(cls, path: Path | None = None) -> OvisOCR2:
-        """Create an adapter from the unified ``ocr.options`` config."""
-        from scripts.config import get_ocr_config
+        """Create an adapter from the standalone model config."""
+        from ocr.config import get_model_config
 
-        options = get_ocr_config().get("options", {})
+        config = get_model_config("ovis", path)
+        options = config.get("options", {})
         project_path = (
             options.get("project_path")
             or os.environ.get("OVIS_OCR_PROJECT_PATH")
@@ -108,7 +109,7 @@ class OvisOCR2:
                 or os.environ.get("OVIS_OCR_MODEL_PATH")
                 or project / "models" / "OvisOCR2-MLX-4bit"
             ),
-            dpi=int(options.get("dpi", get_ocr_config().get("pdf_dpi", 200))),
+            dpi=int(options.get("dpi", config.get("pdf_dpi", 200))),
             max_tokens=int(options.get("max_tokens", 8192)),
             crop_padding_x=int(
                 options.get(

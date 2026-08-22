@@ -17,7 +17,9 @@
 | `wiki query <question>` | Search + synthesize answer |
 | `wiki query <q> --no-synthesis` | Fast search, skip LLM (0.5s) |
 | `wiki query <q> --file-back` | Answer + file back to wiki |
-| `wiki query <q> --debug-search` | Full retrieval trace output |
+| `wiki query <q> --debug-search` | Per-hop coverage, missing subgoals, sections, scores, and stop reason |
+| `wiki query <q> --max-hops 3` | Evidence-driven subgoal decomposition and linked retrieval |
+| `wiki query <q> --single-hop` | Disable multi-hop for diagnostics/benchmarks |
 | `wiki query <q> --format table` | Output as comparison table |
 | `wiki lint` | Health check |
 | `wiki lint --auto-heal` | Health check + auto-fix |
@@ -64,6 +66,11 @@ wiki benchmark <eval_file.jsonl> --method ragas-lite  # RAGAS-style evaluation
 wiki benchmark <eval_file.jsonl> --method both -k 5    # Both methods
 ```
 
+Retrieval benchmarks report Hit/Recall/MRR/NDCG plus complete subgoal coverage,
+topic drift (for cases with `strict_relevant_pages`), hop depth, forbidden leakage,
+and P50/P95 latency. Set `"multi_hop": true`, `expected_groups`, and optionally
+`strict_relevant_pages` on a JSONL case to exercise the evidence-driven path.
+
 ## Ledger
 
 | Command | Description |
@@ -82,14 +89,17 @@ wiki benchmark <eval_file.jsonl> --method both -k 5    # Both methods
 ## OCR
 
 ```bash
-python ocr/cli.py <file.pdf>                  # OvisOCR2 (default, Apple Silicon)
-python ocr/cli.py <file.pdf> --backend mineru  # Legacy MinerU backend
-python ocr/cli.py <file.pdf> --backend paddle  # PaddleOCR
-python ocr/cli.py <file.pdf> --backend deepseek # DeepSeek-OCR-2 (GPU/MPS)
-python ocr/cli.py <file.pdf> --backend logics  # Logics-Parsing (GPU/MPS)
-python ocr/cli.py <file.pdf> --backend api     # OpenAI-compatible vision API
-python ocr/cli.py --batch ./pdfs/              # Batch entire directory
+ocr list                                      # List supported models
+ocr list --check                              # Also probe local readiness
+ocr use paddlevl                              # Persist global default
+ocr config show                               # Show ~/.config/ocr/config.yaml
+ocr config set ovis.options.model_path /models/ovis
+ocr <file.pdf>                                # Use the default model
+ocr <file.pdf> --backend mineru               # One-run override
+ocr --batch ./pdfs/                           # Batch entire directory
 ```
+
+`python -m ocr`, `python -m ocr.cli`, `llm-wiki-ocr`, and `wiki ocr` expose the same parser.
 
 ## Output Formats
 
@@ -110,3 +120,4 @@ wiki query "..." --format json       # Structured JSON export
 | `EMBEDDING_MODE` | `local` or `api` |
 | `DEEPSEEK_API_KEY` | DeepSeek API key |
 | `OPENAI_API_KEY` | OpenAI API key |
+| `OCR_CONFIG` | Override standalone OCR config path |

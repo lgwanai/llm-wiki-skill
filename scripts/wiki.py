@@ -121,6 +121,8 @@ def cmd_query(
     synthesis: bool = True,
     debug_search: bool = False,
     mode: str | None = None,
+    multi_hop: bool | None = None,
+    max_hops: int | None = None,
 ) -> dict:
     # Direct import for speed — avoids subprocess overhead (~0.3s)
     try:
@@ -133,13 +135,22 @@ def cmd_query(
             synthesis=synthesis,
             debug_search=debug_search,
             mode=mode,
+            multi_hop=multi_hop,
+            max_hops=max_hops,
         )
         answer = result.get("answer", "")
         if debug_search:
             answer += "\n\n--- SEARCH DEBUG ---\n"
-            answer += json.dumps(
-                result.get("debug_search", {}), indent=2, ensure_ascii=False, default=str
-            )
+            formatter = getattr(qm, "_format_debug_table", None)
+            if formatter:
+                answer += formatter(result.get("debug_search", {}))
+            else:
+                answer += json.dumps(
+                    result.get("debug_search", {}),
+                    indent=2,
+                    ensure_ascii=False,
+                    default=str,
+                )
         return {"success": True, "answer": answer}
     except Exception:
         # Fallback to subprocess on import failure
@@ -154,6 +165,10 @@ def cmd_query(
             args.append("--no-synthesis")
         if debug_search:
             args.append("--debug-search")
+        if multi_hop is False:
+            args.append("--single-hop")
+        if max_hops is not None:
+            args.extend(["--max-hops", str(max_hops)])
         code, output = run_script("query.py", args)
         if code == 0:
             return {"success": True, "answer": output}
@@ -428,7 +443,8 @@ Environment:
     )
     ocr_parser.add_argument("file", nargs="?", help="PDF, Word, PowerPoint, or image file")
     ocr_parser.add_argument(
-        "--backend", choices=["ovis", "mineru", "deepseek", "logics", "paddle", "api"]
+        "--backend",
+        choices=["paddlevl", "ovis", "mineru", "deepseek", "logics", "paddle", "api"],
     )
     ocr_parser.add_argument("--batch", help="Process all supported files in a directory")
     ocr_parser.add_argument("-o", "--output", help="Output directory")
@@ -465,6 +481,17 @@ Environment:
     )
     query_parser.add_argument(
         "--debug-search", action="store_true", help="Print search trace for retrieval debugging"
+    )
+    query_parser.add_argument(
+        "--single-hop",
+        action="store_true",
+        help="Disable automatic query decomposition and linked-evidence follow-up",
+    )
+    query_parser.add_argument(
+        "--max-hops",
+        type=int,
+        default=None,
+        help="Maximum retrieval hops (default: 3, hard limit: 5)",
     )
 
     dream_parser = subparsers.add_parser(
@@ -758,6 +785,8 @@ Environment:
             synthesis=not args.no_synthesis,
             debug_search=args.debug_search,
             mode=args.mode,
+            multi_hop=False if args.single_hop else None,
+            max_hops=args.max_hops,
         )
         if result.get("success"):
             try:

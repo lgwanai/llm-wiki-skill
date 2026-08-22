@@ -22,11 +22,13 @@ models/
 
 ## Model Backends
 
-### Default: OvisOCR2 (external)
+### Default: PaddleOCR-VL-1.6 (external)
 
-The default MLX model is managed by the standalone project at
-`/Users/wuliang/workspace/OvisOCR2/models/OvisOCR2-MLX-4bit` and is intentionally
-not duplicated in this directory.
+The official full-precision VLM is cached at
+`/Users/wuliang/.paddlex/official_models/PaddleOCR-VL-1.6`, with PP-DocLayoutV3
+beside it. The isolated Paddle/MLX runtime lives under
+`/Users/wuliang/workspace/PaddleOCR-VL-1.6-MLX` and is intentionally not
+duplicated in this directory.
 
 ### 1. MinerU (optional)
 
@@ -74,50 +76,36 @@ ls -la models/*/
 
 ## Configuration
 
-Configure in `wiki_config.yaml`:
+Configure with the standalone `ocr` command. Settings are stored in
+`~/.config/ocr/config.yaml`:
 
-```yaml
-# OvisOCR2 (default)
-ocr:
-  backend: ovis
-  options:
-    project_path: /Users/wuliang/workspace/OvisOCR2
-    python_path: /Users/wuliang/workspace/OvisOCR2/.venv/bin/python
-    model_path: /Users/wuliang/workspace/OvisOCR2/models/OvisOCR2-MLX-4bit
-
-# DeepSeek-OCR-2
-deepseek_ocr:
-  model_path: models/deepseek-ocr-v2/model
-  device: mps  # mps | cuda | cpu
-
-# Logics-Parsing-v2
-logics_parsing:
-  model_path: models/logics-parsing-v2/model
-  device: mps
-
-# PaddleOCR
-paddleocr:
-  lang: ch
-  use_doc_orientation_classify: true
+```bash
+ocr use paddlevl
+ocr config set paddlevl.options.model_path /path/to/PaddleOCR-VL-1.6
+ocr config set deepseek.options.model_path /path/to/DeepSeek-OCR-2
+ocr config set logics.options.model_path /path/to/Logics-Parsing-v2
+ocr config set paddle.options.lang ch
 ```
 
 ## Usage
 
 ```bash
-# Use default (OvisOCR2)
-python scripts/ocr.py document.pdf
+# List and select models
+ocr list --check
+ocr use paddlevl
 
-# Use legacy MinerU
-python scripts/ocr.py document.pdf --backend mineru
+# Use default (PaddleOCR-VL-1.6)
+ocr document.pdf
 
-# Use DeepSeek-OCR-2 (GPU/MPS required for local inference)
-python scripts/ocr.py document.pdf --backend deepseek
+# One-run override
+ocr document.pdf --backend mineru
+ocr document.pdf --backend deepseek
 
 # Use Logics-Parsing (GPU/MPS required)
-python scripts/ocr.py document.pdf --backend logics
+ocr document.pdf --backend logics
 
 # Use PaddleOCR
-python scripts/ocr.py document.pdf --backend paddle
+ocr document.pdf --backend paddle
 ```
 
 ## Environment Variables

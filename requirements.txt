@@ -16,7 +16,9 @@ faiss-cpu>=1.7                # Vector index for similarity search
 # OCR
 PyMuPDF>=1.24               # PDF page rendering (compile/deepseek/paddle backends)
 
-# OvisOCR2 — default backend; dependencies live in its standalone MLX venv:
+# PaddleOCR-VL-1.6 — default backend; dependencies live in its standalone MLX venv.
+# Install with: pip install -e '.[ocr-paddlevl]'
+# OvisOCR2 — optional legacy backend; dependencies live in its standalone MLX venv:
 # /Users/wuliang/workspace/OvisOCR2/.venv
 
 # MinerU — optional legacy PDF/DOCX/PPTX/XLSX/image backend

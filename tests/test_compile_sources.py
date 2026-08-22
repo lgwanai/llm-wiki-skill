@@ -509,10 +509,13 @@ def test_image_backed_markdown_creates_page_tasks_with_concrete_image_paths(tmp_
     monkeypatch.setattr(compile_v2, "WIKI_DIR", wiki)
     monkeypatch.setattr(compile_v2, "PAGES_DIR", pages)
     monkeypatch.setattr(compile_v2, "SCHEMA_PATH", wiki / "schema.md")
+    monkeypatch.setattr(
+        compile_v2, "get_ocr_config", lambda: {"backend": "paddlevl"}
+    )
     monkeypatch.setattr(compile_v2, "_ocr_backend_available", lambda: True)
     ocr_calls: list[str] = []
 
-    def fake_ovis_ocr(image_path: Path) -> str:
+    def fake_paddlevl_ocr(image_path: Path) -> str:
         ocr_calls.append(str(image_path))
         return (
             "## Page 1\n\n"
@@ -520,7 +523,7 @@ def test_image_backed_markdown_creates_page_tasks_with_concrete_image_paths(tmp_
             "不得遗漏题号、选项、图注和单位。"
         )
 
-    monkeypatch.setattr(compile_v2, "_ocr_image_with_config", fake_ovis_ocr)
+    monkeypatch.setattr(compile_v2, "_ocr_image_with_config", fake_paddlevl_ocr)
 
     source = tmp_path / "content.md"
     images = tmp_path / "images"
@@ -543,19 +546,19 @@ def test_image_backed_markdown_creates_page_tasks_with_concrete_image_paths(tmp_
     assert all(item["requires_image_inspection"] for item in manifest["items"])
     assert all(Path(path).is_file() for item in manifest["items"] for path in item["image_paths"])
     assert len(ocr_calls) == 3
-    assert all(item["ocr_backend"] == "ovis" for item in manifest["items"])
+    assert all(item["ocr_backend"] == "paddlevl" for item in manifest["items"])
     assert all(item["ocr_status"] == "success" for item in manifest["items"])
     assert all(item["vision_fallback_allowed"] is False for item in manifest["items"])
-    assert "`OvisOCR2` has already processed every source image" in task
+    assert "`PaddleOCR-VL-1.6` has already processed every source image" in task
     assert "vision_fallback_allowed=false" in task
     assert "vision_cli.py" not in task
     assert "Fallback precedence" not in task
     for item in manifest["items"]:
         artifact = Path(item["artifact_path"]).read_text(encoding="utf-8")
-        assert "OvisOCR2 OCR Markdown (primary)" in artifact
+        assert "PaddleOCR-VL-1.6 OCR Markdown (primary)" in artifact
         assert "$x^2+y^2=1$" in artifact
         assert "## Page 1" not in artifact
-        assert "#### OvisOCR2 Page 1" in artifact
+        assert "#### PaddleOCR-VL-1.6 Page 1" in artifact
 
 
 def test_cited_source_page_image_is_attached_to_compiled_page(tmp_path):
@@ -680,6 +683,124 @@ def test_same_knowledge_point_across_chunks_is_merged_without_losing_sources(mon
     assert "第 10 页" in existing["_content"]
     assert "第 11 页" in existing["_content"]
     assert existing["merged_chunks"] == 2
+
+
+def test_existing_concept_alias_resolves_to_canonical_page(tmp_path, monkeypatch):
+    pages_dir = tmp_path / ".wiki" / "pages"
+    concept = pages_dir / "concepts" / "mass-density.md"
+    concept.parent.mkdir(parents=True)
+    concept.write_text(
+        "---\ntype: concept\ntitle: 质量密度\naliases: [密度]\n---\n# 质量密度\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(compile_v2, "PAGES_DIR", pages_dir)
+
+    catalog = compile_v2._existing_concept_catalog()
+    resolved = compile_v2._resolve_existing_concept(
+        {"type": "concept", "title": "密度"},
+        "concepts/密度",
+        catalog,
+    )
+
+    assert resolved == ("concepts/mass-density", concept)
+
+
+def test_page_fusion_fallback_never_discards_existing_or_new_content(monkeypatch):
+    existing = "---\ntype: concept\ntitle: 密度\n---\n# 密度\n\n旧来源定义。"
+    incoming = "---\ntype: concept\ntitle: 密度\n---\n# 密度\n\n新来源实验方法。"
+    monkeypatch.setattr(compile_v2, "llm_fuse_pages", lambda *_args: None)
+
+    fused = compile_v2._fuse_page_content(existing, incoming, "concepts/density")
+
+    assert "旧来源定义" in fused
+    assert "新来源实验方法" in fused
+    assert "新增来源补充" in fused
+
+
+def test_semantic_fusion_reattaches_omitted_source_evidence(monkeypatch):
+    existing = (
+        "---\ntype: concept\ntitle: 密度\n---\n# 密度\n\n"
+        "## 关键事实\n\n| 事实 | 值 |\n|---|---|\n| 水的密度 | 1.0 g/cm³ |\n\n"
+        "## 来源追溯\n\n- 课本第 10 页\n"
+    )
+    incoming = (
+        "---\ntype: concept\ntitle: 密度\n---\n# 密度\n\n"
+        "## 关键事实\n\n| 事实 | 值 |\n|---|---|\n| 铝的密度 | 2.7 g/cm³ |\n\n"
+        "## 来源追溯\n\n- 实验册第 3 页\n"
+    )
+    monkeypatch.setattr(
+        compile_v2,
+        "llm_fuse_pages",
+        lambda *_args: "# 密度\n\n密度是质量与体积之比。",
+    )
+
+    fused = compile_v2._fuse_page_content(existing, incoming, "concepts/density")
+
+    assert "融合保留证据" in fused
+    assert "| 水的密度 | 1.0 g/cm³ |" in fused
+    assert "| 铝的密度 | 2.7 g/cm³ |" in fused
+    assert "- 课本第 10 页" in fused
+    assert "- 实验册第 3 页" in fused
+
+
+def test_study_questions_and_knowledge_points_gain_bidirectional_links(tmp_path, monkeypatch):
+    pages_dir = tmp_path / ".wiki" / "pages"
+    concept = pages_dir / "concepts" / "density.md"
+    question = pages_dir / "entities" / "exam-question-1.md"
+    concept.parent.mkdir(parents=True)
+    question.parent.mkdir(parents=True)
+    concept.write_text(
+        "---\ntype: concept\ntitle: 密度\n---\n# 密度\n\n## 概述\n质量与体积之比。\n",
+        encoding="utf-8",
+    )
+    question.write_text(
+        "---\ntype: entity\ntitle: 第1题\n---\n# 第1题\n\n"
+        "## 题干\n密度如何测量？\n\n## 答案\n使用天平和量筒。\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(compile_v2, "PAGES_DIR", pages_dir)
+    monkeypatch.setattr(compile_v2, "WIKI_DIR", tmp_path / ".wiki")
+
+    report = compile_v2._ensure_study_bidirectional_links(
+        [
+            {
+                "id": "entities/exam-question-1",
+                "type": "entity",
+                "name": "第1题",
+                "path": str(question),
+            }
+        ]
+    )
+
+    assert report["links_added"] == 2
+    assert "[密度](/concepts/density.md)" in question.read_text(encoding="utf-8")
+    assert "[第1题](/entities/exam-question-1.md)" in concept.read_text(encoding="utf-8")
+
+    graph_pages = [
+        {
+            "id": "entities/exam-question-1",
+            "type": "entity",
+            "name": "第1题",
+            "path": str(question),
+        },
+        *report["touched_pages"],
+    ]
+    compile_v2.update_graph(graph_pages, "期末试卷.pdf")
+    edges = json.loads(
+        (tmp_path / ".wiki" / "graph" / "edges.json").read_text(encoding="utf-8")
+    )["edges"]
+    pairs = {(edge["source"], edge["target"]) for edge in edges}
+    assert ("entities/exam-question-1", "concepts/density") in pairs
+    assert ("concepts/density", "entities/exam-question-1") in pairs
+
+
+def test_study_relationship_lines_create_typed_graph_edges():
+    assert compile_v2.extract_edge_type("- 本题考查 [密度](/concepts/density.md)") == "tests"
+    assert (
+        compile_v2.extract_edge_type("- 应用于 [第1题](/entities/question-1.md) — 关联试题")
+        == "has_example"
+    )
+    assert compile_v2.extract_edge_type("- 易混 [质量](/concepts/mass.md)") == "confuses_with"
 
 
 def test_paginated_document_without_ocr_preserves_every_page_for_agent(tmp_path, monkeypatch):
@@ -932,13 +1053,16 @@ def test_llm_mode_image_without_vision_or_ocr_hands_off(tmp_path, monkeypatch):
     assert str((images_dir / "diagram.png").resolve()) in content
 
 
-def test_agent_mode_image_uses_ovis_without_invoking_vision(tmp_path, monkeypatch):
+def test_agent_mode_image_uses_paddlevl_without_invoking_vision(tmp_path, monkeypatch):
     """Agent mode: successful document OCR is primary and blocks vision routing."""
     image = tmp_path / "diagram.png"
     image.write_bytes(b"fake image bytes")
 
     images_dir = tmp_path / "source" / "images"
     monkeypatch.setattr(compile_v2, "SOURCE_IMAGES_DIR", images_dir)
+    monkeypatch.setattr(
+        compile_v2, "get_ocr_config", lambda: {"backend": "paddlevl"}
+    )
     monkeypatch.setattr(
         compile_v2,
         "get_vision_skill_config",
@@ -952,16 +1076,16 @@ def test_agent_mode_image_uses_ovis_without_invoking_vision(tmp_path, monkeypatc
     monkeypatch.setattr(
         compile_v2,
         "_ocr_image_with_config",
-        lambda _image_path: "OvisOCR2 extracted complete exam text. " * 3,
+        lambda _image_path: "PaddleOCR-VL-1.6 extracted complete exam text. " * 3,
     )
 
     content, readable = compile_v2._read_agent_visible_source(image)
 
     assert readable is True
-    assert "Required path completed: OvisOCR2 OCR" in content
-    assert "OvisOCR2 OCR Markdown (primary)" in content
+    assert "Required path completed: PaddleOCR-VL-1.6 OCR" in content
+    assert "PaddleOCR-VL-1.6 OCR Markdown (primary)" in content
     assert "Do not invoke vision-skill" in content
-    assert "OvisOCR2 extracted complete exam text" in content
+    assert "PaddleOCR-VL-1.6 extracted complete exam text" in content
     assert "vision_cli.py" not in content
     assert "vision-skill (preferred)" not in content
     # Image link is present for the Agent.

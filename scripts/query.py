@@ -132,10 +132,24 @@ def plan_query(query: str) -> dict:
     )
     graph_terms = ("影响", "依赖", "关系", "路径", "关联", "impact", "depends", "relationship")
     compare_terms = ("比较", "对比", "区别", "compare", "difference")
+    current_terms = (
+        "当前",
+        "目前",
+        "最新",
+        "现行",
+        "现在生效",
+        "current",
+        "latest",
+        "effective now",
+        "as of now",
+    )
 
     preferred = ["metadata", "bm25", "graph", "ledger"]
     intent = "fact"
-    if any(term in q for term in ledger_terms):
+    if any(term in q for term in current_terms):
+        intent = "temporal_current"
+        preferred = ["metadata", "bm25", "graph", "ledger"]
+    elif any(term in q for term in ledger_terms):
         intent = "ledger_filter"
         preferred = ["ledger", "metadata", "bm25", "graph"]
     elif any(term in q for term in graph_terms):
@@ -161,7 +175,16 @@ def _stream_weights(plan: dict) -> dict[str, float]:
         base.update({"graph": 2.0, "metadata": 1.2})
     elif intent == "comparison":
         base.update({"bm25": 1.3, "vector": 1.3, "graph": 1.2})
+    elif intent == "temporal_current":
+        base.update({"metadata": 1.6, "bm25": 1.2})
     return base
+
+
+def _intent_excluded_statuses(plan: dict) -> set[str]:
+    """Apply safe lifecycle defaults only when the query explicitly asks for current state."""
+    if plan.get("intent") == "temporal_current":
+        return {"superseded", "obsolete", "archived"}
+    return set()
 
 
 def rewrite_query(query: str, plan: dict) -> list[str]:
@@ -174,6 +197,16 @@ def rewrite_query(query: str, plan: dict) -> list[str]:
     normalized = re.sub(r"[\s_]+", " ", query).strip()
     if normalized and normalized not in variants:
         variants.append(normalized)
+    if get_query_config().get("cross_language_expansion", True):
+        try:
+            try:
+                from query_language import cross_language_variants
+            except ImportError:
+                from .query_language import cross_language_variants
+
+            variants.extend(cross_language_variants(query, PAGES_DIR))
+        except (ImportError, OSError, TypeError, ValueError):
+            pass
     if "-" in query:
         variants.append(query.replace("-", " "))
     if " " in query:
@@ -190,7 +223,65 @@ def rewrite_query(query: str, plan: dict) -> list[str]:
         if variant and variant not in seen:
             seen.add(variant)
             deduped.append(variant)
-    return deduped[:5]
+    return deduped[:7]
+
+
+def decompose_query(query: str) -> list[str]:
+    """Compatibility wrapper around the standalone multi-hop planner."""
+    from query_multihop import decompose_query as _decompose_query
+
+    return _decompose_query(query)
+
+
+def _linked_followup_queries(
+    pages: list[dict],
+    attempted: set[str],
+    limit: int = 5,
+) -> list[str]:
+    """Compatibility wrapper for linked-concept follow-up planning."""
+    from query_multihop import linked_followup_queries
+
+    return linked_followup_queries(pages, attempted, read_page_content, limit)
+
+
+def multi_hop_search(
+    query: str,
+    limit: int = 5,
+    max_hops: int = 3,
+    debug: bool = False,
+    allowed_scopes: list[str] | set[str] | None = None,
+    exclude_statuses: list[str] | set[str] | None = None,
+) -> list[dict] | tuple[list[dict], dict]:
+    """Run the independent planner through the official search pipeline."""
+    from query_multihop import run_multi_hop
+
+    lifecycle_filter = set(exclude_statuses or [])
+    if not lifecycle_filter:
+        lifecycle_filter = _intent_excluded_statuses(plan_query(query))
+
+    return run_multi_hop(
+        query,
+        lambda subquery, result_limit: search_wiki(
+            subquery,
+            limit=result_limit,
+            allowed_scopes=allowed_scopes,
+            exclude_statuses=lifecycle_filter,
+        ),
+        read_page_content,
+        limit=limit,
+        max_hops=max_hops,
+        debug=debug,
+    )
+
+
+def _coverage_diverse_results(query: str, results: list[dict], limit: int) -> list[dict]:
+    """Select a relevant top-k that covers distinct answer subgoals."""
+    try:
+        from query_multihop import coverage_diverse_rank
+
+        return coverage_diverse_rank(query, results, read_page_content, limit)
+    except (ImportError, OSError, TypeError, ValueError):
+        return results[:limit]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -374,12 +465,18 @@ def rerank_results(
     # ── Compute normalized BM25 scores across the candidate set ──
     bm25_raw: dict[str, float] = {}
     max_bm25 = 1.0
+    section_raw: dict[str, float] = {}
+    max_section = 1.0
     for r in results:
         stream_scores = r.get("stream_scores", {})
         bm25 = float(stream_scores.get("bm25", 0) or 0)
         bm25_raw[r.get("id", "")] = bm25
         if bm25 > max_bm25:
             max_bm25 = bm25
+        section_score = float(r.get("section_score", 0) or 0)
+        section_raw[r.get("id", "")] = section_score
+        if section_score > max_section:
+            max_section = section_score
 
     def score(result: dict) -> float:
         eid = result.get("id", "")
@@ -413,7 +510,15 @@ def rerank_results(
         signal_rrf = min(float(result.get("score", 0) or 0) * 8.0, 1.0) * 0.25
         stream_names = set(str(result.get("stream", "")).split(","))
         signal_special = 0.15 if stream_names & {"ledger", "vector"} else 0.0
-        total = (signal_rrf + signal_bm25 + signal_meta + signal_graph + signal_special) * type_w
+        signal_section = (section_raw.get(eid, 0) / max_section) * 0.12
+        total = (
+            signal_rrf
+            + signal_bm25
+            + signal_meta
+            + signal_graph
+            + signal_special
+            + signal_section
+        ) * type_w
         return total
 
     ranked = [dict(r) for r in results]
@@ -720,6 +825,8 @@ def search_wiki(
     enabled_streams = enabled_search_streams()
     scope_filter = set(allowed_scopes or []) or _allowed_scopes_from_env()
     status_filter = set(exclude_statuses or []) or _excluded_statuses_from_env()
+    if not status_filter:
+        status_filter = _intent_excluded_statuses(plan)
     trace: dict = {
         "query": query,
         "plan": plan,
@@ -836,6 +943,8 @@ def search_wiki(
                             "score": g.get("confidence", 0.5),
                             "stream": "graph",
                             "text": g.get("name", ""),
+                            "graph_path": g.get("graph_path", []),
+                            "connected": g.get("connected", []),
                         })
                 if converted:
                     trace["streams"]["graph"] = converted
@@ -924,6 +1033,13 @@ def search_wiki(
                         "text": f.get("text", ""),
                         "stream_ranks": f.get("stream_ranks", {}),
                         "stream_scores": f.get("stream_scores", {}),
+                        "matched_section": f.get("matched_section", ""),
+                        "section_score": f.get("section_score", 0),
+                        "graph_path": f.get("graph_path", []),
+                        "connected": f.get("connected", []),
+                        "row_data": f.get("row_data", {}),
+                        "display_name": f.get("display_name", ""),
+                        "table_name": f.get("table_name", ""),
                     })
             if results:
                 # Improvement 5: pre-search entity linking
@@ -941,7 +1057,14 @@ def search_wiki(
                 results = _filter_by_excluded_statuses(results, status_filter)
                 from rerank import rerank
 
-                results = rerank(query, results, get_reranker_config(), limit)
+                results = rerank(
+                    query,
+                    results,
+                    get_reranker_config(),
+                    max(limit * 3, limit),
+                )
+                results = _coverage_diverse_results(query, results, limit)
+                trace["coverage_selected"] = results
                 trace["reranked"] = results
                 return (results[:limit], trace) if debug else results[:limit]
         except Exception as e:
@@ -963,6 +1086,11 @@ def search_wiki(
                     "type": _infer_type(eid),
                     "stream": r.get("stream", ""),
                     "text": r.get("text", ""),
+                    "matched_section": r.get("matched_section", ""),
+                    "section_score": r.get("section_score", 0),
+                    "row_data": r.get("row_data", {}),
+                    "display_name": r.get("display_name", ""),
+                    "table_name": r.get("table_name", ""),
                 })
         if results:
             query_entities = _extract_query_entities(query)
@@ -977,7 +1105,14 @@ def search_wiki(
             results = _filter_by_excluded_statuses(results, status_filter)
             from rerank import rerank
 
-            results = rerank(query, results, get_reranker_config(), limit)
+            results = rerank(
+                query,
+                results,
+                get_reranker_config(),
+                max(limit * 3, limit),
+            )
+            results = _coverage_diverse_results(query, results, limit)
+            trace["coverage_selected"] = results
             trace["reranked"] = results
             return (results[:limit], trace) if debug else results[:limit]
 
@@ -1011,6 +1146,8 @@ def search_wiki(
     results = rerank_results(query, results, plan)
     results = _filter_by_allowed_scopes(results, scope_filter)
     results = _filter_by_excluded_statuses(results, status_filter)
+    results = _coverage_diverse_results(query, results, limit)
+    trace["coverage_selected"] = results
     trace["reranked"] = results
     return (results[:limit], trace) if debug else results[:limit]
 
@@ -1467,7 +1604,12 @@ answer, say so explicitly — do NOT guess or use outside knowledge."""
     return call_llm(system_prompt, user_prompt)
 
 
-def synthesize_answer_agent(query: str, pages: list[dict], fmt: str = "markdown") -> str:
+def synthesize_answer_agent(
+    query: str,
+    pages: list[dict],
+    fmt: str = "markdown",
+    retrieval_evidence: dict | None = None,
+) -> str:
     """Return an Agent synthesis task using retrieved wiki pages only.
 
     This is the default skill path: search is local, and the current Agent
@@ -1511,10 +1653,29 @@ def synthesize_answer_agent(query: str, pages: list[dict], fmt: str = "markdown"
         "slides": "Answer as a Marp slide outline and cite sources.",
         "json": "Answer as valid JSON with answer, sources, related, and confidence.",
     }.get(fmt, "Answer in concise Markdown with inline OKF concept links.")
+    evidence = retrieval_evidence or {}
+    missing = evidence.get("missing_subgoals", [])
+    coverage_block = (
+        f"Retrieval subgoal coverage: {evidence.get('coverage', 0):.0%}.\n"
+        + (
+            "Missing or weakly supported subgoals: " + "; ".join(missing)
+            if missing
+            else "All detected retrieval subgoals have direct evidence."
+        )
+    ) if evidence else "Retrieval coverage was not calculated."
 
     return f"""# Agent Query Synthesis Task
 
 This task was generated in Agent mode. Do not call the configured LLM API.
+
+## Mandatory Execution Contract
+
+- Retrieval is already complete. Do **not** write Python, shell, SQL, grep, or a
+  temporary search program, and do not scan `.wiki/` manually.
+- Do **not** call another search tool. Synthesize the answer directly from the
+  retrieved documents below.
+- If evidence is insufficient, state the missing evidence explicitly. Never
+  compensate by inventing a new script or bypassing the official query pipeline.
 
 ## Query
 
@@ -1523,6 +1684,10 @@ This task was generated in Agent mode. Do not call the configured LLM API.
 ## Output Requirement
 
 {output_hint}
+
+## Retrieval Evidence Coverage
+
+{coverage_block}
 
 Use ONLY the wiki documents below. Cite every factual claim with its OKF concept link.
 If the documents do not contain enough information, say so and summarize the
@@ -1824,6 +1989,36 @@ def _count_unique_nodes(path: list[dict]) -> int:
 
 def _format_debug_table(trace: dict) -> str:
     """Format search debug trace as a readable Markdown table."""
+    if trace.get("strategy") == "multi_hop":
+        lines = [
+            "## 🔍 Multi-Hop Search Debug",
+            "",
+            f"**Query:** `{trace.get('query', '')}`",
+            f"**Maximum hops:** {trace.get('max_hops', 1)}",
+            f"**Results:** {trace.get('result_count', 0)}",
+            f"**Stop reason:** `{trace.get('stop_reason', 'unknown')}`",
+            f"**Evidence coverage:** {trace.get('evidence', {}).get('coverage', 0):.0%}",
+            "",
+            "| Hop | Subqueries | New pages | Coverage | Missing subgoals |",
+            "|-----|------------|-----------|----------|------------------|",
+        ]
+        for hop in trace.get("hops", []):
+            queries = "<br>".join(f"`{item}`" for item in hop.get("queries", [])) or "—"
+            pages = "<br>".join(f"`{item}`" for item in hop.get("new_pages", [])) or "—"
+            missing = "<br>".join(hop.get("missing_subgoals", [])) or "—"
+            lines.append(
+                f"| {hop.get('hop', '?')} | {queries} | {pages} | "
+                f"{hop.get('coverage', 0):.0%} | {missing} |"
+            )
+        lines.extend(
+            [
+                "",
+                "Search stops when evidence is complete, no relevant frontier remains, "
+                "or the configured hop limit is reached.",
+            ]
+        )
+        return "\n".join(lines)
+
     lines = [
         "## 🔍 Search Debug",
         "",
@@ -1936,6 +2131,8 @@ def query_wiki(
     synthesis: bool = True,
     debug_search: bool = False,
     mode: str | None = None,
+    multi_hop: bool | None = None,
+    max_hops: int | None = None,
 ) -> dict:
     query_cfg = get_query_config()
     synthesis_mode = mode or query_cfg.get("synthesis_mode", "agent")
@@ -1946,13 +2143,48 @@ def query_wiki(
         synthesis = query_cfg.get("llm_synthesis", True)
 
     max_results = max(1, int(query_cfg.get("max_results", 5) or 5))
-    if debug_search:
+    use_multi_hop = (
+        bool(query_cfg.get("multi_hop_enabled", True)) if multi_hop is None else multi_hop
+    )
+    hop_setting = (
+        max_hops
+        if max_hops is not None
+        else query_cfg.get("multi_hop_max_hops", 3)
+    )
+    configured_hops = max(1, min(int(hop_setting or 3), 5))
+    if use_multi_hop:
+        if debug_search:
+            pages, trace = multi_hop_search(
+                query,
+                limit=max_results,
+                max_hops=configured_hops,
+                debug=True,
+            )
+        else:
+            pages = multi_hop_search(query, limit=max_results, max_hops=configured_hops)
+            trace = {}
+    elif debug_search:
         pages, trace = search_wiki(query, limit=max_results, debug=True)
     else:
         pages = search_wiki(query, limit=max_results)
         trace = {}
     pages = _attach_page_images(pages)
     retrieved_images = _collect_retrieved_images(pages)
+    try:
+        from query_multihop import retrieval_evidence_status
+
+        retrieval_evidence = retrieval_evidence_status(
+            query,
+            pages,
+            read_page_content,
+        )
+    except (ImportError, OSError, TypeError, ValueError):
+        retrieval_evidence = {
+            "status": "unknown",
+            "coverage": 0.0,
+            "subgoals": [],
+            "missing_subgoals": [],
+        }
 
     # ── Graph intent routing ──
     graph_intent = _detect_graph_intent(query)
@@ -2007,19 +2239,29 @@ def query_wiki(
                     "path": p.get("path", ""),
                     "page_type": p.get("type", "unknown"),
                     "relevance": p.get("score", 0),
+                    "retrieval_hop": p.get("retrieval_hop", 1),
+                    "matched_section": p.get("matched_section", ""),
                     "images": p.get("images", []),
                 }
                 for p in pages
             ],
             "images": retrieved_images,
             "debug_search": trace if debug_search else {},
+            "retrieval_strategy": "multi_hop" if use_multi_hop else "single_hop",
+            "max_hops": configured_hops if use_multi_hop else 1,
+            "retrieval_evidence": retrieval_evidence,
         }
 
     if pages:
         if synthesis_mode == "llm":
             answer = graph_section + synthesize_answer(query, pages, fmt=fmt)
         else:
-            answer = graph_section + synthesize_answer_agent(query, pages, fmt=fmt)
+            answer = graph_section + synthesize_answer_agent(
+                query,
+                pages,
+                fmt=fmt,
+                retrieval_evidence=retrieval_evidence,
+            )
     else:
         answer = graph_section or "No relevant wiki pages found."
 
@@ -2043,11 +2285,16 @@ def query_wiki(
                 "path": p.get("path", ""),
                 "page_type": p.get("type", "unknown"),
                 "relevance": p.get("score", 0),
+                "retrieval_hop": p.get("retrieval_hop", 1),
+                "matched_section": p.get("matched_section", ""),
                 "images": p.get("images", []),
             }
             for p in pages
         ],
         "images": retrieved_images,
+        "retrieval_strategy": "multi_hop" if use_multi_hop else "single_hop",
+        "max_hops": configured_hops if use_multi_hop else 1,
+        "retrieval_evidence": retrieval_evidence,
     }
     if query_cfg.get("verify_answers", True):
         result["verification"] = (
@@ -2094,6 +2341,17 @@ def main():
         action="store_true",
         help="Print search trace as JSON after the answer",
     )
+    parser.add_argument(
+        "--single-hop",
+        action="store_true",
+        help="Disable automatic query decomposition and linked-evidence follow-up",
+    )
+    parser.add_argument(
+        "--max-hops",
+        type=int,
+        default=None,
+        help="Maximum retrieval hops (default from config: 3, hard limit: 5)",
+    )
     args = parser.parse_args()
 
     if args.format == "graph":
@@ -2109,6 +2367,8 @@ def main():
         args.query, file_back=args.file_back, fmt=args.format,
         synthesis=not args.no_synthesis, debug_search=args.debug_search,
         mode=args.mode,
+        multi_hop=False if args.single_hop else None,
+        max_hops=args.max_hops,
     )
     print(result["answer"])
     if args.debug_search:

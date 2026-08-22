@@ -159,6 +159,9 @@ def test_default_query_path_is_wiki_native(monkeypatch, tmp_path):
     assert query["synthesis_mode"] == "agent"
     assert query["search_streams"] == "metadata,bm25,graph,ledger"
     assert query["llm_query_expansion"] is False
+    assert query["cross_language_expansion"] is True
+    assert query["multi_hop_enabled"] is True
+    assert query["multi_hop_max_hops"] == 3
 
 
 def test_image_analysis_api_url_is_exposed(monkeypatch, tmp_path):

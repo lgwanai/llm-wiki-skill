@@ -47,10 +47,10 @@ class PaddleOCRWrapper:
 
     @classmethod
     def from_config(cls, path: Optional[Path] = None) -> "PaddleOCRWrapper":
-        """Create instance from unified OCR config."""
-        from scripts.config import get_ocr_config
+        """Create instance from standalone OCR config."""
+        from ocr.config import get_model_config
 
-        paddleocr_config = get_ocr_config().get("options", {})
+        paddleocr_config = get_model_config("paddle", path).get("options", {})
         
         return cls(
             lang=paddleocr_config.get("lang", "ch"),

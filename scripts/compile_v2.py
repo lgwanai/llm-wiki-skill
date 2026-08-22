@@ -402,6 +402,11 @@ DOMAIN_EXPERTS = {
             "解题步骤与得分点，并提取主考点、次考点、所需先修知识、题型、"
             "难度依据、解题方法、易错原因和可迁移技巧。题目页链接知识点，"
             "知识点页反向汇总例题/真题，便于按考点找题和由错题回溯知识缺口。"
+            "处理试卷时必须先查阅提示中列出的‘已有 Wiki 概念’，优先链接课本已存在的"
+            "规范知识点页，不得为同一考点新建试卷专属近义页。每个题目页必须有"
+            "‘## 考查知识点’，区分主考点、次考点和先修知识；每个命中的课本知识点页"
+            "必须有‘## 关联题目’，反向链接题号、试卷来源和题型。链接必须使用 bundle"
+            "相对的标准 Markdown 路径，形成可由题找知识、由知识找题的双向图谱。"
             "每页 YAML frontmatter 必须提供 4–8 个去重 tags，使用稳定的分面格式："
             "学科/数学、学段/初中、内容类型/知识点（或目录、定律、公式、例题、词汇、"
             "文言文注解）、章节/第三章、主题/一元一次方程；题型/计算题、难度/基础、"
@@ -963,7 +968,7 @@ def iter_source_files(root: Path, max_depth: int | None = None) -> list[Path]:
 def _create_ocr_backend() -> Any:
     """Instantiate the configured OCR backend."""
     ocr_config = get_ocr_config()
-    backend = ocr_config.get("backend", "ovis")
+    backend = ocr_config.get("backend", "paddlevl")
 
     if ocr_config.get("mode") == "api" or backend == "api":
         from ocr._ocr_api import OCRApiBackend
@@ -973,6 +978,10 @@ def _create_ocr_backend() -> Any:
         from ocr._ovis_ocr import OvisOCR2
 
         return OvisOCR2.from_config()
+    if backend == "paddlevl":
+        from ocr._paddleocr_vl import PaddleOCRVL16
+
+        return PaddleOCRVL16.from_config()
     if backend == "deepseek":
         from ocr._deepseek_ocr2 import DeepSeekOCR2
 
@@ -992,8 +1001,8 @@ def _create_ocr_backend() -> Any:
 
 def _ocr_image_with_config(image_path: Path) -> str:
     """Run the configured OCR backend on an image and return markdown text."""
-    if str(get_ocr_config().get("backend", "ovis")) == "ovis":
-        # Ovis's low-level image API writes a sibling work tree. Route it
+    if str(get_ocr_config().get("backend", "paddlevl")) in {"ovis", "paddlevl"}:
+        # Structured OCR backends emit crop assets. Route them
         # through managed temporary output so feed never leaves OCR internals
         # beside the source image or inside the final pages/assets directory.
         return _ocr_pdf_with_config(image_path)
@@ -1042,6 +1051,15 @@ def _has_meaningful_ocr_text(content: str) -> bool:
     text_only = MARKDOWN_IMAGE_RE.sub("", content or "")
     visible = re.sub(r"[\s#>*_`\-]+", "", text_only)
     return len(visible) >= 40
+
+
+def _ocr_backend_label(name: str) -> str:
+    """Return a stable human-readable OCR backend label."""
+    return {
+        "paddlevl": "PaddleOCR-VL-1.6",
+        "ovis": "OvisOCR2",
+        "paddle": "PaddleOCR",
+    }.get(name, name)
 
 
 def _copy_to_source_images(image_path: Path) -> Path:
@@ -1222,8 +1240,8 @@ def _preextract_agent_markdown_images(content: str) -> tuple[str, dict[str, Any]
     executable metadata for the todo manifest.
     """
     ocr_config = get_ocr_config()
-    backend_name = str(ocr_config.get("backend", "ovis"))
-    backend_label = "OvisOCR2" if backend_name == "ovis" else backend_name
+    backend_name = str(ocr_config.get("backend", "paddlevl"))
+    backend_label = _ocr_backend_label(backend_name)
     report: dict[str, Any] = {
         "backend": backend_name,
         "attempted": 0,
@@ -1537,7 +1555,7 @@ def analyze_image_for_compile(image_path: Path, for_agent: bool = False) -> str:
     """Convert an image source to markdown for wiki compilation.
 
     Image recognition precedence:
-      1. OCR — configured OCR backend (OvisOCR2 by default).
+      1. OCR — configured OCR backend (PaddleOCR-VL-1.6 by default).
       2. vision-skill — fallback only when OCR is unavailable or insufficient.
       3. Agent's own image-parsing capability — last resort.
 
@@ -1634,8 +1652,8 @@ def _build_agent_image_task(image_path: Path, stored_path: Path) -> str:
     vision_config = get_vision_skill_config()
     vision_enabled = bool(vision_config.get("enabled"))
     ocr_config = get_ocr_config()
-    ocr_backend = str(ocr_config.get("backend", "ovis"))
-    ocr_label = "OvisOCR2" if ocr_backend == "ovis" else ocr_backend
+    ocr_backend = str(ocr_config.get("backend", "paddlevl"))
+    ocr_label = _ocr_backend_label(ocr_backend)
 
     ocr_text = ""
     if _ocr_backend_available():
@@ -1834,7 +1852,7 @@ def _ocr_backend_available() -> bool:
     env-var keys and provider-preset models are recognised.
     """
     ocr_config = get_ocr_config()
-    backend = ocr_config.get("backend", "ovis")
+    backend = ocr_config.get("backend", "paddlevl")
 
     if ocr_config.get("mode") == "api" or backend == "api":
         provider = ocr_config.get("api_provider", "") or ocr_config.get("provider", "")
@@ -1872,7 +1890,9 @@ def _ocr_backend_available() -> bool:
         return api_url_ok and api_key_ok and api_model_ok
 
     try:
-        if backend == "ovis":
+        if backend == "paddlevl":
+            import ocr._paddleocr_vl  # noqa: F401
+        elif backend == "ovis":
             import ocr._ovis_ocr  # noqa: F401
         elif backend == "deepseek":
             import ocr._deepseek_ocr2  # noqa: F401
@@ -2046,10 +2066,12 @@ def _read_paginated_document_for_compile(source_path: Path) -> str:
         ocr_config = get_ocr_config()
         if (
             ocr_config.get("mode", "local") == "local"
-            and ocr_config.get("backend", "ovis") == "ovis"
+            and ocr_config.get("backend", "paddlevl") in {"ovis", "paddlevl"}
             and source_path.suffix.lower() in {".pdf", ".doc", ".docx", ".ppt", ".pptx"}
         ):
             try:
+                backend_name = str(ocr_config.get("backend", "paddlevl"))
+                backend_label = _ocr_backend_label(backend_name)
                 ovis_source = source_path
                 if source_path.suffix.lower() != ".pdf":
                     converted_pdfs = sorted(
@@ -2061,12 +2083,14 @@ def _read_paginated_document_for_compile(source_path: Path) -> str:
                 with _readonly_working_copy(ovis_source) as work_path:
                     ovis_markdown = _ocr_pdf_with_config(work_path)
                 if not _has_meaningful_ocr_text(ovis_markdown):
-                    raise RuntimeError("OvisOCR2 returned only empty/header-like content")
+                    raise RuntimeError(
+                        f"{backend_label} returned only empty/header-like content"
+                    )
                 sections.extend(
                     [
                         "## Extraction Mode",
                         "",
-                        "OvisOCR2 processed the complete PDF in one model load; full-page "
+                        f"{backend_label} processed the complete PDF in one model load; full-page "
                         "renders and detected visual-region crops are retained below.",
                         "",
                         _attach_rendered_pages_to_ocr(ovis_markdown, page_images),
@@ -2077,7 +2101,7 @@ def _read_paginated_document_for_compile(source_path: Path) -> str:
             except Exception as ovis_error:
                 sections.extend(
                     [
-                        "## Whole-document OvisOCR2 Failed",
+                        f"## Whole-document {backend_label} Failed",
                         "",
                         f"{ovis_error}",
                         "",
@@ -2574,7 +2598,7 @@ def create_agent_compile_task(
     task_dir.mkdir(parents=True, exist_ok=True)
 
     image_ocr_report: dict[str, Any] = {
-        "backend": str(get_ocr_config().get("backend", "ovis")),
+        "backend": str(get_ocr_config().get("backend", "paddlevl")),
         "attempted": 0,
         "succeeded": 0,
         "failed": [],
@@ -2777,10 +2801,8 @@ Agent cannot read it, ask the user to provide a text export or summary.
 
     image_task_guidance = ""
     if any(item.get("requires_image_inspection") for item in todo_items):
-        configured_ocr_backend = str(get_ocr_config().get("backend", "ovis"))
-        configured_ocr_label = (
-            "OvisOCR2" if configured_ocr_backend == "ovis" else configured_ocr_backend
-        )
+        configured_ocr_backend = str(get_ocr_config().get("backend", "paddlevl"))
+        configured_ocr_label = _ocr_backend_label(configured_ocr_backend)
         ocr_complete = all(
             item.get("ocr_status") == "success"
             for item in todo_items
@@ -2976,6 +2998,12 @@ This task was generated in Agent mode. Do not call the configured LLM API.
 def extract_edge_type(line: str) -> str:
     lowered = line.lower()
     prose_rules = [
+        (("本题考查", "考查知识点", "tests"), "tests"),
+        (("关联试题", "关联题目", "应用于", "例题", "has example"), "has_example"),
+        (("同类题", "相似题", "similar question"), "similar_question"),
+        (("易混", "混淆", "confuses with"), "confuses_with"),
+        (("推导自", "由此推导", "derived from"), "derived_from"),
+        (("所属章节", "appears in chapter"), "appears_in_chapter"),
         (
             (
                 "依赖",
@@ -3124,6 +3152,9 @@ def _okf_page_from_model(page_content: str, source_name: str) -> tuple[str, dict
         or datetime.now(timezone.utc).isoformat(),
         "provenance": source_name,
     }
+    for extension_key in ("aliases", "keywords", "questions"):
+        if raw.get(extension_key):
+            metadata[extension_key] = raw[extension_key]
     if raw.get("resource"):
         metadata["resource"] = raw["resource"]
     metadata = {key: value for key, value in metadata.items() if value not in (None, "", [])}
@@ -3135,6 +3166,327 @@ def _okf_page_from_model(page_content: str, source_name: str) -> tuple[str, dict
         + body
     )
     return normalized, metadata, concept_identifier, PAGES_DIR / f"{concept_identifier}.md"
+
+
+def _identity_key(value: str) -> str:
+    """Normalize a concept title/alias for conservative identity matching."""
+    return re.sub(r"[^\w\u4e00-\u9fff]+", "", value.casefold())
+
+
+def _usable_identity_key(value: str) -> bool:
+    """Reject short ASCII fragments that would cause unsafe semantic merges."""
+    has_cjk = bool(re.search(r"[\u4e00-\u9fff]", value))
+    return len(value) >= (2 if has_cjk else 4)
+
+
+def _metadata_names(metadata: dict) -> set[str]:
+    names = {str(metadata.get("title", "")).strip()}
+    aliases = metadata.get("aliases", [])
+    if isinstance(aliases, str):
+        aliases = [aliases]
+    if isinstance(aliases, list):
+        names.update(str(alias).strip() for alias in aliases)
+    return {name for name in names if name}
+
+
+def _existing_concept_catalog() -> list[dict[str, Any]]:
+    """Read stable concept identities without importing the query pipeline."""
+    from okf import concept_id, iter_concepts, read_markdown
+
+    catalog: list[dict[str, Any]] = []
+    for path in iter_concepts(PAGES_DIR):
+        metadata, body, error = read_markdown(path)
+        if error:
+            continue
+        names = _metadata_names(metadata)
+        catalog.append(
+            {
+                "id": concept_id(path, PAGES_DIR),
+                "path": path,
+                "type": str(metadata.get("type", "")),
+                "title": str(metadata.get("title") or path.stem),
+                "description": str(metadata.get("description", "")),
+                "names": names,
+                "keys": {_identity_key(name) for name in names if _identity_key(name)},
+                "body": body,
+            }
+        )
+    return catalog
+
+
+def _resolve_existing_concept(
+    metadata: dict,
+    incoming_id: str,
+    catalog: list[dict[str, Any]] | None = None,
+) -> tuple[str, Path] | None:
+    """Resolve exact title/alias variants to a canonical existing concept."""
+    if str(metadata.get("type", "")).lower() not in CONCEPT_LIKE_TYPES:
+        return None
+    incoming_keys = {
+        _identity_key(name) for name in _metadata_names(metadata) if _identity_key(name)
+    }
+    if not incoming_keys:
+        return None
+    for item in catalog if catalog is not None else _existing_concept_catalog():
+        if str(item.get("type", "")).lower() not in CONCEPT_LIKE_TYPES:
+            continue
+        if incoming_keys & set(item.get("keys", set())):
+            existing_id = str(item["id"])
+            if existing_id != incoming_id:
+                return existing_id, Path(item["path"])
+    return None
+
+
+def _related_existing_knowledge(
+    content: str,
+    limit: int = 12,
+    catalog: list[dict[str, Any]] | None = None,
+) -> str:
+    """Return canonical pages mentioned by a new source for prompt-time linking."""
+    normalized_content = _identity_key(content)
+    scored: list[tuple[int, dict[str, Any]]] = []
+    for item in catalog if catalog is not None else _existing_concept_catalog():
+        matched = [
+            key
+            for key in item["keys"]
+            if _usable_identity_key(key) and key in normalized_content
+        ]
+        if not matched:
+            continue
+        score = max(len(key) for key in matched) + len(matched) * 2
+        scored.append((score, item))
+    if not scored:
+        return "(none found)"
+    lines = []
+    for _, item in sorted(scored, key=lambda pair: pair[0], reverse=True)[:limit]:
+        aliases = sorted(set(item["names"]) - {item["title"]})
+        alias_text = f"; aliases: {', '.join(aliases)}" if aliases else ""
+        lines.append(
+            f"- [{item['title']}](/%s.md)%s — %s"
+            % (
+                item["id"],
+                alias_text,
+                item["description"] or "existing wiki concept",
+            )
+        )
+    return "\n".join(lines)
+
+
+def _deterministic_fusion(existing_content: str, incoming_content: str) -> str:
+    """Losslessly retain both bodies when semantic fusion is unavailable."""
+    existing_match = re.match(
+        r"^---\s*\n(.*?)\n---\s*\n?(.*)$", existing_content, flags=re.DOTALL
+    )
+    incoming_match = re.match(
+        r"^---\s*\n(.*?)\n---\s*\n?(.*)$", incoming_content, flags=re.DOTALL
+    )
+    if not existing_match or not incoming_match:
+        return existing_content.rstrip() + "\n\n## 新增来源补充\n\n" + incoming_content.lstrip()
+    existing_body = existing_match.group(2).rstrip()
+    incoming_body = incoming_match.group(2).lstrip()
+    if incoming_body in existing_body:
+        fused_body = existing_body
+    else:
+        fused_body = existing_body + "\n\n## 新增来源补充\n\n" + incoming_body
+    return "---\n" + existing_match.group(1) + "\n---\n\n" + fused_body
+
+
+def _preserve_fusion_evidence(fused_body: str, source_bodies: tuple[str, str]) -> str:
+    """Reattach fact/source/image lines that a semantic merge accidentally omitted."""
+    protected: list[str] = []
+    for body in source_bodies:
+        in_protected_section = False
+        for line in body.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("## "):
+                heading = stripped[3:].casefold()
+                in_protected_section = heading in {
+                    "关键事实",
+                    "key facts",
+                    "来源追溯",
+                    "source traceability",
+                    "来源上下文",
+                    "source context",
+                }
+                continue
+            is_evidence = (
+                in_protected_section
+                and stripped
+                and not re.match(r"^\|?\s*[-:]+(?:\s*\|\s*[-:]+)+\s*\|?$", stripped)
+            ) or bool(MARKDOWN_IMAGE_RE.search(line))
+            if is_evidence and stripped not in fused_body and stripped not in protected:
+                protected.append(stripped)
+    if not protected:
+        return fused_body
+    return fused_body.rstrip() + "\n\n## 融合保留证据\n\n" + "\n".join(protected) + "\n"
+
+
+def _fuse_page_content(existing_content: str, incoming_content: str, page_id: str) -> str:
+    """Semantically merge page bodies with a deterministic lossless fallback."""
+    existing_match = re.match(
+        r"^---\s*\n(.*?)\n---\s*\n?(.*)$", existing_content, flags=re.DOTALL
+    )
+    incoming_match = re.match(
+        r"^---\s*\n(.*?)\n---\s*\n?(.*)$", incoming_content, flags=re.DOTALL
+    )
+    if existing_match and incoming_match:
+        fused = llm_fuse_pages(existing_match.group(2), incoming_match.group(2), page_id)
+        if fused:
+            fused_body = _preserve_fusion_evidence(
+                fused.strip(),
+                (existing_match.group(2), incoming_match.group(2)),
+            )
+            return "---\n" + existing_match.group(1) + "\n---\n\n" + fused_body.strip() + "\n"
+    return _deterministic_fusion(existing_content, incoming_content)
+
+
+def _reconcile_compiled_pages(
+    pages: list[dict],
+    force: bool = False,
+) -> tuple[list[dict], list[dict]]:
+    """Canonicalize and fuse a batch before publishing it to the OKF bundle."""
+    catalog = _existing_concept_catalog()
+    canonicalized: dict[str, dict] = {}
+    for page in pages:
+        item = dict(page)
+        content = str(item.get("_content", ""))
+        match = re.match(r"^---\s*\n(.*?)\n---", content, flags=re.DOTALL)
+        try:
+            metadata = yaml.safe_load(match.group(1)) if match else {}
+        except yaml.YAMLError:
+            metadata = {}
+        if not isinstance(metadata, dict):
+            metadata = {}
+        metadata.setdefault("type", item.get("type", ""))
+        metadata.setdefault("title", item.get("name", ""))
+        resolved = _resolve_existing_concept(metadata, str(item.get("id", "")), catalog)
+        if resolved is not None:
+            item["id"], resolved_path = resolved
+            item["path"] = str(resolved_path)
+
+        existing_batch = canonicalized.get(str(item["id"]))
+        if existing_batch is None:
+            canonicalized[str(item["id"])] = item
+        else:
+            _merge_cross_chunk_page(existing_batch, item)
+
+    created: list[dict] = []
+    updated: list[dict] = []
+    for item in canonicalized.values():
+        path = Path(str(item.get("path", "")))
+        if path.exists():
+            if not force:
+                item["_content"] = _fuse_page_content(
+                    path.read_text(encoding="utf-8"),
+                    str(item.get("_content", "")),
+                    str(item.get("id", "")),
+                )
+            item["facts"], item["relationships"] = _count_facts(item["_content"])
+            updated.append(item)
+        else:
+            created.append(item)
+    return created, updated
+
+
+def _append_relationship(path: Path, heading: str, line: str, target_id: str) -> bool:
+    """Append one unique relationship inside a Markdown section."""
+    content = path.read_text(encoding="utf-8")
+    if f"(/{target_id}.md)" in content:
+        return False
+    section = re.search(
+        rf"(?m)^##\s+{re.escape(heading)}\s*$",
+        content,
+    )
+    if section:
+        next_heading = re.search(r"(?m)^##\s+", content[section.end() :])
+        insert_at = (
+            section.end() + next_heading.start() if next_heading is not None else len(content)
+        )
+        updated = content[:insert_at].rstrip() + "\n" + line + "\n\n" + content[insert_at:].lstrip()
+    else:
+        updated = content.rstrip() + f"\n\n## {heading}\n\n{line}\n"
+    atomic_write(path, updated)
+    return True
+
+
+def _is_question_page(page: dict, content: str) -> bool:
+    searchable = f"{page.get('name', '')}\n{content}".casefold()
+    signals = sum(
+        marker in searchable
+        for marker in (
+            "题干",
+            "答案",
+            "解析",
+            "得分点",
+            "考查知识点",
+            "question stem",
+            "solution",
+            "answer",
+        )
+    )
+    return bool(re.search(r"第\s*\d+\s*题", searchable)) or signals >= 2
+
+
+def _ensure_study_bidirectional_links(pages: list[dict]) -> dict[str, Any]:
+    """Materialize question↔knowledge-point links after model compilation."""
+    catalog = _existing_concept_catalog()
+    knowledge = [
+        item
+        for item in catalog
+        if str(item.get("type", "")).lower() in CONCEPT_LIKE_TYPES
+        and not _is_question_page(item, str(item.get("body", "")))
+    ]
+    touched: dict[str, dict] = {}
+    links_added = 0
+
+    for question in pages:
+        question_path = Path(str(question.get("path", "")))
+        if not question_path.is_file():
+            continue
+        question_content = question_path.read_text(encoding="utf-8")
+        if not _is_question_page(question, question_content):
+            continue
+
+        explicit_targets = {
+            target.strip("/")
+            for target in re.findall(
+                r"\[[^\]]+\]\((?:/)?([^)#]+?)\.md(?:#[^)]+)?\)",
+                question_content,
+            )
+        }
+        matched = [item for item in knowledge if item["id"] in explicit_targets]
+        if not matched:
+            normalized_question = _identity_key(question_content)
+            matched = [
+                item
+                for item in knowledge
+                if any(
+                    _usable_identity_key(key) and key in normalized_question
+                    for key in item.get("keys", set())
+                )
+            ][:5]
+
+        for concept in matched:
+            concept_id = str(concept["id"])
+            question_id = str(question["id"])
+            forward = f"- 关联 [{concept['title']}](/%s.md) — 本题考查该知识点" % concept_id
+            reverse = (
+                f"- 应用于 [{question.get('name', question_id)}](/%s.md) — 关联试题/例题"
+                % question_id
+            )
+            if _append_relationship(question_path, "考查知识点", forward, concept_id):
+                links_added += 1
+            concept_path = Path(concept["path"])
+            if _append_relationship(concept_path, "关联题目", reverse, question_id):
+                links_added += 1
+                touched[concept_id] = {
+                    "id": concept_id,
+                    "type": concept["type"],
+                    "name": concept["title"],
+                    "path": str(concept_path),
+                }
+
+    return {"links_added": links_added, "touched_pages": list(touched.values())}
 
 
 def atomic_write(path: Path, content: str):
@@ -3520,6 +3872,7 @@ def _compile_chunked(
     pages_by_id: dict[str, dict] = {}
     failed_chunks: list[dict[str, Any]] = []
     todo_path: Path | None = None
+    existing_catalog = _existing_concept_catalog()
 
     if not dry_run:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
@@ -3582,6 +3935,7 @@ def _compile_chunked(
                     focus_desc,
                     entity_type_str,
                     source_name,
+                    existing_catalog,
                 )
                 result_pages = result.get("created_pages", []) + result.get("updated_pages", [])
                 if not result_pages:
@@ -3656,6 +4010,14 @@ def _compile_chunked(
     if not all_pages:
         raise RuntimeError("Compilation incomplete: no pages extracted from any source task")
 
+    # Chunk boundaries and model wording must not create parallel synonym pages
+    # or overwrite knowledge already compiled from another source.
+    all_created, all_updated = _reconcile_compiled_pages(
+        all_pages,
+        force=force,
+    )
+    all_pages = all_created + all_updated
+
     # Post-processing: write pages (unless dry_run), update index/graph
     if not dry_run:
         ENTITIES_DIR.mkdir(parents=True, exist_ok=True)
@@ -3663,9 +4025,18 @@ def _compile_chunked(
         for page in all_pages:
             atomic_write(Path(page["path"]), _ensure_created_at(page.get("_content", "")))
 
+        study_links = {"links_added": 0, "touched_pages": []}
+        if any(
+            expert["id"] == "study_material"
+            for expert in match_domain_experts("\n".join(chunks), source_name)
+        ):
+            study_links = _ensure_study_bidirectional_links(all_pages)
+        graph_pages = list(
+            {page["id"]: page for page in all_pages + study_links["touched_pages"]}.values()
+        )
         update_index(all_pages, source_name)
         update_log(source_name, len(all_created), "compile")
-        update_graph(all_pages, source_name)
+        update_graph(graph_pages, source_name)
         write_audit(
             "compile",
             {
@@ -3674,6 +4045,7 @@ def _compile_chunked(
                 "chunks": len(chunks),
                 "pages_created": len(all_created),
                 "pages_updated": len(all_updated),
+                "study_links_added": study_links["links_added"],
                 "coverage_complete": True,
                 "todo": str(todo_path) if todo_path is not None else "",
             },
@@ -3710,6 +4082,7 @@ def _compile_single_chunk(
     focus_desc: str,
     entity_type_str: str,
     source_name: str | None = None,
+    existing_catalog: list[dict[str, Any]] | None = None,
 ) -> dict:
     """Compile a single document chunk — same LLM call as compile_source but
     returns parsed pages without writing files (writing is handled by the
@@ -3723,6 +4096,10 @@ def _compile_single_chunk(
     study_material = any(
         expert["id"] == "study_material"
         for expert in match_domain_experts(chunk_content, trace_source_name)
+    )
+    existing_knowledge_context = _related_existing_knowledge(
+        chunk_content,
+        catalog=existing_catalog,
     )
 
     # Build prompts (abbreviated — reuse the same structure as compile_source)
@@ -3866,6 +4243,12 @@ provenance: source-name
 内容:
 {chunk_content}
 
+## 已有 Wiki 概念（仅用于复用规范名称、融合与建立链接，不是本次来源证据）
+{existing_knowledge_context}
+
+若新内容补充已有概念，必须沿用上面的规范标题和链接，不得另建近义重复页；
+新增事实的来源证据仍只能来自“内容”部分。
+
 请逐段扫描该文档片段，提取所有重要实体和概念，撰写 Wiki 页面。所有内容必须用中文。
 
 ## 提取步骤
@@ -3974,6 +4357,12 @@ Page structure (⚠️ MUST follow this order!):
 
 Content:
 {chunk_content}
+
+## Existing Wiki Concepts (identity/linking context only; not source evidence)
+{existing_knowledge_context}
+
+Reuse canonical titles and links when this chunk reinforces an existing concept.
+Do not create a synonym duplicate, and cite facts only from Content above.
 
 Scan this chunk and extract all important entities and concepts into wiki pages.
 
@@ -4171,6 +4560,11 @@ def compile_source(
     media_guidance = build_media_fidelity_guidance(lang)
     study_material = any(
         expert["id"] == "study_material" for expert in match_domain_experts(content, source_name)
+    )
+    existing_concepts = _existing_concept_catalog()
+    existing_knowledge_context = _related_existing_knowledge(
+        content,
+        catalog=existing_concepts,
     )
     entity_types, entity_type_lines, rel_type_lines = load_entity_types_from_schema()
     focus_types, focus_desc = load_ingest_rules_from_schema(source_type)
@@ -4485,6 +4879,12 @@ Then the page content (⚠️ MUST follow this exact order!):
 内容:
 {content}
 
+## 已有 Wiki 概念（仅用于复用规范名称、融合与建立链接，不是本次来源证据）
+{existing_knowledge_context}
+
+若新内容补充已有概念，必须沿用上面的规范标题和链接，不得另建近义重复页；
+新增事实的来源证据仍只能来自“内容”部分。
+
 请逐段扫描该文档，提取所有重要实体和概念，撰写 Wiki 页面。所有内容必须用中文。
 
 ## 提取步骤
@@ -4507,6 +4907,12 @@ Then the page content (⚠️ MUST follow this exact order!):
 
 Content:
 {content}
+
+## Existing Wiki Concepts (identity/linking context only; not source evidence)
+{existing_knowledge_context}
+
+Reuse canonical titles and links when this source reinforces an existing concept.
+Do not create a synonym duplicate, and cite facts only from Content above.
 
 Scan this document section by section and extract all important entities and concepts into wiki pages.
 
@@ -4558,6 +4964,14 @@ Output pages separated by ===PAGE_END==="""
             print("  WARNING: page is missing valid OKF metadata", file=sys.stderr)
             continue
         page_content, frontmatter, entity_id, page_path = parsed
+        canonical = _resolve_existing_concept(frontmatter, entity_id, existing_concepts)
+        if canonical is not None:
+            canonical_id, canonical_path = canonical
+            print(
+                f"  Canonicalized: {entity_id} → {canonical_id}",
+                file=sys.stderr,
+            )
+            entity_id, page_path = canonical_id, canonical_path
         page_content = _attach_source_media(page_content, content, page_path)
         entity_type = frontmatter["type"]
 
@@ -4605,7 +5019,14 @@ Output pages separated by ===PAGE_END==="""
                 contradictions_found.extend(contradictions)
                 resolutions = auto_resolve_contradictions(entity_id, contradictions)
 
-                page_content = existing_content + "\n\n## Contradictions Detected\n\n"
+                # Preserve all non-conflicting additions before flagging the
+                # contradictory claims for review.
+                page_content = _fuse_page_content(
+                    existing_content,
+                    page_content,
+                    entity_id,
+                ).rstrip()
+                page_content += "\n\n## Contradictions Detected\n\n"
                 for c in contradictions:
                     ctype = c.get("contradiction_type", "unknown")
                     sev = c.get("severity", "medium")
@@ -4655,29 +5076,11 @@ Output pages separated by ===PAGE_END==="""
                 # No contradictions — semantically fuse new content into
                 # existing page instead of overwriting (which would lose the
                 # knowledge from previously compiled sources).
-                exist_body_match = re.match(
-                    r"^---\s*\n(.*?)\n---\s*\n?(.*)$",
-                    existing_content,
-                    flags=re.DOTALL,
+                page_content = _fuse_page_content(existing_content, page_content, entity_id)
+                print(
+                    f"  Fused: {Path(page_path).name} ({len(page_content)} chars)",
+                    file=sys.stderr,
                 )
-                new_body_match = re.match(
-                    r"^---\s*\n(.*?)\n---\s*\n?(.*)$",
-                    page_content,
-                    flags=re.DOTALL,
-                )
-                if exist_body_match and new_body_match:
-                    exist_body = exist_body_match.group(2)
-                    new_body = new_body_match.group(2)
-                    fused = llm_fuse_pages(exist_body, new_body, entity_id)
-                    if fused is not None:
-                        # Reconstruct: use new frontmatter + fused body
-                        new_fm = new_body_match.group(1)
-                        page_content = "---\n" + new_fm + "\n---\n\n" + fused
-                        print(
-                            f"  Fused: {Path(page_path).name} "
-                            f"(LLM semantic merge, {len(fused)} chars)",
-                            file=sys.stderr,
-                        )
 
                 if not dry_run:
                     # Incremental: skip if content unchanged
@@ -4884,9 +5287,15 @@ provenance: 跨文档聚合
     # ── Prune stale pages (from this source but not in new compilation) ──
     pruned_pages = _prune_stale_pages(new_page_ids, source_name, dry_run=False)
 
+    study_links = {"links_added": 0, "touched_pages": []}
+    if study_material:
+        study_links = _ensure_study_bidirectional_links(all_pages)
+    graph_pages = list(
+        {page["id"]: page for page in all_pages + study_links["touched_pages"]}.values()
+    )
     update_index(all_pages, source_name)
     update_log(source_name, len(created_pages), "compile")
-    update_graph(all_pages, source_name)
+    update_graph(graph_pages, source_name)
 
     write_audit(
         "compile",
@@ -4896,6 +5305,7 @@ provenance: 跨文档聚合
             "pages_updated": len(updated_pages),
             "pages_skipped": skipped_pages,
             "pages_pruned": len(pruned_pages),
+            "study_links_added": study_links["links_added"],
             "contradictions": len(contradictions_found),
             "contradiction_details": contradictions_found[:10],
         },
@@ -5214,6 +5624,8 @@ def update_graph(pages: list, source_name: str):
                         if (
                             f"[[{target}" in line_normalized
                             or f"[[{target.replace('-', ' ')}" in line_normalized
+                            or f"](/{target}.md" in line_lower
+                            or f"]({target}.md" in line_lower
                         ):
                             line_context = line
                             break

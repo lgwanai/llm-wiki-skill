@@ -86,10 +86,10 @@ class MinerUOCR:
 
     @classmethod
     def from_config(cls, path: Path | None = None) -> MinerUOCR:
-        """Create instance from unified OCR config (wiki_config.yaml)."""
-        from scripts.config import get_ocr_config
+        """Create instance from standalone OCR config."""
+        from ocr.config import get_model_config
 
-        mineru_config = get_ocr_config().get("options", {})
+        mineru_config = get_model_config("mineru", path).get("options", {})
 
         models_path = (
             mineru_config.get("models_path")

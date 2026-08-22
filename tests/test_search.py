@@ -49,6 +49,32 @@ class TestBM25Search:
         finally:
             os.chdir(old)
 
+    def test_long_page_reports_precise_matching_section(self, tmp_path, monkeypatch):
+        wiki = tmp_path / ".wiki"
+        pages = wiki / "pages" / "concepts"
+        pages.mkdir(parents=True)
+        page = pages / "incident-runbook.md"
+        page.write_text(
+            "# Incident Runbook\n\n## Background\n"
+            + "routine operational background " * 600
+            + "\n\n## Retry Recovery\n\n"
+            "outbox_retry_watermark controls retry backoff after an incident.\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(search, "_BM25_CACHE_FILE", wiki / "graph" / ".bm25.json")
+        monkeypatch.setattr(search, "_cache_marker", None)
+        monkeypatch.setattr(search, "_bm25_index", None)
+
+        results = search.bm25_search(
+            "outbox retry watermark backoff",
+            str(wiki / "pages"),
+            limit=3,
+        )
+
+        assert results[0]["file"] == "concepts/incident-runbook"
+        assert results[0]["matched_section"] == "Retry Recovery"
+        assert results[0]["section_score"] > 0
+
 
 class TestGraphSearch:
     def test_finds_entity_by_name(self, wiki_dir, sample_entities):
@@ -114,6 +140,55 @@ class TestGraphSearch:
         result_ids = [r["entity_id"] for r in results]
         assert "auth-service" in result_ids
         assert "redis-caching" in result_ids
+
+    def test_typed_relationship_query_traverses_two_hops(self, tmp_path):
+        wiki = tmp_path / ".wiki"
+        graph_dir = wiki / "graph"
+        pages = wiki / "pages" / "concepts"
+        graph_dir.mkdir(parents=True)
+        pages.mkdir(parents=True)
+        for page_id in ("question-1", "density", "ratio"):
+            (pages / f"{page_id}.md").write_text(f"# {page_id}\n", encoding="utf-8")
+        (graph_dir / "entities.json").write_text(
+            json.dumps(
+                {
+                    "concepts/question-1": {"name": "第1题", "type": "entity"},
+                    "concepts/density": {"name": "密度", "type": "concept"},
+                    "concepts/ratio": {"name": "比值", "type": "concept"},
+                }
+            ),
+            encoding="utf-8",
+        )
+        (graph_dir / "edges.json").write_text(
+            json.dumps(
+                {
+                    "edges": [
+                        {
+                            "source": "concepts/question-1",
+                            "target": "concepts/density",
+                            "type": "tests",
+                        },
+                        {
+                            "source": "concepts/density",
+                            "target": "concepts/ratio",
+                            "type": "depends_on",
+                        },
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        results = search.graph_search("第1题需要哪些前置知识", str(graph_dir), limit=5)
+
+        prerequisite = next(
+            item for item in results if item["entity_id"] == "concepts/ratio"
+        )
+        assert prerequisite["graph_path"] == [
+            "concepts/question-1",
+            "concepts/density",
+            "concepts/ratio",
+        ]
 
 
 class TestReciprocalRankFusion:
@@ -184,6 +259,31 @@ tags:
         assert results[0]["file"] == "concepts/order-approval-flow"
         assert results[0]["path"] == str(page)
         assert "OAF" in results[0]["keywords"]
+
+    def test_indexes_explicit_aliases_and_keywords(self, tmp_path, monkeypatch):
+        wiki = tmp_path / ".wiki"
+        page_dir = wiki / "pages" / "concepts"
+        page_dir.mkdir(parents=True)
+        page = page_dir / "mass-density.md"
+        page.write_text(
+            "---\ntype: concept\ntitle: 质量密度\n"
+            "aliases: [密度]\nkeywords: [质量体积比]\n---\n# 质量密度\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(
+            search, "_METADATA_CACHE_FILE", wiki / "graph" / ".metadata_index.json"
+        )
+        monkeypatch.setattr(search, "_cache_marker", None)
+
+        alias_results = search.metadata_search("密度", str(wiki / "pages"), limit=3)
+        keyword_results = search.metadata_search(
+            "质量体积比", str(wiki / "pages"), limit=3
+        )
+
+        assert alias_results[0]["file"] == "concepts/mass-density"
+        assert "密度" in alias_results[0]["aliases"]
+        assert keyword_results[0]["file"] == "concepts/mass-density"
+        assert "质量体积比" in keyword_results[0]["keywords"]
 
     def test_nested_okf_change_invalidates_bm25_and_metadata_caches(
         self, tmp_path, monkeypatch

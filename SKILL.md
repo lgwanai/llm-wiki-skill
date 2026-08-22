@@ -37,21 +37,31 @@ Wiki (.wiki/pages/) — LLM maintains: entity pages, concept pages, index, log
 Schema (schema.md + wiki_config.yaml) — single source of truth for types & rules
 ```
 
+## Agent Query Guardrail — Non-Negotiable
+
+When the user asks a question about Wiki knowledge, immediately run
+`python scripts/query.py "<question>"` (or installed `wiki query "<question>"`).
+Never write a temporary program, shell pipeline, SQL query, grep command, or manual
+filesystem scan to retrieve Wiki content. Never inspect `.wiki/pages` as a substitute
+for the official query command. The query pipeline already performs access filtering,
+BM25/metadata/graph/ledger fusion, multi-hop traversal, and evidence selection.
+After it returns an Agent synthesis task, answer only from that task's retrieved evidence.
+
 ## Dependencies
 
-### OvisOCR2 first; `vision-skill` is fallback only
+### PaddleOCR-VL-1.6 first; `vision-skill` is fallback only
 
 Image-source compilation (`python scripts/compile_v2.py exam.png`) recognizes images with
 this precedence:
 
-1. **Configured OCR (required first)** — OvisOCR2 is the default. Exam pages,
+1. **Configured OCR (required first)** — PaddleOCR-VL-1.6 is the default. Exam pages,
    worksheets, textbook screenshots, scanned documents, and image-backed Markdown
-   pages must use OvisOCR2 before any visual skill. Successful OCR Markdown and its
+   pages must use PaddleOCR-VL-1.6 before any visual skill. Successful OCR Markdown and its
    figure crops are authoritative extraction evidence; do not invoke vision-skill
    afterward.
 
 2. **vision-skill (OCR failure fallback only)** — use it only for an individual
-   image after OvisOCR2 is unavailable, exits with an error, or returns insufficient
+   image after PaddleOCR-VL-1.6 is unavailable, exits with an error, or returns insufficient
    document text. If `vision_skill.scripts_path` is set, the fallback command is:
 
    ```bash
@@ -94,7 +104,7 @@ the compile standard. No configured model/API key is required.
 python scripts/compile_v2.py source.md
 python scripts/compile_v2.py docs/                 # recursively compile supported files
 python scripts/compile_v2.py docs/ --depth 1       # only direct files + one directory level
-python scripts/compile_v2.py exam.png              # OvisOCR2 → vision fallback → Agent native
+python scripts/compile_v2.py exam.png              # PaddleOCR-VL-1.6 → vision fallback → Agent native
 python scripts/compile_v2.py handbook.pdf          # every page rendered; OCR/vision/Agent fallback
 python scripts/compile_v2.py handbook.docx         # Word pages rendered through PDF, with page provenance
 python scripts/compile_v2.py slides.pptx           # every slide rendered; never first-slide-only
@@ -186,8 +196,8 @@ compilation is forced to run sequentially for deterministic coverage.
 - PDF/DOC/DOCX/PPT/PPTX are treated as paginated documents:
   - Render every page/slide to images first
   - If OCR is installed/configured, OCR each page image in order
-  - If page rendering fails for a PDF, run the configured backend (OvisOCR2 by
-    default) against the complete PDF before trying MarkItDown
+  - If page rendering fails for a PDF, run the configured backend
+    (PaddleOCR-VL-1.6 by default) against the complete PDF before trying MarkItDown
   - MarkItDown output from a scanned PDF is partial evidence only; short,
     header-only, or page-incomplete output must never be compiled as the source
   - If OCR is unavailable, use configured vision/image analysis on each page image
@@ -243,9 +253,22 @@ configured model/API key is required by default. Referenced images are resolved 
 retrieved page, included in synthesis context, and exposed in `images` and
 `source_details[].images` in query results.
 
+> **强制查询协议（所有 Agent 必须遵守）**
+>
+> - 查询 Wiki 时必须先调用 `wiki query "问题"` 或 `python scripts/query.py "问题"`。
+> - 禁止为查询临时编写 Python、Shell、SQL、grep 管线或扫描 `.wiki/` 的脚本；禁止绕过
+>   `query.py` 自行拼装检索。现成入口已经处理中文分词、BM25、元数据、图谱、台账、权限、
+>   生命周期过滤、多跳检索和证据合并，自写代码更慢且容易漏召回或破坏访问约束。
+> - 默认多跳检索会自动拆分复杂问题、沿证据链接继续搜索并在无新增证据时停止。证据不足时
+>   直接说明缺口；不得以“再写一个搜索脚本”作为补救。
+> - `query.py` 返回 `Agent Query Synthesis Task` 后，只根据其中已检索文档合成答案，不再调用
+>   其他搜索工具或读取原始目录。
+
 ```bash
 python scripts/query.py "What is X?"
 python scripts/query.py "What is X?" --debug-search
+python scripts/query.py "A 如何通过 B 影响 C?" --max-hops 3
+python scripts/query.py "What is X?" --single-hop  # 仅用于诊断/基准
 python scripts/query.py "What is X?" --mode llm   # optional legacy path using configured model
 python scripts/search.py --doctor
 python scripts/search.py --eval .wiki/evals/retrieval.jsonl
@@ -282,8 +305,19 @@ Default retrieval quality features:
 - Graph search anchors natural-language questions to compiled entities and relationships.
 - Query planning prioritizes ledger/graph/page streams by intent.
 - Query rewriting adds only lightweight lexical variants by default.
+- Cross-language rewriting is local and model-free: it mines bilingual OKF aliases/keywords and
+  `.wiki/query_lexicon.yaml`, then applies a bounded operations/education fallback glossary.
+- Multi-hop retrieval decomposes compound questions into answer subgoals, follows relevance-ranked
+  concept links for up to three hops, normalizes scores across hops, and stops when evidence is
+  complete or no useful frontier remains. Agent tasks receive explicit missing-evidence warnings.
+- Heading-bounded virtual sections contribute BM25 signals without splitting canonical OKF pages;
+  coverage-aware top-k selection retains distinct comparison sides instead of redundant pages.
+- Education graph search recognizes typed `tests`, `depends_on`, `has_example`,
+  `confuses_with`, `derived_from`, and `similar_question` paths.
 - `python scripts/search.py --doctor` reports page, metadata, graph, and optional embedding health.
 - `python scripts/search.py --eval <cases.jsonl>` measures Recall@K and MRR from jsonl eval cases.
+- `python scripts/benchmark.py <cases.jsonl> --method retrieval` additionally reports complete
+  subgoal coverage, topic drift, retrieval hop depth, forbidden leakage, and P50/P95 latency.
 - Embedded Zvec vector search and FlagEmbedding reranking are opt-in layers,
   not the default product path.
 
@@ -483,18 +517,6 @@ compile:
 #   model: "deepseek-v4-flash"
 #   api_key: "sk-xxx"
 
-ocr:
-  mode: local
-  backend: ovis
-  options:
-    project_path: /Users/wuliang/workspace/OvisOCR2
-    python_path: /Users/wuliang/workspace/OvisOCR2/.venv/bin/python
-    model_path: /Users/wuliang/workspace/OvisOCR2/models/OvisOCR2-MLX-4bit
-    dpi: 200
-    max_tokens: 8192
-    crop_padding_x: 0
-    crop_padding_y: 0
-
 image_analysis:                    # --mode llm only; agent mode uses OCR first
   enabled: false                  # true to analyze image sources before OCR
   api_provider: openai            # siliconflow | openai | deepseek | paddleocr-vl
@@ -523,33 +545,36 @@ quality:
 
 ## OCR Pipeline
 
-Pluggable backends, default via `ocr.backend` config.
+Pluggable backends, with a system-wide default selected by the standalone OCR module.
+Its config is `~/.config/ocr/config.yaml`, independent from `wiki_config.yaml`.
 
-Use the unified command below. Do not inspect OvisOCR2 ad hoc, write a temporary OCR
+Use the unified command below. Do not inspect model runtimes ad hoc, write a temporary OCR
 harness, or guess which Python environment is active. The preflight and manifest are
 the stable contracts for Agent use.
 
 ```bash
-# 1. Preflight once per interpreter/environment
-python scripts/ocr.py --doctor --json
+# 1. Inspect support and select the default once
+ocr list --check
+ocr use paddlevl
+ocr --doctor --json
 
 # 2. For a new or previously failing document, verify exactly three pages
-python scripts/ocr.py document.pdf --smoke-pages 3 --json
+ocr document.pdf --smoke-pages 3 --json
 
 # 3. Run the full document
-python scripts/ocr.py document.pdf -o .wiki/source/document/ --json
+ocr document.pdf -o .wiki/source/document/ --json
 
 # Explicit backend
-python scripts/ocr.py document.pdf --backend paddle
-python scripts/ocr.py document.pdf --backend deepseek
+ocr document.pdf --backend paddle
+ocr document.pdf --backend deepseek
 
 # PDF → Wiki full pipeline
-python scripts/ocr.py paper.pdf -o .wiki/source/paper/
+ocr paper.pdf -o .wiki/source/paper/
 python scripts/compile_v2.py .wiki/source/paper/paper.md
 ```
 
-For OvisOCR2, `--doctor` must report `ready: true` before parsing. It verifies the
-standalone project, dedicated Python interpreter, MLX dependencies, and local model.
+For PaddleOCR-VL-1.6, `--doctor` must report `ready: true` before parsing. It verifies
+the dedicated Python interpreter, Paddle/MLX dependencies, layout model, and local VLM.
 If it fails, use the exact paths and `repair_command` returned by the report.
 
 For PDF, Word, and PowerPoint runs, read the automatically generated
@@ -561,7 +586,8 @@ are the inputs to compile and source registration.
 
 | Backend | Engine | Strengths | GPU |
 |---------|--------|-----------|-----|
-| `ovis` ★ | OvisOCR2 MLX 4-bit | Markdown, LaTeX math, validated model-grounded figure crops | Apple Silicon MLX |
+| `paddlevl` ★ | PaddleOCR-VL-1.6 + PP-DocLayoutV3 | Structured Markdown, formulas, tables, charts, seals | Apple Silicon MLX |
+| `ovis` | OvisOCR2 MLX 4-bit | Markdown, LaTeX math, validated model-grounded figure crops | Apple Silicon MLX |
 | `mineru` | MinerU 3.4.4 | Formula→LaTeX, table→HTML, multi-column, all formats | No (4GB RAM) |
 | `paddle` | PaddleOCR 3.5 | 109 languages, doc unwarping, orientation fix | No |
 | `deepseek` | DeepSeek-OCR | Grounding + image crop | GPU or API |
@@ -596,6 +622,7 @@ are the inputs to compile and source registration.
 | `compile_v2.py` | Source → wiki pages + graph |
 | `compile_todo.py` | Ordered compile task state + final completeness gate |
 | `query.py` | Search + synthesize + file-back (6 formats) |
+| `query_multihop.py` | Deterministic query decomposition, link traversal, and stopping rules |
 | `search.py` | Hybrid search: BM25 + graph + RRF |
 | `graph.py` | Knowledge graph: entities, edges, traversal |
 | `lint.py` | Health check + auto-heal |

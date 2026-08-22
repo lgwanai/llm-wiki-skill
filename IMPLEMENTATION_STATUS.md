@@ -12,6 +12,8 @@
 ### ✅ Active Scripts (13)
 - `compile_v2.py` - Main compilation (440 lines) ★
 - `query.py` - Wiki querying (235 lines) ★
+- `query_multihop.py` - Evidence-driven subgoal planning, coverage and path scoring ★
+- `query_language.py` - Wiki-native bilingual alias/glossary query bridge ★
 - `lint.py` - Health checking (277 lines) ★
 - `search.py` - BM25 search engine (325 lines)
 - `graph.py` - Knowledge graph (329 lines)
@@ -30,7 +32,7 @@
 
 ### 📐 Dependency Graph
 ```
-query.py → search.py → graph.py
+query.py → query_multihop.py → search.py → graph.py
 consolidate.py → crystallize.py
 wiki.py → compile_v2.py, query.py, lint.py
 ocr.py → _deepseek_ocr.py

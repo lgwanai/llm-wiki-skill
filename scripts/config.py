@@ -42,7 +42,7 @@ DEFAULT_CONFIG = {
     },
     "ocr": {
         "mode": "local",
-        "backend": "ovis",
+        "backend": "paddlevl",
         "api_provider": "",
         "api_url": "",
         "api_key": "",
@@ -74,6 +74,9 @@ DEFAULT_CONFIG = {
         "parallel_search": True,
         "search_streams": "metadata,bm25,graph,ledger",
         "llm_query_expansion": False,
+        "cross_language_expansion": True,
+        "multi_hop_enabled": True,
+        "multi_hop_max_hops": 3,
         "verify_answers": True,
     },
     "compile": {
@@ -227,9 +230,10 @@ def _normalize_config(config: dict) -> dict:
     ocr = normalized.get("ocr", {}).copy()
     if "backend" not in ocr and "ocr_mode" in normalized:
         ocr["backend"] = normalized["ocr_mode"]
-    backend = ocr.get("backend", "ovis")
+    backend = ocr.get("backend", "paddlevl")
     options = ocr.get("options", {}) or {}
     legacy_sections = {
+        "paddlevl": "paddleocr_vl",
         "ovis": "ovisocr",
         "mineru": "mineru",
         "deepseek": "deepseek_ocr",
@@ -381,24 +385,14 @@ def get_reranker_config() -> dict:
 
 
 def get_ocr_config() -> dict:
-    """Get unified OCR configuration."""
-    config = get_config()
-    ocr = config.get("ocr", {})
+    """Get the standalone OCR module's selected model configuration.
 
-    return {
-        "mode": ocr.get("mode", "local"),
-        "backend": ocr.get("backend", "ovis"),
-        "api_provider": ocr.get("api_provider", ""),
-        "api_url": ocr.get("api_url", ""),
-        "api_key": ocr.get("api_key", ""),
-        "api_model": ocr.get("api_model", ""),
-        "api_prompt": ocr.get(
-            "api_prompt",
-            "Convert the document to clean markdown format.",
-        ),
-        "pdf_dpi": ocr.get("pdf_dpi", 200),
-        "options": ocr.get("options", {}) or {},
-    }
+    OCR is intentionally configured independently from a Wiki project so
+    ``ocr use MODEL`` affects direct CLI runs and Wiki compilation equally.
+    """
+    from ocr.config import get_model_config
+
+    return get_model_config()
 
 
 def get_image_analysis_config() -> dict:
@@ -505,6 +499,23 @@ def validate_config(config: dict) -> list[str]:
         _v.check_type("query.max_results", query.get("max_results"), int, "query")
         _v.check_positive("query.max_results", query.get("max_results"), "query")
         _v.check_type("query.parallel_search", query.get("parallel_search", True), bool, "query")
+        _v.check_type(
+            "query.multi_hop_enabled",
+            query.get("multi_hop_enabled", True),
+            bool,
+            "query",
+        )
+        _v.check_type(
+            "query.cross_language_expansion",
+            query.get("cross_language_expansion", True),
+            bool,
+            "query",
+        )
+        max_hops = query.get("multi_hop_max_hops", 3)
+        _v.check_type("query.multi_hop_max_hops", max_hops, int, "query")
+        _v.check_positive("query.multi_hop_max_hops", max_hops, "query")
+        if isinstance(max_hops, int) and max_hops > 5:
+            issues.append("query.multi_hop_max_hops: must be at most 5")
         streams = query.get("search_streams", "")
         if isinstance(streams, str) and streams not in ("all", "*"):
             for s in streams.split(","):
@@ -536,7 +547,7 @@ def validate_config(config: dict) -> list[str]:
         _v.check_enum(
             "ocr.backend",
             ocr.get("backend"),
-            ("ovis", "mineru", "deepseek", "logics", "paddle", "api"),
+            ("paddlevl", "ovis", "mineru", "deepseek", "logics", "paddle", "api"),
             "ocr",
         )
         if ocr.get("mode") == "api":

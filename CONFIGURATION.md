@@ -1,6 +1,7 @@
 # LLM Wiki v2 配置指南
 
-配置文件只需要一份：`wiki_config.yaml`。运行 `wiki config --init` 会生成最小可用模板。
+Wiki 使用 `wiki_config.yaml`；独立 OCR 使用 `~/.config/ocr/config.yaml`。
+运行 `wiki config --init` 会生成最小可用 Wiki 模板。
 
 ## 配置文件位置
 
@@ -21,14 +22,6 @@ model:
   model: deepseek-v4-flash
   api_key: ${DEEPSEEK_API_KEY}
   base_url: https://api.deepseek.com
-
-ocr:
-  mode: local
-  backend: ovis
-  options:
-    project_path: /Users/wuliang/workspace/OvisOCR2
-    python_path: /Users/wuliang/workspace/OvisOCR2/.venv/bin/python
-    model_path: /Users/wuliang/workspace/OvisOCR2/models/OvisOCR2-MLX-4bit
 
 query:
   llm_synthesis: true
@@ -101,54 +94,38 @@ model:
 
 ### `ocr`
 
-OCR 统一使用一个 `ocr` 段。常规用户只需要改 `mode/backend/options`。
+OCR 已独立为系统模块，不再由项目内 `wiki_config.yaml` 决定默认模型。
+全局配置位于 `~/.config/ocr/config.yaml`，可用 `OCR_CONFIG` 覆盖路径。
 
-本地 OCR：
+常用命令：
 
-```yaml
-ocr:
-  mode: local
-  backend: ovis            # ovis | mineru | deepseek | logics | paddle
-  options:
-    project_path: /Users/wuliang/workspace/OvisOCR2
-    python_path: /Users/wuliang/workspace/OvisOCR2/.venv/bin/python
-    model_path: /Users/wuliang/workspace/OvisOCR2/models/OvisOCR2-MLX-4bit
-    dpi: 200
-    max_tokens: 8192
-    crop_padding_x: 0
-    crop_padding_y: 0
+```bash
+ocr list --check
+ocr use paddlevl
+ocr config show
+ocr config set paddlevl.options.model_path /path/to/PaddleOCR-VL-1.6
+ocr config set api.api_url https://api.example.com/v1/chat/completions
+ocr config set api.api_key '${OCR_API_KEY}'
 ```
 
-不同本地后端复用同一个 `options` 段：
+每个模型拥有独立的参数段：
 
 ```yaml
-ocr:
-  mode: local
-  backend: deepseek
-  options:
-    model_path: models/deepseek-ocr-v2/model
-    device: auto
-```
-
-API OCR：
-
-```yaml
-ocr:
-  mode: api
-  api_provider: siliconflow
-  api_key: ${SILICONFLOW_API_KEY}
-  pdf_dpi: 150
-```
-
-手动指定视觉 API：
-
-```yaml
-ocr:
-  mode: api
-  api_url: https://api.example.com/v1/chat/completions
-  api_key: ${OCR_API_KEY}
-  api_model: vision-model
-  api_prompt: "Convert the document to clean markdown format."
+default_model: paddlevl
+models:
+  paddlevl:
+    pdf_dpi: 200
+    options:
+      inference_backend: mlx-vlm-server
+  deepseek:
+    options:
+      model_path: /path/to/DeepSeek-OCR-2
+      device: mps
+  api:
+    mode: api
+    api_url: https://api.example.com/v1/chat/completions
+    api_key: ${OCR_API_KEY}
+    api_model: vision-model
 ```
 
 ### `query`
@@ -161,6 +138,27 @@ query:
   max_results: 5
   search_streams: metadata,bm25,graph,ledger
   llm_query_expansion: false
+  cross_language_expansion: true
+  multi_hop_enabled: true
+  multi_hop_max_hops: 3
+```
+
+`multi_hop_max_hops` 最大为 5。默认值 3 会把复合问题拆成答案子目标，根据尚未满足的
+子目标筛选后续知识链接，并对不同查询、不同跳次的分数进行归一化。全部子目标获得直接
+证据、没有相关后续路径或达到跳数上限时停止。使用 `--single-hop` 可以进行诊断和 A/B
+基准测试。
+
+页面仍是规范存储单位，但每个 Markdown 标题段落会产生独立 BM25 信号；检索结果随后按
+子目标覆盖度去重，避免比较问题的 Top-K 被同一侧的近重复页面占满。调试输出会显示每跳
+覆盖率、缺失子目标和停止原因。
+
+`cross_language_expansion` 不调用外部模型。它复用页面中的双语标题、别名、关键词和问题，
+并读取可选的 `.wiki/query_lexicon.yaml`：
+
+```yaml
+terms:
+  熔断窗口: circuit breaker window
+  回滚审批: [rollback approval, rollback authorization]
 ```
 
 `agent` is the default synthesis mode. Search runs locally over the compiled
@@ -215,11 +213,10 @@ embeddings:
 
 ## 兼容旧配置
 
-旧字段仍可读取，但不建议继续使用：
+旧字段仍可由配置加载器读取，但 OCR 运行时以独立配置为准：
 
 - `llm:` 会自动映射到 `model:`
 - `ollama:` 和 `custom:` 会按 `model.provider` 合并
-- `ocr_mode:` 会自动映射到 `ocr.backend`
-- `ovisocr:`、`mineru:`、`deepseek_ocr:`、`logics_parsing:`、`paddleocr:` 会自动合并到 `ocr.options`
+- 旧 `ocr_mode:`、`ocr:` 和各后端段仅保留解析兼容；请迁移到 `ocr use` / `ocr config`
 
-新配置只写 `model` 和 `ocr`，不要再同时维护多套模型配置。
+新 Wiki 配置不再写 OCR 模型参数，避免项目配置与系统默认相互覆盖。

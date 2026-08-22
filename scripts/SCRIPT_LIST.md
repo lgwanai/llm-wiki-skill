@@ -7,6 +7,8 @@
 |--------|-------|---------|--------------|
 | `compile_v2.py` | 440 | **Compile source → build wiki** | None |
 | `query.py` | 235 | **Search wiki → answer questions** | `search.bm25_search` |
+| `query_multihop.py` | — | Subgoal coverage, typed linked traversal, path scoring, diverse top-k | Injected official search callback |
+| `query_language.py` | — | Model-free bilingual alias and glossary expansion | `query.py` |
 | `lint.py` | 277 | **Health check → auto-heal** | None |
 
 ### Support Scripts
@@ -41,7 +43,7 @@
 ## Dependency Graph
 
 ```
-query.py → search.py → graph.py
+query.py → query_multihop.py → search.py → graph.py
 consolidate.py → crystallize.py
 wiki.py → compile_v2.py, query.py, lint.py
 ocr.py → ocr.cli → selected OCR backend

@@ -64,10 +64,10 @@ class DeepSeekOCR2:
 
     @classmethod
     def from_config(cls, path: Optional[Path] = None) -> "DeepSeekOCR2":
-        """Create instance from unified OCR config."""
-        from scripts.config import get_ocr_config
+        """Create instance from standalone OCR config."""
+        from ocr.config import get_model_config
 
-        deepseek_config = get_ocr_config().get("options", {})
+        deepseek_config = get_model_config("deepseek", path).get("options", {})
         
         model_path = (
             deepseek_config.get("model_path")

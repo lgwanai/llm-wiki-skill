@@ -1,7 +1,8 @@
 """ocr — Image & PDF OCR with pluggable backends.
 
 Backends:
-    ovis    (default): OvisOCR2 MLX — Markdown OCR with visual-region cropping.
+    paddlevl (default): PaddleOCR-VL-1.6 + PP-DocLayoutV3 + MLX-VLM.
+    ovis:              OvisOCR2 MLX — Markdown OCR with visual-region cropping.
     mineru:            MinerU 3.4.4 — formula→LaTeX, table→HTML.
     deepseek:          DeepSeek-OCR-2 — Vision-Language OCR, GPU/MPS/CPU.
     logics:            Logics-Parsing-v2 — Qwen3VL-based OCR, GPU/MPS/CPU.
@@ -9,15 +10,47 @@ Backends:
     api:               Generic API — OpenAI-compatible vision API.
 
 Usage:
-    from ocr._ovis_ocr import OvisOCR2
-    from ocr._mineru_ocr import MinerUOCR
-    from ocr._ocr_api import OCRApiBackend
-    from ocr.cli import main
+    import ocr
+
+    print(ocr.list_models())
+    engine = ocr.create_backend()
+    text = engine.ocr_image("scan.png")
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
+
+__all__ = ["create_backend", "get_default_model", "list_models", "set_default_model"]
+
+
+def create_backend(name: str | None = None) -> Any:
+    """Create a backend by key, or create the global default backend."""
+    from ocr.registry import create_backend as _create_backend
+
+    return _create_backend(name)
+
+
+def list_models(check: bool = False) -> list[dict[str, Any]]:
+    """Return supported model metadata without eagerly importing runtimes."""
+    from ocr.registry import list_models as _list_models
+
+    return _list_models(check)
+
+
+def get_default_model() -> str:
+    """Return the globally selected OCR model key."""
+    from ocr.config import get_default_model as _get_default_model
+
+    return _get_default_model()
+
+
+def set_default_model(model: str) -> Path:
+    """Persist the globally selected OCR model key."""
+    from ocr.config import set_default_model as _set_default_model
+
+    return _set_default_model(model)
 
 
 def render_pdf_pages_to_images(pdf_path: Path, output_dir: Path, dpi: int = 150) -> list[Path]:

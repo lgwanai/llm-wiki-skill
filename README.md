@@ -101,12 +101,34 @@ Query uses field-weighted BM25F over Concept ID, title, tags, description, key f
 headings, and body. Metadata, BM25F, graph, ledger, and optional vector results are
 combined with intent-aware weighted reciprocal-rank fusion. Each stream over-fetches
 candidates before scope/status filtering, so filtering does not silently starve the
-final result count. Long concepts remain intact in OKF storage; only the most relevant
-sections are selected when assembling answer evidence.
+final result count. Evidence-driven multi-hop retrieval decomposes compound questions into
+answer subgoals, follows only the most relevant concept links, tracks path confidence, and
+stops when the required evidence is covered (three hops by default). Coverage-aware top-k
+selection avoids returning several near-duplicate pages while omitting one side of a comparison.
+Long concepts remain intact in OKF storage; heading-bounded virtual sections receive their own
+BM25 signal so an exact fact near the end of a page can rescue its canonical parent page.
+
+Agents must call `wiki query` or `scripts/query.py`; they must not create temporary
+Python/Shell/SQL search code or scan `.wiki/` manually. The official query command applies
+ranking, graph, ledger, scope, lifecycle, multi-hop, and evidence-selection rules together.
 
 DuckDB ledger matching executes over all declared columns and all rows instead of a
 fixed Python sample. Independent graph, ledger, and vector streams run concurrently.
 Search indexes are content-aware and invalidate when any nested OKF concept changes.
+Metadata search consumes canonical `aliases`, `keywords`, `questions`, and tags. Education graph
+queries use typed edges such as `tests`, `depends_on`, `has_example`, and `confuses_with`, with a
+bounded two-hop traversal for question → knowledge point → prerequisite paths.
+
+Cross-language expansion is local and model-free. It first learns phrase mappings from bilingual
+titles, aliases, keywords, tags, and questions already present in the Wiki, then applies a small
+operations/education fallback glossary. Project-specific mappings can be added without code:
+
+```yaml
+# .wiki/query_lexicon.yaml
+terms:
+  熔断窗口: circuit breaker window
+  证据保留: [evidence retention, audit evidence retention]
+```
 
 Optional local semantic retrieval and reranking:
 
@@ -115,6 +137,9 @@ query:
   max_results: 8
   parallel_search: true
   search_streams: metadata,bm25,graph,ledger,vector
+  cross_language_expansion: true
+  multi_hop_enabled: true
+  multi_hop_max_hops: 3
   verify_answers: true
 
 embeddings:
@@ -186,6 +211,12 @@ uncertain locations are marked for verification instead of suppressing the conce
 Mixed or unfamiliar sources can combine lenses
 or infer a more suitable specialist dynamically.
 
+Incremental compilation resolves canonical concept titles and aliases before writing. New evidence
+is fused into the existing page; if semantic fusion is unavailable, a lossless fallback retains both
+sources instead of overwriting either one. For textbooks and exam papers, post-processing verifies
+that every recognized question links to its textbook knowledge points and that each knowledge-point
+page contains the reverse question link, so both directions are materialized in the graph.
+
 ## Native Open Knowledge Format (OKF) Storage
 
 llm-wiki stores knowledge natively as Google Knowledge Catalog's
@@ -233,12 +264,14 @@ We evaluate the **complete product pipeline** (compile → search → synthesize
 
 ## OCR Backends
 
-Six pluggable OCR engines. OvisOCR2 is the default and runs through the
-standalone Apple MLX project at `/Users/wuliang/workspace/OvisOCR2`.
+Seven pluggable OCR engines. PaddleOCR-VL-1.6 is the default on Apple Silicon:
+PP-DocLayoutV3 provides layout and reading order while MLX-VLM accelerates the
+official full-precision 0.9B recognition model.
 
 | Backend | Engine | Highlights | HW | Size |
 |---------|--------|-----------|-----|------|
-| `ovis` ★ | OvisOCR2 MLX 4-bit | Markdown, LaTeX math, validated model-grounded figure crops | Apple Silicon | ~625 MB |
+| `paddlevl` ★ | PaddleOCR-VL-1.6 + MLX-VLM | Structured Markdown, text, formulas, tables, charts, seals | Apple Silicon | ~1.9 GB |
+| `ovis` | OvisOCR2 MLX 4-bit | Markdown, LaTeX math, validated model-grounded figure crops | Apple Silicon | ~625 MB |
 | `mineru` | MinerU 3.4.4 | Formula→LaTeX, table→HTML, multi-column, header/footer removal | CPU | ~2 GB |
 | `deepseek` | DeepSeek-OCR-2 | Vision-Language OCR, document understanding | GPU/MPS/CPU | ~6.3 GB |
 | `logics` | Logics-Parsing-v2 | Qwen3VL multimodal document parsing | GPU/MPS/CPU | ~8.4 GB |
@@ -246,30 +279,35 @@ standalone Apple MLX project at `/Users/wuliang/workspace/OvisOCR2`.
 | `api` | OpenAI-compatible | Any vision-LLM endpoint, zero local model | API | — |
 
 ```bash
-# OvisOCR2 (default, Apple Silicon)
-wiki ocr --doctor
-wiki ocr paper.pdf --smoke-pages 3
-wiki ocr paper.pdf
+# Install once, then use from any directory
+pipx install -e .
+ocr list --check
+ocr use paddlevl
 
-# Switch backend
-wiki ocr paper.pdf --backend mineru
-wiki ocr paper.pdf --backend deepseek
-wiki ocr paper.pdf --backend logics
-wiki ocr paper.pdf --backend paddle
-wiki ocr paper.pdf --backend api
+# PaddleOCR-VL-1.6 (default, Apple Silicon)
+ocr --doctor
+ocr paper.pdf --smoke-pages 3
+ocr paper.pdf
+
+# One-run override (does not change the default)
+ocr paper.pdf --backend mineru
+ocr paper.pdf --backend deepseek
+ocr paper.pdf --backend logics
+ocr paper.pdf --backend paddle
+ocr paper.pdf --backend api
 
 # Batch directory
-wiki ocr --batch ./pdfs/
+ocr --batch ./pdfs/
 
 # PDF/Word/PPT → page images + OCR → compile pipeline
-wiki ocr paper.pdf -o .wiki/source/paper/
+ocr paper.pdf -o .wiki/source/paper/
 wiki compile .wiki/source/paper/paper.md
 ```
 
-`wiki ocr --doctor` is the authoritative preflight. For the default backend it
-reports the OvisOCR2 project, dedicated Python interpreter, MLX dependencies, and
-local model path. `--smoke-pages N` processes exactly the first N pages without
-requiring callers to activate the OvisOCR2 virtual environment.
+`ocr --doctor` is the authoritative preflight. For the default backend it
+reports the dedicated Python interpreter, Paddle/MLX versions, layout model, and
+local full-precision VLM path. `--smoke-pages N` processes exactly the first N
+pages without requiring callers to activate the isolated virtual environment.
 
 Every document run writes `<source>_ocr_manifest.json` next to the Markdown. The
 manifest records the source hash, runtime, requested and parsed pages, coverage,
@@ -284,8 +322,13 @@ compiled, llm-wiki restores `## Page N` boundaries and source image captions for
 page-accurate provenance. Agent-mode task completion then attaches images from the
 exact cited pages (plus adjacent-page context) and verifies that every local target exists.
 
-The same interface is available as `python -m ocr.cli` and `llm-wiki-ocr`.
-The default model remains in `/Users/wuliang/workspace/OvisOCR2/models/OvisOCR2-MLX-4bit`.
+The standalone configuration is `~/.config/ocr/config.yaml` (override with
+`OCR_CONFIG`). Use `ocr config show`, `ocr config get KEY`, and
+`ocr config set MODEL.options.KEY VALUE` to configure each model independently.
+The same interface is available as `python -m ocr`, `python -m ocr.cli`, `wiki ocr`, and
+`llm-wiki-ocr`.
+The default model is `/Users/wuliang/.paddlex/official_models/PaddleOCR-VL-1.6`;
+the isolated runtime is `/Users/wuliang/workspace/PaddleOCR-VL-1.6-MLX/.venv`.
 Legacy backend models remain supported under this repository's `models/` directory.
 
 EPUB files enter the compile pipeline directly: `wiki compile textbook.epub`. Chapters
@@ -305,28 +348,13 @@ llm:
   api_key: ${DEEPSEEK_API_KEY}
   model: deepseek-v4-flash
 
-# ── OCR ──
-ocr:
-  mode: local
-  backend: ovis                # ovis | mineru | deepseek | logics | paddle | api
-  options:
-    project_path: /Users/wuliang/workspace/OvisOCR2
-    python_path: /Users/wuliang/workspace/OvisOCR2/.venv/bin/python
-    model_path: /Users/wuliang/workspace/OvisOCR2/models/OvisOCR2-MLX-4bit
-deepseek_ocr:
-  model_path: models/deepseek-ocr-v2/model
-  device: mps                  # mps | cuda | cpu
-logics_parsing:
-  model_path: models/logics-parsing-v2/model
-  device: mps
-paddleocr:
-  lang: ch
-
 # ── Search ──
 query:
   max_results: 8
   parallel_search: true
   search_streams: metadata,bm25,graph,ledger
+  multi_hop_enabled: true
+  multi_hop_max_hops: 3
   verify_answers: true
 
 # ── Optional: semantic vector search ──
@@ -343,6 +371,9 @@ reranker:
   model: BAAI/bge-reranker-v2-m3
   candidate_count: 20
 ```
+
+OCR settings are intentionally separate from `wiki_config.yaml`; manage them
+with `ocr use` and `ocr config` so the same default is used inside and outside a Wiki.
 
 > `wiki_config.yaml` is gitignored. Environment variables (`${VAR}`) are expanded on load.
 

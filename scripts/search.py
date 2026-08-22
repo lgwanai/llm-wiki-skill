@@ -67,8 +67,8 @@ _edges_cache: dict | list | None = None
 _bm25_index: dict | None = None
 _BM25_CACHE_FILE = WIKI_DIR / "graph" / ".bm25_index.json"
 _METADATA_CACHE_FILE = WIKI_DIR / "graph" / ".metadata_index.json"
-_BM25_CACHE_VERSION = 3
-_METADATA_CACHE_VERSION = 3
+_BM25_CACHE_VERSION = 4
+_METADATA_CACHE_VERSION = 4
 
 
 def _pages_signature(pages_dir: str | Path = PAGES_DIR) -> tuple[str, int, int, int]:
@@ -113,6 +113,14 @@ def _save_bm25_cache(idx: dict, pages_dir: str | Path = PAGES_DIR) -> None:
                     }
                     for name, field in data.get("fields", {}).items()
                 },
+                "sections": [
+                    {
+                        "heading": section["heading"],
+                        "freqs": dict(section["freqs"]),
+                        "length": section["length"],
+                    }
+                    for section in data.get("sections", [])
+                ],
             }
         _BM25_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
         _BM25_CACHE_FILE.write_text(
@@ -157,6 +165,14 @@ def _load_bm25_cache(pages_dir: str | Path = PAGES_DIR) -> dict | None:
                     }
                     for name, field in d.get("fields", {}).items()
                 },
+                "sections": [
+                    {
+                        "heading": str(section.get("heading", "")),
+                        "freqs": Counter(section.get("freqs", {})),
+                        "length": int(section.get("length", 0)),
+                    }
+                    for section in d.get("sections", [])
+                ],
             }
         return result
     except (json.JSONDecodeError, OSError, KeyError):
@@ -238,6 +254,20 @@ def _read_page_parts(filepath: str) -> tuple[dict, str]:
     except Exception:
         frontmatter = {}
     return frontmatter, "\n".join(lines[end + 1:])
+
+
+def _markdown_sections(body: str) -> list[tuple[str, str]]:
+    """Return heading-bounded virtual sections without changing page storage."""
+    headings = list(re.finditer(r"^#{1,6}\s+(.+)$", body, re.MULTILINE))
+    if not headings:
+        return [("Document", body)] if body.strip() else []
+    sections: list[tuple[str, str]] = []
+    if body[: headings[0].start()].strip():
+        sections.append(("Preamble", body[: headings[0].start()].strip()))
+    for index, heading in enumerate(headings):
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(body)
+        sections.append((heading.group(1).strip(), body[heading.start() : end].strip()))
+    return sections
 
 
 def _page_path_for_id(page_id: str, pages_dir: str | Path = PAGES_DIR) -> str:
@@ -328,12 +358,24 @@ def bm25_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
                 tokens = [_stem(t) for t in _tokenize(text)]
                 fields[name] = {"freqs": Counter(tokens), "length": len(tokens)}
                 all_tokens.extend(tokens)
+            sections = []
+            for heading, section_text in _markdown_sections(body):
+                section_tokens = [_stem(t) for t in _tokenize(section_text)]
+                if section_tokens:
+                    sections.append(
+                        {
+                            "heading": heading,
+                            "freqs": Counter(section_tokens),
+                            "length": len(section_tokens),
+                        }
+                    )
             if all_tokens:
                 _bm25_index[str(path)] = {
                     "tokens": all_tokens,
                     "freqs": Counter(all_tokens),
                     "length": len(all_tokens),
                     "fields": fields,
+                    "sections": sections,
                 }
         _save_bm25_cache(_bm25_index, pages_dir)
 
@@ -357,7 +399,7 @@ def bm25_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
         "headings": 1.5,
         "body": 1.0,
     }
-    scores: list[tuple[str, float]] = []
+    scores: list[tuple[str, float, str, float]] = []
     for path, idx in _bm25_index.items():
         score = 0.0
         dl = idx["length"]
@@ -376,12 +418,33 @@ def bm25_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
             df = doc_freq.get(term, 0)
             idf = math.log((num_docs - df + 0.5) / (df + 0.5) + 1.0)
             score += idf * (f * (k1 + 1)) / (f + k1 * (1 - b + b * dl / avg_dl))
+        best_section_score = 0.0
+        best_section = ""
+        for section in idx.get("sections", []):
+            section_score = 0.0
+            section_length = max(int(section.get("length", 0)), 1)
+            frequencies = section.get("freqs", {})
+            for term in query_terms:
+                frequency = frequencies.get(term, 0)
+                if not frequency:
+                    continue
+                df = doc_freq.get(term, 0)
+                idf = math.log((num_docs - df + 0.5) / (df + 0.5) + 1.0)
+                section_score += idf * (frequency * (k1 + 1)) / (
+                    frequency + k1 * (0.35 + 0.65 * section_length / 100.0)
+                )
+            if section_score > best_section_score:
+                best_section_score = section_score
+                best_section = str(section.get("heading", ""))
+        # A focused section can rescue a long page whose full-document length
+        # normalization would otherwise bury a precise fact near the end.
+        score += 1.35 * best_section_score
         if score > 0:
-            scores.append((path, score))
+            scores.append((path, score, best_section, best_section_score))
 
     scores.sort(key=lambda x: -x[1])
     results = []
-    for path, score in scores[:limit]:
+    for path, score, best_section, section_score in scores[:limit]:
         from okf import concept_id
 
         results.append({
@@ -389,6 +452,8 @@ def bm25_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
             'path': path,
             'score': round(score, 3),
             'stream': 'bm25',
+            'matched_section': best_section,
+            'section_score': round(section_score, 3),
         })
     return results
 
@@ -460,8 +525,12 @@ def build_metadata_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
             "name": fm.get("title", title),
             "type": fm.get("type", ""),
             "summary": fm.get("description", ""),
-            "aliases": [],
-            "keywords": _as_list(fm.get("tags")),
+            "aliases": _as_list(fm.get("aliases")),
+            "keywords": list(
+                dict.fromkeys(
+                    _as_list(fm.get("tags")) + _as_list(fm.get("keywords"))
+                )
+            ),
             "questions": _as_list(fm.get("questions")),
             "facts": fm.get("facts", {}),
             # Date fields for date-based retrieval (compile creation / source publication).
@@ -585,9 +654,35 @@ def metadata_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
 
 _RELATION_QUERY_TERMS = {
     "影响", "依赖", "关系", "路径", "关联", "对比", "比较", "区别",
+    "考查", "先修", "前置", "例题", "易混", "推导", "同类题",
     "impact", "depends", "dependency", "relationship", "related",
-    "compare", "difference", "versus", "vs",
+    "compare", "difference", "versus", "vs", "tests", "prerequisite", "example",
 }
+
+_RELATION_TYPE_HINTS = {
+    "考查": {"tests"},
+    "tests": {"tests"},
+    "先修": {"depends_on"},
+    "前置": {"depends_on"},
+    "依赖": {"depends_on"},
+    "prerequisite": {"depends_on"},
+    "例题": {"has_example", "example_of", "similar_question"},
+    "题目": {"tests", "has_example", "example_of", "similar_question"},
+    "易混": {"confuses_with"},
+    "混淆": {"confuses_with"},
+    "推导": {"derived_from"},
+    "章节": {"appears_in_chapter"},
+    "同类题": {"similar_question"},
+}
+
+
+def _requested_relation_types(query: str) -> set[str]:
+    lowered = query.casefold()
+    requested: set[str] = set()
+    for marker, relation_types in _RELATION_TYPE_HINTS.items():
+        if marker in lowered:
+            requested.update(relation_types)
+    return requested
 
 
 def _normalize_match_text(text: str) -> str:
@@ -684,7 +779,8 @@ def graph_search(query: str, graph_dir: str, limit: int = 10) -> list[dict]:
     results: list[dict] = []
     visited: set = set()
     relation_query = any(term in query.lower() for term in _RELATION_QUERY_TERMS)
-    neighbor_scores: dict[str, tuple[float, str, str]] = {}
+    requested_types = _requested_relation_types(query)
+    neighbor_scores: dict[str, tuple[float, str, str, list[str]]] = {}
 
     for eid, match_score in sorted(scored_entities, key=lambda item: -item[1])[:limit]:
         if eid in visited:
@@ -696,20 +792,25 @@ def graph_search(query: str, graph_dir: str, limit: int = 10) -> list[dict]:
             if edge.get('source') == eid or edge.get('target') == eid:
                 other = edge['target'] if edge['source'] == eid else edge['source']
                 if other in entities_data:
+                    relation = edge.get('type', 'related_to')
+                    relation_relevant = not requested_types or relation in requested_types
                     connected.append({
                         'entity': other,
                         'name': entities_data[other].get('name', other),
-                        'relation': edge.get('type', 'related_to'),
+                        'relation': relation,
+                        'relation_relevant': relation_relevant,
                     })
                     if relation_query and other not in visited:
-                        neighbor_score = match_score * 0.62
+                        neighbor_score = match_score * (0.78 if relation_relevant else 0.42)
                         previous = neighbor_scores.get(other)
                         if previous is None or neighbor_score > previous[0]:
                             neighbor_scores[other] = (
                                 neighbor_score,
                                 eid,
-                                edge.get('type', 'related_to'),
+                                relation,
+                                [eid, other],
                             )
+        connected.sort(key=lambda item: not item.get("relation_relevant", False))
         path = _entity_page_path(eid, entity, pages_dir)
         results.append({
             'entity_id': eid,
@@ -721,9 +822,38 @@ def graph_search(query: str, graph_dir: str, limit: int = 10) -> list[dict]:
             'stream': 'graph',
         })
 
-    # For relationship queries: include 1-hop neighbors as supplement
+    # Expand one additional typed hop. This supports paths such as
+    # question --tests--> concept --depends_on--> prerequisite without
+    # turning graph search into an unconstrained graph crawl.
+    if relation_query and requested_types:
+        direct_neighbors = list(neighbor_scores.items())
+        for middle_id, (middle_score, anchor_id, _, graph_path_ids) in direct_neighbors:
+            for edge in all_edges:
+                if edge.get("source") != middle_id and edge.get("target") != middle_id:
+                    continue
+                relation = edge.get("type", "relates_to")
+                if relation not in requested_types:
+                    continue
+                other = (
+                    edge.get("target")
+                    if edge.get("source") == middle_id
+                    else edge.get("source")
+                )
+                if other not in entities_data or other in graph_path_ids:
+                    continue
+                path_score = middle_score * 0.72
+                previous = neighbor_scores.get(other)
+                if previous is None or path_score > previous[0]:
+                    neighbor_scores[other] = (
+                        path_score,
+                        anchor_id,
+                        relation,
+                        graph_path_ids + [other],
+                    )
+
+    # For relationship queries: include typed 1-2 hop neighbors as supplement
     if relation_query and len(results) < limit:
-        for eid, (match_score, source_id, relation) in sorted(
+        for eid, (match_score, source_id, relation, graph_path_ids) in sorted(
             neighbor_scores.items(),
             key=lambda item: -item[1][0],
         ):
@@ -749,6 +879,7 @@ def graph_search(query: str, graph_dir: str, limit: int = 10) -> list[dict]:
                 'path': path,
                 'stream': 'graph',
                 'graph_anchor': source_id,
+                'graph_path': graph_path_ids,
             })
 
     return results[:limit]
@@ -777,6 +908,15 @@ def reciprocal_rank_fusion(
                 fused[key]['stream_scores'] = {}
             else:
                 fused[key]['streams'].add(stream)
+                if float(item.get("section_score", 0) or 0) > float(
+                    fused[key].get("section_score", 0) or 0
+                ):
+                    fused[key]["section_score"] = item.get("section_score", 0)
+                    fused[key]["matched_section"] = item.get("matched_section", "")
+                if item.get("graph_path") and not fused[key].get("graph_path"):
+                    fused[key]["graph_path"] = item["graph_path"]
+                if item.get("connected") and not fused[key].get("connected"):
+                    fused[key]["connected"] = item["connected"]
             fused[key]['rrf_score'] += weights.get(stream, 1.0) / (k + rank)
             ranks = fused[key].setdefault('stream_ranks', {})
             scores = fused[key].setdefault('stream_scores', {})

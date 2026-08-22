@@ -61,10 +61,10 @@ class LogicsParsingOCR:
 
     @classmethod
     def from_config(cls, path: Optional[Path] = None) -> "LogicsParsingOCR":
-        """Create instance from unified OCR config."""
-        from scripts.config import get_ocr_config
+        """Create instance from standalone OCR config."""
+        from ocr.config import get_model_config
 
-        logics_config = get_ocr_config().get("options", {})
+        logics_config = get_model_config("logics", path).get("options", {})
         
         model_path = (
             logics_config.get("model_path")

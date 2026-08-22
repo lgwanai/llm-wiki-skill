@@ -65,10 +65,10 @@ class DeepSeekOCR:
 
     @classmethod
     def from_config(cls, path: Path | None = None) -> "DeepSeekOCR":
-        """Create instance from unified OCR config or environment variables."""
-        from scripts.config import get_ocr_config
+        """Create instance from standalone OCR config or environment variables."""
+        from ocr.config import get_model_config
 
-        ocr = get_ocr_config()
+        ocr = get_model_config("api", path)
 
         return cls(
             api_url=ocr.get("api_url") or os.environ.get("OCR_API_URL", ""),

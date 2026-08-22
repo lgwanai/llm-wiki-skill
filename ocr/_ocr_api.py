@@ -145,7 +145,7 @@ class OCRApiBackend:
 
     @classmethod
     def from_config(cls, config_path: Optional[Path] = None) -> "OCRApiBackend":
-        """Create instance from wiki_config.yaml.
+        """Create instance from standalone OCR configuration.
 
         Reads the unified 'ocr' config section for API settings.
 
@@ -158,20 +158,20 @@ class OCRApiBackend:
         Raises:
             RuntimeError: If mode is 'api' but api_url is not configured.
         """
-        from scripts.config import get_ocr_config
+        from ocr.config import get_model_config
 
-        ocr_config = get_ocr_config()
+        ocr_config = get_model_config("api", config_path)
 
         try:
             return create_vision_backend(ocr_config, DEFAULT_PROMPT)
         except RuntimeError as e:
             raise RuntimeError(
-                "OCR API mode requires api_url or api_provider to be configured in wiki_config.yaml.\n"
+                "OCR API mode requires api_url or api_provider in the OCR config.\n"
                 "Example:\n"
-                "  ocr:\n"
-                "    mode: api\n"
-                '    api_provider: siliconflow\n'
-                '    api_key: "${SILICONFLOW_API_KEY}"\n'
+                "  models:\n"
+                "    api:\n"
+                '      api_provider: siliconflow\n'
+                '      api_key: "${SILICONFLOW_API_KEY}"\n'
             ) from e
 
     def ocr_image(self, image_path: str) -> str:

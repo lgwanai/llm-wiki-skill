@@ -29,31 +29,12 @@ query:
   llm_synthesis: true
   default_format: markdown
   max_results: 5
+  cross_language_expansion: true
+  multi_hop_enabled: true
+  multi_hop_max_hops: 3
 
-# OCR is optional. Local mode uses one backend; API mode uses an
-# OpenAI-compatible vision endpoint or a provider preset.
-ocr:
-  mode: local              # local | api
-  backend: ovis            # ovis | mineru | deepseek | logics | paddle
-
-  # Backend-specific local options. Change only when needed.
-  options:
-    project_path: /Users/wuliang/workspace/OvisOCR2
-    python_path: /Users/wuliang/workspace/OvisOCR2/.venv/bin/python
-    model_path: /Users/wuliang/workspace/OvisOCR2/models/OvisOCR2-MLX-4bit
-    dpi: 200
-    max_tokens: 8192
-    crop_padding_x: 0
-    crop_padding_y: 0
-
-  # API OCR example:
-  # mode: api
-  # api_provider: siliconflow
-  # api_key: ${SILICONFLOW_API_KEY}
-  # api_model: deepseek-ai/DeepSeek-OCR
-  # api_url: https://api.siliconflow.cn/v1/chat/completions
-  # api_prompt: "<image>\n<|grounding|>OCR this image."
-  pdf_dpi: 200
+# OCR is configured independently in ~/.config/ocr/config.yaml.
+# Use `ocr list`, `ocr use MODEL`, and `ocr config show`.
 
 # Optional image understanding for `wiki compile <image-or-directory>`.
 # When enabled, images are first analyzed by a VL/omni model; OCR can then

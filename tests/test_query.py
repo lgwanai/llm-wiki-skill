@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import scripts.query as query
+import scripts.query_multihop as query_multihop
 
 
 def test_plan_query_detects_ledger_intent():
@@ -16,6 +17,17 @@ def test_plan_query_detects_ledger_intent():
     assert plan["intent"] == "ledger_filter"
     assert plan["preferred_streams"][0] == "ledger"
     assert "metadata" in plan["preferred_streams"]
+
+
+def test_plan_query_filters_superseded_pages_for_current_intent():
+    plan = query.plan_query("目前最新的 API 限额是多少")
+
+    assert plan["intent"] == "temporal_current"
+    assert query._intent_excluded_statuses(plan) == {
+        "superseded",
+        "obsolete",
+        "archived",
+    }
 
 
 def test_rewrite_query_adds_hyphen_variant():
@@ -60,6 +72,141 @@ def test_rewrite_query_returns_lexical_variants_only(monkeypatch):
     assert "personal knowledge base" in variants
     # Only lexical variants, no LLM calls
     assert len(variants) <= 5
+
+
+def test_rewrite_query_adds_no_model_cross_language_variant(monkeypatch, tmp_path):
+    monkeypatch.setattr(query, "PAGES_DIR", tmp_path / "pages")
+    monkeypatch.setattr(
+        query,
+        "get_query_config",
+        lambda: {"cross_language_expansion": True},
+    )
+
+    variants = query.rewrite_query("事故恢复的重试水位标记", query.plan_query("事故恢复"))
+
+    assert any("incident recovery" in variant for variant in variants)
+    assert any("retry" in variant and "watermark" in variant for variant in variants)
+
+
+def test_decompose_query_splits_bounded_multi_part_question():
+    parts = query.decompose_query("先说明密度定义，然后解释密度如何测量，并且列出易错点")
+
+    assert parts[0].startswith("先说明密度定义")
+    assert any("密度如何测量" in part for part in parts)
+    assert any("易错点" in part for part in parts)
+    assert len(parts) <= 5
+
+
+def test_multi_hop_search_follows_links_and_records_provenance(monkeypatch, tmp_path):
+    alpha = tmp_path / "alpha.md"
+    beta = tmp_path / "beta.md"
+    alpha.write_text("# Alpha\n\n关联 [Beta](/concepts/beta.md)。", encoding="utf-8")
+    beta.write_text("# Beta\n\n最终答案。", encoding="utf-8")
+
+    def fake_search(text, limit=5, **_kwargs):
+        if text == "Beta":
+            return [
+                {
+                    "id": "concepts/beta",
+                    "path": str(beta),
+                    "type": "concept",
+                    "score": 0.8,
+                }
+            ]
+        return [
+            {
+                "id": "concepts/alpha",
+                "path": str(alpha),
+                "type": "concept",
+                "score": 1.0,
+            }
+        ]
+
+    monkeypatch.setattr(query, "search_wiki", fake_search)
+
+    results, trace = query.multi_hop_search("Alpha 的后续概念", debug=True)
+
+    assert [result["id"] for result in results] == ["concepts/alpha", "concepts/beta"]
+    beta_result = next(result for result in results if result["id"] == "concepts/beta")
+    assert beta_result["retrieval_hop"] == 2
+    assert trace["strategy"] == "multi_hop"
+    assert len(trace["hops"]) == 2
+
+
+def test_multi_hop_stops_when_direct_evidence_is_complete(tmp_path):
+    density = tmp_path / "density.md"
+    density.write_text(
+        "# 密度\n\n密度定义为物体质量与体积之比。",
+        encoding="utf-8",
+    )
+
+    results, trace = query_multihop.run_multi_hop(
+        "密度定义是什么",
+        lambda *_args: [
+            {
+                "id": "concepts/density",
+                "path": str(density),
+                "type": "concept",
+                "score": 1.0,
+            }
+        ],
+        lambda path: Path(path).read_text(encoding="utf-8"),
+        debug=True,
+    )
+
+    assert [item["id"] for item in results] == ["concepts/density"]
+    assert trace["stop_reason"] == "evidence_complete"
+    assert trace["evidence"]["coverage"] == 1.0
+    assert len(trace["hops"]) == 1
+
+
+def test_coverage_diversity_keeps_both_comparison_sides(tmp_path):
+    alpha_primary = tmp_path / "alpha-primary.md"
+    alpha_duplicate = tmp_path / "alpha-duplicate.md"
+    beta = tmp_path / "beta.md"
+    alpha_primary.write_text("# Alpha\n\nAlpha 的定义和特征。", encoding="utf-8")
+    alpha_duplicate.write_text("# Alpha 补充\n\n更多 Alpha 特征。", encoding="utf-8")
+    beta.write_text("# Beta\n\nBeta 的定义和特征。", encoding="utf-8")
+    candidates = [
+        {"id": "alpha", "path": str(alpha_primary), "score": 1.0},
+        {"id": "alpha-copy", "path": str(alpha_duplicate), "score": 0.9},
+        {"id": "beta", "path": str(beta), "score": 0.7},
+    ]
+
+    selected = query_multihop.coverage_diverse_rank(
+        "Alpha 与 Beta 的区别",
+        candidates,
+        lambda path: Path(path).read_text(encoding="utf-8"),
+        limit=2,
+    )
+
+    assert {item["id"] for item in selected} == {"alpha", "beta"}
+
+
+def test_query_respects_configured_single_hop_default(monkeypatch):
+    monkeypatch.setattr(
+        query,
+        "get_query_config",
+        lambda: {
+            "max_results": 5,
+            "multi_hop_enabled": False,
+            "multi_hop_max_hops": 3,
+        },
+    )
+    monkeypatch.setattr(query, "search_wiki", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        query,
+        "multi_hop_search",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("configuration should keep retrieval single-hop")
+        ),
+    )
+
+    result = query.query_wiki("密度", synthesis=False)
+
+    assert result["retrieval_strategy"] == "single_hop"
+    assert result["max_hops"] == 1
+    assert result["retrieval_evidence"]["status"] == "incomplete"
 
 
 def test_rerank_prefers_bm25_with_entity_match():
@@ -218,6 +365,8 @@ def test_query_wiki_agent_mode_does_not_call_configured_llm(monkeypatch, tmp_pat
 
     assert result["mode"] == "agent"
     assert "Agent Query Synthesis Task" in result["answer"]
+    assert "Do **not** write Python, shell, SQL" in result["answer"]
+    assert "Retrieval Evidence Coverage" in result["answer"]
     assert "[concept](/concept.md)" in result["answer"]
     assert result["source_details"][0]["path"] == str(page)
 

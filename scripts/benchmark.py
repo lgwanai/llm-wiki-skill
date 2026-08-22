@@ -28,7 +28,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from query import read_page_content, search_wiki
+from query import multi_hop_search, read_page_content, search_wiki
 
 
 def _tokens(text: str) -> set[str]:
@@ -63,12 +63,27 @@ def _retrieved_ids(results: list[dict]) -> list[str]:
     return [r.get("id") or r.get("file") or Path(r.get("path", "")).stem for r in results]
 
 
+def _id_matches(actual: str, expected: str) -> bool:
+    """Match canonical Concept IDs while accepting legacy filename-only qrels."""
+    return actual == expected or actual.endswith(f"/{expected}")
+
+
+def _matches_any(actual: str, expected: set[str]) -> bool:
+    return any(_id_matches(actual, item) for item in expected)
+
+
 def _search_case(case: dict[str, Any], k: int) -> list[dict]:
     kwargs: dict[str, Any] = {"limit": k}
     if case.get("allowed_scopes"):
         kwargs["allowed_scopes"] = case["allowed_scopes"]
     if case.get("exclude_statuses"):
         kwargs["exclude_statuses"] = case["exclude_statuses"]
+    if case.get("multi_hop"):
+        return multi_hop_search(
+            case["query"],
+            max_hops=int(case.get("max_hops", 3)),
+            **kwargs,
+        )
     return search_wiki(case["query"], **kwargs)
 
 
@@ -91,6 +106,9 @@ def run_retrieval_benchmark(cases: list[dict[str, Any]], k: int = 5) -> dict[str
     ndcgs = []
     complete_recalls = []
     leakage_rates = []
+    subgoal_coverages = []
+    complete_subgoal_coverages = []
+    topic_drift_rates = []
     latencies_ms = []
     scenarios: dict[str, list[dict[str, float]]] = {}
 
@@ -101,9 +119,39 @@ def run_retrieval_benchmark(cases: list[dict[str, Any]], k: int = 5) -> dict[str
         results = _search_case(case, k)
         latency_ms = (time.perf_counter() - started) * 1000
         retrieved = _retrieved_ids(results)
-        relevant = [1 if rid in expected else 0 for rid in retrieved[:k]]
+        relevant = [1 if _matches_any(rid, expected) else 0 for rid in retrieved[:k]]
         forbidden = set(case.get("forbidden_pages", []))
-        leaked = forbidden.intersection(retrieved[:k])
+        leaked = {rid for rid in retrieved[:k] if _matches_any(rid, forbidden)}
+        expected_groups = [
+            set(group)
+            for group in case.get(
+                "expected_groups",
+                [[page] for page in case.get("expected_pages", [])],
+            )
+            if group
+        ]
+        covered_groups = sum(
+            1
+            for group in expected_groups
+            if any(_matches_any(page, group) for page in retrieved[:k])
+        )
+        subgoal_coverage = (
+            covered_groups / len(expected_groups) if expected_groups else 1.0
+        )
+        complete_subgoal_coverage = 1.0 if subgoal_coverage == 1.0 else 0.0
+        strict_relevance = set(case.get("strict_relevant_pages", []))
+        drift = (
+            len(
+                [
+                    page
+                    for page in retrieved[:k]
+                    if not _matches_any(page, strict_relevance)
+                ]
+            )
+            / len(retrieved[:k])
+            if strict_relevance and retrieved[:k]
+            else 0.0
+        )
 
         hit = 1.0 if any(relevant) else 0.0
         precision = sum(relevant) / k if k else 0.0
@@ -112,7 +160,15 @@ def run_retrieval_benchmark(cases: list[dict[str, Any]], k: int = 5) -> dict[str
         mrr = 1.0 / first_rank if first_rank else 0.0
         ideal_rels = [1] * min(len(expected), k)
         ndcg = _dcg(relevant) / _dcg(ideal_rels) if ideal_rels else 0.0
-        complete_recall = 1.0 if expected and expected.issubset(retrieved[:k]) else 0.0
+        complete_recall = (
+            1.0
+            if expected
+            and all(
+                any(_id_matches(actual, target) for actual in retrieved[:k])
+                for target in expected
+            )
+            else 0.0
+        )
         leakage = len(leaked) / len(forbidden) if forbidden else 0.0
 
         hit_rates.append(hit)
@@ -122,6 +178,10 @@ def run_retrieval_benchmark(cases: list[dict[str, Any]], k: int = 5) -> dict[str
         ndcgs.append(ndcg)
         complete_recalls.append(complete_recall)
         leakage_rates.append(leakage)
+        subgoal_coverages.append(subgoal_coverage)
+        complete_subgoal_coverages.append(complete_subgoal_coverage)
+        if strict_relevance:
+            topic_drift_rates.append(drift)
         latencies_ms.append(latency_ms)
         scenario = str(case.get("scenario", "unspecified"))
         scenarios.setdefault(scenario, []).append(
@@ -139,6 +199,13 @@ def run_retrieval_benchmark(cases: list[dict[str, Any]], k: int = 5) -> dict[str
             "mrr_at_k": round(mrr, 4),
             "ndcg_at_k": round(ndcg, 4),
             "complete_recall": bool(complete_recall),
+            "subgoal_coverage": round(subgoal_coverage, 4),
+            "complete_subgoal_coverage": bool(complete_subgoal_coverage),
+            "topic_drift_rate": round(drift, 4),
+            "retrieval_hops": max(
+                (int(item.get("retrieval_hop", 1)) for item in results),
+                default=1,
+            ),
             "forbidden_leaks": sorted(leaked),
             "latency_ms": round(latency_ms, 3),
             "scenario": scenario,
@@ -156,6 +223,17 @@ def run_retrieval_benchmark(cases: list[dict[str, Any]], k: int = 5) -> dict[str
             "ndcg_at_k": round(mean(ndcgs), 4) if ndcgs else 0.0,
             "complete_recall_rate": (
                 round(mean(complete_recalls), 4) if complete_recalls else 0.0
+            ),
+            "subgoal_coverage": (
+                round(mean(subgoal_coverages), 4) if subgoal_coverages else 0.0
+            ),
+            "complete_subgoal_coverage_rate": (
+                round(mean(complete_subgoal_coverages), 4)
+                if complete_subgoal_coverages
+                else 0.0
+            ),
+            "topic_drift_rate": (
+                round(mean(topic_drift_rates), 4) if topic_drift_rates else 0.0
             ),
             "forbidden_leakage_rate": (
                 round(mean(leakage_rates), 4) if leakage_rates else 0.0
@@ -233,7 +311,7 @@ def run_ragas_lite_benchmark(cases: list[dict[str, Any]], k: int = 5) -> dict[st
         contexts = _context_text(results)
         answer = case.get("answer") or _extractive_answer(query_text, contexts, reference_answer)
 
-        relevant_count = sum(1 for rid in retrieved[:k] if rid in expected)
+        relevant_count = sum(1 for rid in retrieved[:k] if _matches_any(rid, expected))
         context_precision = relevant_count / len(retrieved[:k]) if retrieved else 0.0
         context_recall = relevant_count / len(expected) if expected else 0.0
 

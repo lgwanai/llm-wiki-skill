@@ -7,8 +7,8 @@ Canonical usage::
     wiki ocr textbook.pdf --smoke-pages 3
     wiki ocr textbook.pdf -o .wiki/source/textbook
 
-``python -m ocr.cli`` and the ``llm-wiki-ocr`` console script expose the same
-interface.  PDF runs always emit an OCR manifest next to the generated
+``python -m ocr.cli``, ``ocr``, and ``llm-wiki-ocr`` expose the same interface.
+PDF runs always emit an OCR manifest next to the generated
 Markdown so an agent can verify the runtime and page coverage without probing
 the environment or inventing a one-off harness.
 """
@@ -30,8 +30,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from scripts.config import get_ocr_config
-
 MIN_MINERU_VERSION = (3, 4, 4)
 MAX_MINERU_VERSION = (4, 0, 0)
 _SOURCE_LIKE_SUFFIXES = {
@@ -52,12 +50,21 @@ _SOURCE_LIKE_SUFFIXES = {
 _PAGINATED_SUFFIXES = {".pdf", ".doc", ".docx", ".ppt", ".pptx"}
 
 
+def get_ocr_config() -> dict[str, Any]:
+    """Return the selected standalone model config.
+
+    Kept as a small public seam for callers that previously patched the CLI's
+    configuration lookup; unlike the old implementation it has no Wiki import.
+    """
+    from ocr.config import get_model_config
+
+    return get_model_config()
+
+
 def _get_default_backend() -> str:
-    """Read OCR config and return backend name (or ``api`` for API mode)."""
-    ocr_config = get_ocr_config()
-    if ocr_config.get("mode", "local") == "api":
-        return "api"
-    return str(ocr_config.get("backend", "ovis"))
+    """Read the standalone OCR configuration's default model."""
+    config = get_ocr_config()
+    return str(config.get("backend", "paddlevl"))
 
 
 def resolve_output_dir(
@@ -221,11 +228,24 @@ def _print_ovis_doctor(report: dict[str, Any]) -> None:
     status = "READY" if report["ready"] else "NOT READY"
     print(f"OvisOCR2: {status}")
     print(f"Project: {report['project']}")
-    print(
-        f"Python: {report['python']['version'] or '-'} "
-        f"({report['python']['executable']})"
-    )
+    print(f"Python: {report['python']['version'] or '-'} " f"({report['python']['executable']})")
     print(f"Model: {report['model']['path']}")
+    for warning in report["warnings"]:
+        print(f"Warning: {warning}")
+    for error in report["errors"]:
+        print(f"Error: {error}", file=sys.stderr)
+    if not report["ready"]:
+        print(f"Repair: {report['repair_command']}", file=sys.stderr)
+
+
+def _print_paddlevl_doctor(report: dict[str, Any]) -> None:
+    """Print the isolated PaddleOCR-VL-1.6 readiness report."""
+    status = "READY" if report["ready"] else "NOT READY"
+    print(f"PaddleOCR-VL-1.6: {status}")
+    print(f"Python: {report['python']['version'] or '-'} " f"({report['python']['executable']})")
+    print(f"Inference: {report['inference_backend']} ({report['machine']})")
+    print(f"Model: {report['model']['path']}")
+    print(f"Layout: {report['model']['layout_path']}")
     for warning in report["warnings"]:
         print(f"Warning: {warning}")
     for error in report["errors"]:
@@ -236,29 +256,9 @@ def _print_ovis_doctor(report: dict[str, Any]) -> None:
 
 def _load_backend(name: str) -> Any:
     """Lazily instantiate one OCR backend."""
-    if name == "api":
-        from ocr._ocr_api import OCRApiBackend
+    from ocr.registry import create_backend
 
-        return OCRApiBackend.from_config()
-    if name == "ovis":
-        from ocr._ovis_ocr import OvisOCR2
-
-        return OvisOCR2.from_config()
-    if name == "mineru":
-        from ocr._mineru_ocr import MinerUOCR
-
-        return MinerUOCR.from_config()
-    if name == "deepseek":
-        from ocr._deepseek_ocr2 import DeepSeekOCR2
-
-        return DeepSeekOCR2.from_config()
-    if name == "logics":
-        from ocr._logics_parsing import LogicsParsingOCR
-
-        return LogicsParsingOCR.from_config()
-    from ocr._paddle_ocr import PaddleOCRWrapper
-
-    return PaddleOCRWrapper.from_config()
+    return create_backend(name)
 
 
 def _sha256(path: Path) -> str:
@@ -344,6 +344,15 @@ def write_ocr_manifest(
         runtime["ovis_project"] = doctor["project"]
         runtime["ovis_python"] = doctor["python"]["executable"]
         runtime["ovis_model"] = doctor["model"]["path"]
+    if backend == "paddlevl":
+        from ocr._paddleocr_vl import inspect_paddleocr_vl_runtime
+
+        doctor = inspect_paddleocr_vl_runtime()
+        runtime["pipeline"] = doctor["pipeline"]
+        runtime["inference_backend"] = doctor["inference_backend"]
+        runtime["paddlevl_python"] = doctor["python"]["executable"]
+        runtime["paddlevl_model"] = doctor["model"]["path"]
+        runtime["layout_model"] = doctor["model"]["layout_path"]
     if backend == "mineru":
         doctor = inspect_mineru_runtime()
         runtime["mineru_version"] = doctor["mineru"]["version"]
@@ -381,12 +390,20 @@ def write_ocr_manifest(
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the shared OCR argument parser."""
+    from ocr.registry import MODELS
+
     default_backend = _get_default_backend()
-    parser = argparse.ArgumentParser(description="LLM Wiki document OCR")
+    parser = argparse.ArgumentParser(
+        description="Parse images and documents with a configurable OCR model",
+        epilog=(
+            "Commands: ocr list [--check], ocr use MODEL, "
+            "ocr config {path,show,get,set}. Direct use: ocr FILE"
+        ),
+    )
     parser.add_argument("file", nargs="?", help="Image or PDF file path")
     parser.add_argument(
         "--backend",
-        choices=["ovis", "mineru", "deepseek", "logics", "paddle", "api"],
+        choices=[model.key for model in MODELS],
         default=default_backend,
         help=f"OCR backend (default: {default_backend})",
     )
@@ -410,6 +427,104 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _print_model_list(check: bool, as_json: bool) -> int:
+    """Print supported OCR models and the current default."""
+    from ocr.registry import list_models
+
+    models = list_models(check=check)
+    if as_json:
+        print(json.dumps({"models": models}, ensure_ascii=False, indent=2))
+        return 0
+    print("DEFAULT  STATUS       KEY        MODEL")
+    for model in models:
+        marker = "*" if model["default"] else ""
+        status = (
+            "ready"
+            if model["ready"] is True
+            else "not-ready" if model["ready"] is False else "not-checked"
+        )
+        print(f"{marker:<7}  {status:<11}  {model['key']:<9}  {model['name']}")
+        if check and model["detail"] != "ready":
+            print(f"{'':22}{model['detail']}")
+    return 0
+
+
+def _run_list_command(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="ocr list", description="List supported OCR models")
+    parser.add_argument("--check", action="store_true", help="Probe local runtime readiness")
+    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+    args = parser.parse_args(argv)
+    return _print_model_list(args.check, args.json)
+
+
+def _run_use_command(argv: list[str]) -> int:
+    from ocr.config import set_default_model
+    from ocr.registry import MODELS
+
+    parser = argparse.ArgumentParser(prog="ocr use", description="Set the default OCR model")
+    parser.add_argument("model", choices=[model.key for model in MODELS])
+    args = parser.parse_args(argv)
+    path = set_default_model(args.model)
+    print(f"Default OCR model: {args.model}")
+    print(f"Config: {path}")
+    return 0
+
+
+def _get_dotted_value(config: dict[str, Any], dotted_key: str) -> Any:
+    value: Any = config
+    for key in dotted_key.split("."):
+        if not isinstance(value, dict) or key not in value:
+            raise KeyError(dotted_key)
+        value = value[key]
+    return value
+
+
+def _run_config_command(argv: list[str]) -> int:
+    import yaml
+
+    from ocr.config import get_config_path, load_config, set_config_value
+    from ocr.registry import MODELS
+
+    parser = argparse.ArgumentParser(prog="ocr config", description="Manage OCR configuration")
+    commands = parser.add_subparsers(dest="action", required=True)
+    commands.add_parser("path", help="Print the active config path")
+    commands.add_parser("show", help="Print the complete config")
+    get_parser = commands.add_parser("get", help="Read a dotted config value")
+    get_parser.add_argument("key")
+    set_parser = commands.add_parser("set", help="Set a dotted config value")
+    set_parser.add_argument("key")
+    set_parser.add_argument("value")
+    args = parser.parse_args(argv)
+
+    if args.action == "path":
+        print(get_config_path())
+        return 0
+    config = load_config()
+    if args.action == "show":
+        print(yaml.safe_dump(config, allow_unicode=True, sort_keys=False), end="")
+        return 0
+    key = args.key
+    model_keys = {model.key for model in MODELS}
+    if key.split(".", 1)[0] in model_keys:
+        key = f"models.{key}"
+    if args.action == "get":
+        try:
+            value = _get_dotted_value(config, key)
+        except KeyError:
+            print(f"Error: unknown configuration key: {args.key}", file=sys.stderr)
+            return 1
+        if isinstance(value, (dict, list)):
+            print(yaml.safe_dump(value, allow_unicode=True, sort_keys=False), end="")
+        else:
+            print(value)
+        return 0
+    value = yaml.safe_load(args.value)
+    path = set_config_value(key, value)
+    print(f"Set {key} = {value!r}")
+    print(f"Config: {path}")
+    return 0
+
+
 def _validate_positive_pages(value: int | None) -> None:
     if value is not None and value < 1:
         raise ValueError("page limit must be at least 1")
@@ -418,19 +533,35 @@ def _validate_positive_pages(value: int | None) -> None:
 def main(argv: list[str] | None = None) -> int:
     """Run OCR and return a process exit code."""
     multiprocessing.freeze_support()
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    if raw_argv:
+        command, command_args = raw_argv[0], raw_argv[1:]
+        if command == "list":
+            return _run_list_command(command_args)
+        if command in {"use", "select", "default"}:
+            return _run_use_command(command_args)
+        if command == "config":
+            return _run_config_command(command_args)
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(raw_argv)
 
     if args.doctor:
-        if args.backend == "ovis":
+        if args.backend == "paddlevl":
+            from ocr._paddleocr_vl import inspect_paddleocr_vl_runtime
+
+            report = inspect_paddleocr_vl_runtime()
+        elif args.backend == "ovis":
             from ocr._ovis_ocr import inspect_ovis_runtime
 
             report = inspect_ovis_runtime()
         elif args.backend != "mineru":
+            from ocr.registry import get_model
+
+            ready, detail = get_model(args.backend).probe()
             report = {
-                "ready": True,
+                "ready": ready,
                 "backend": args.backend,
-                "note": "Detailed preflight is currently available for MinerU.",
+                "detail": detail,
             }
         else:
             report = inspect_mineru_runtime()
@@ -440,8 +571,12 @@ def main(argv: list[str] | None = None) -> int:
             _print_doctor(report)
         elif args.backend == "ovis":
             _print_ovis_doctor(report)
+        elif args.backend == "paddlevl":
+            _print_paddlevl_doctor(report)
         else:
-            print(f"{args.backend} OCR: READY (loaded lazily when a file is processed)")
+            status = "READY" if report["ready"] else "NOT READY"
+            print(f"{args.backend} OCR: {status}")
+            print(f"Detail: {report['detail']}")
         return 0 if report["ready"] else 2
 
     if not args.file and not args.batch:
@@ -450,6 +585,16 @@ def main(argv: list[str] | None = None) -> int:
     max_pages = args.smoke_pages if args.smoke_pages is not None else args.max_pages
     try:
         _validate_positive_pages(max_pages)
+        if args.backend == "paddlevl":
+            from ocr._paddleocr_vl import inspect_paddleocr_vl_runtime
+
+            readiness = inspect_paddleocr_vl_runtime()
+            if not readiness["ready"]:
+                if args.json:
+                    print(json.dumps(readiness, ensure_ascii=False, indent=2))
+                else:
+                    _print_paddlevl_doctor(readiness)
+                return 2
         if args.backend == "ovis":
             from ocr._ovis_ocr import inspect_ovis_runtime
 
