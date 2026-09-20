@@ -26,18 +26,22 @@ def test_light_sleep_logs_query_and_optimizes_retrieved_page(wiki_dir, monkeypat
         encoding="utf-8",
     )
     monkeypatch.setattr(dream, "_today", lambda: "20260626")
-    monkeypatch.setattr(dream, "_read_logs", lambda days=7: [  # patch multi-day reader
-        {
-            "timestamp": "2026-06-26T00:00:00Z",
-            "question": "How does retrieval work?",
-            "format": "markdown",
-            "synthesis": True,
-            "answer_chars": 100,
-            "sources": [
-                {"id": "retrieval", "name": "Retrieval", "path": str(page), "relevance": 0.9}
-            ],
-        }
-    ])
+    monkeypatch.setattr(
+        dream,
+        "_read_logs",
+        lambda days=7: [  # patch multi-day reader
+            {
+                "timestamp": "2026-06-26T00:00:00Z",
+                "question": "How does retrieval work?",
+                "format": "markdown",
+                "synthesis": True,
+                "answer_chars": 100,
+                "sources": [
+                    {"id": "retrieval", "name": "Retrieval", "path": str(page), "relevance": 0.9}
+                ],
+            }
+        ],
+    )
 
     items = dream.phase_light_sleep()
 
@@ -82,26 +86,29 @@ def test_cancel_active_dream_marks_running_worker_cancelled(wiki_dir):
 
 
 def test_phase_audit_produces_analysis_task(wiki_dir, monkeypatch):
-    wiki = Path(wiki_dir) / ".wiki"
     monkeypatch.setattr(dream, "_today", lambda: "20260626")
-    monkeypatch.setattr(dream, "_read_logs", lambda days=7: [
-        {
-            "timestamp": "2026-06-26T00:00:00Z",
-            "question": "What is retrieval?",
-            "format": "markdown",
-            "synthesis": True,
-            "answer_chars": 50,
-            "sources": [],
-        },
-        {
-            "timestamp": "2026-06-26T01:00:00Z",
-            "question": "What is retrieval?",
-            "format": "markdown",
-            "synthesis": True,
-            "answer_chars": 60,
-            "sources": [],
-        },
-    ])
+    monkeypatch.setattr(
+        dream,
+        "_read_logs",
+        lambda days=7: [
+            {
+                "timestamp": "2026-06-26T00:00:00Z",
+                "question": "What is retrieval?",
+                "format": "markdown",
+                "synthesis": True,
+                "answer_chars": 50,
+                "sources": [],
+            },
+            {
+                "timestamp": "2026-06-26T01:00:00Z",
+                "question": "What is retrieval?",
+                "format": "markdown",
+                "synthesis": True,
+                "answer_chars": 60,
+                "sources": [],
+            },
+        ],
+    )
 
     output = dream.phase_audit([])
 
@@ -113,32 +120,39 @@ def test_phase_audit_produces_analysis_task(wiki_dir, monkeypatch):
 
 
 def test_phase_purify_produces_report(wiki_dir, monkeypatch):
-    wiki = Path(wiki_dir) / ".wiki"
     monkeypatch.setattr(dream, "_today", lambda: "20260626")
-    monkeypatch.setattr(dream, "_read_logs", lambda days=7: [
-        {
-            "timestamp": "2026-06-26T00:00:00Z",
-            "question": "How does retrieval work?",
-            "format": "markdown",
-            "synthesis": True,
-            "answer_chars": 100,
-            "sources": [],
-        },
-        {
-            "timestamp": "2026-06-26T01:00:00Z",
-            "question": "How does retrieval work?",
-            "format": "markdown",
-            "synthesis": True,
-            "answer_chars": 120,
-            "sources": [],
-        },
-    ])
+    monkeypatch.setattr(
+        dream,
+        "_read_logs",
+        lambda days=7: [
+            {
+                "timestamp": "2026-06-26T00:00:00Z",
+                "question": "How does retrieval work?",
+                "format": "markdown",
+                "synthesis": True,
+                "answer_chars": 100,
+                "sources": [],
+            },
+            {
+                "timestamp": "2026-06-26T01:00:00Z",
+                "question": "How does retrieval work?",
+                "format": "markdown",
+                "synthesis": True,
+                "answer_chars": 120,
+                "sources": [],
+            },
+        ],
+    )
     # Mock search to return empty results (no wiki pages)
-    monkeypatch.setattr(dream, "_run_search", lambda q: {
-        "query": q,
-        "pages_searched": 0,
-        "source_details": [],
-    })
+    monkeypatch.setattr(
+        dream,
+        "_run_search",
+        lambda q: {
+            "query": q,
+            "pages_searched": 0,
+            "source_details": [],
+        },
+    )
 
     result = dream.phase_purify()
 
@@ -150,7 +164,6 @@ def test_phase_purify_produces_report(wiki_dir, monkeypatch):
 
 
 def test_phase_enrich_produces_report(wiki_dir, monkeypatch):
-    wiki = Path(wiki_dir) / ".wiki"
     monkeypatch.setattr(dream, "_today", lambda: "20260626")
     monkeypatch.setattr(dream, "_read_logs", lambda days=7: [])
 

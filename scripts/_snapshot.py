@@ -43,8 +43,7 @@ def ensure_git_repo(wiki_dir: Path) -> bool:
     successfully initialised).  Returns False when git is not installed.
     """
     if not _git_available():
-        print("  [dream/snapshot] git not available — snapshots disabled",
-              file=sys.stderr)
+        print("  [dream/snapshot] git not available — snapshots disabled", file=sys.stderr)
         return False
 
     git_dir = wiki_dir / ".git"
@@ -99,14 +98,12 @@ def create_snapshot(wiki_dir: Path, label: str) -> str | None:
             check=True,
         )
         result = subprocess.run(
-            ["git", "-C", str(wiki_dir), "commit", "--allow-empty",
-             "-m", message],
+            ["git", "-C", str(wiki_dir), "commit", "--allow-empty", "-m", message],
             capture_output=True,
             text=True,
         )
         if result.returncode != 0:
-            print(f"  [dream/snapshot] commit warning: {result.stderr.strip()}",
-                  file=sys.stderr)
+            print(f"  [dream/snapshot] commit warning: {result.stderr.strip()}", file=sys.stderr)
 
         log = subprocess.run(
             ["git", "-C", str(wiki_dir), "rev-parse", "HEAD"],
@@ -115,8 +112,7 @@ def create_snapshot(wiki_dir: Path, label: str) -> str | None:
             check=True,
         )
         commit_hash = log.stdout.strip()[:12]
-        print(f"  [dream/snapshot] saved snapshot {commit_hash}: {label}",
-              file=sys.stderr)
+        print(f"  [dream/snapshot] saved snapshot {commit_hash}: {label}", file=sys.stderr)
         return commit_hash
     except subprocess.CalledProcessError as exc:
         print(f"  [dream/snapshot] snapshot failed: {exc}", file=sys.stderr)
@@ -133,14 +129,12 @@ def rollback(wiki_dir: Path, commit_hash: str, label: str = "") -> bool:
     Returns True on success.
     """
     if not _git_available():
-        print("  [dream/snapshot] cannot rollback — git not available",
-              file=sys.stderr)
+        print("  [dream/snapshot] cannot rollback — git not available", file=sys.stderr)
         return False
 
     git_dir = wiki_dir / ".git"
     if not git_dir.is_dir():
-        print("  [dream/snapshot] cannot rollback — .wiki is not a git repo",
-              file=sys.stderr)
+        print("  [dream/snapshot] cannot rollback — .wiki is not a git repo", file=sys.stderr)
         return False
 
     try:
@@ -151,7 +145,8 @@ def rollback(wiki_dir: Path, commit_hash: str, label: str = "") -> bool:
         )
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         rollback_msg = (
-            f"dream: rollback to {commit_hash} [{label}]" if label
+            f"dream: rollback to {commit_hash} [{label}]"
+            if label
             else f"dream: rollback to {commit_hash} [{timestamp}]"
         )
         subprocess.run(
@@ -160,12 +155,10 @@ def rollback(wiki_dir: Path, commit_hash: str, label: str = "") -> bool:
             check=True,
         )
         subprocess.run(
-            ["git", "-C", str(wiki_dir), "commit", "--allow-empty",
-             "-m", rollback_msg],
+            ["git", "-C", str(wiki_dir), "commit", "--allow-empty", "-m", rollback_msg],
             capture_output=True,
         )
-        print(f"  [dream/snapshot] rolled back to {commit_hash}: {label}",
-              file=sys.stderr)
+        print(f"  [dream/snapshot] rolled back to {commit_hash}: {label}", file=sys.stderr)
         return True
     except subprocess.CalledProcessError as exc:
         print(f"  [dream/snapshot] rollback failed: {exc}", file=sys.stderr)
@@ -183,9 +176,15 @@ def list_snapshots(wiki_dir: Path, limit: int = 20) -> list[dict]:
 
     try:
         result = subprocess.run(
-            ["git", "-C", str(wiki_dir), "log",
-             "--grep=^dream:", "--format=%h|%aI|%s",
-             f"-n{limit}"],
+            [
+                "git",
+                "-C",
+                str(wiki_dir),
+                "log",
+                "--grep=^dream:",
+                "--format=%h|%aI|%s",
+                f"-n{limit}",
+            ],
             capture_output=True,
             text=True,
         )
@@ -198,11 +197,13 @@ def list_snapshots(wiki_dir: Path, limit: int = 20) -> list[dict]:
                 continue
             parts = line.split("|", 2)
             if len(parts) == 3:
-                snapshots.append({
-                    "hash": parts[0],
-                    "date": parts[1],
-                    "message": parts[2],
-                })
+                snapshots.append(
+                    {
+                        "hash": parts[0],
+                        "date": parts[1],
+                        "message": parts[2],
+                    }
+                )
         return snapshots
     except subprocess.CalledProcessError:
         return []

@@ -22,9 +22,15 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
-from _llm_utils import call_llm
-from config import (
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_PROJECT_ROOT = _SCRIPT_DIR.parent
+for _import_path in (str(_PROJECT_ROOT), str(_SCRIPT_DIR)):
+    while _import_path in sys.path:
+        sys.path.remove(_import_path)
+sys.path.insert(0, str(_PROJECT_ROOT))
+sys.path.insert(1, str(_SCRIPT_DIR))
+from _llm_utils import call_llm  # noqa: E402
+from config import (  # noqa: E402
     get_embeddings_config,
     get_query_config,
     get_reranker_config,
@@ -40,11 +46,10 @@ def _log_exc(msg: str = ""):
         print(f"  [WARN] {traceback.format_exc()}", file=sys.stderr)
 
 
-
 WIKI_DIR = get_wiki_dir()
 PAGES_DIR = WIKI_DIR / "pages"
 
-DEFAULT_SEARCH_STREAMS = ["metadata", "bm25", "graph", "ledger"]
+DEFAULT_SEARCH_STREAMS = ["raw", "claim", "metadata", "bm25", "graph", "ledger"]
 
 
 def enabled_search_streams() -> set[str]:
@@ -123,68 +128,95 @@ def _filter_by_excluded_statuses(results: list[dict], excluded_statuses: set[str
 # Query planning & rewriting (lightweight, no extra LLM calls)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def plan_query(query: str) -> dict:
-    """Simple query planner for retrieval stream routing."""
-    q = query.lower()
-    ledger_terms = (
-        "表", "台账", "预算", "金额", "状态", "字段", "行",
-        "row", "table", "ledger", "sql",
-    )
-    graph_terms = ("影响", "依赖", "关系", "路径", "关联", "impact", "depends", "relationship")
-    compare_terms = ("比较", "对比", "区别", "compare", "difference")
-    current_terms = (
-        "当前",
-        "目前",
-        "最新",
-        "现行",
-        "现在生效",
-        "current",
-        "latest",
-        "effective now",
-        "as of now",
-    )
+    """Return a structured, deterministic retrieval plan."""
+    from query_understanding import understand_query
 
-    preferred = ["metadata", "bm25", "graph", "ledger"]
-    intent = "fact"
-    if any(term in q for term in current_terms):
-        intent = "temporal_current"
-        preferred = ["metadata", "bm25", "graph", "ledger"]
-    elif any(term in q for term in ledger_terms):
-        intent = "ledger_filter"
-        preferred = ["ledger", "metadata", "bm25", "graph"]
-    elif any(term in q for term in graph_terms):
-        intent = "relationship"
-        preferred = ["graph", "metadata", "bm25", "ledger"]
-    elif any(term in q for term in compare_terms):
-        intent = "comparison"
-
-    return {
-        "intent": intent,
-        "preferred_streams": preferred,
-        "keywords": [t for t in re.split(r"\s+", query.strip()) if t],
+    plan = understand_query(query)
+    intent = plan["intent"]
+    preferred_by_intent = {
+        "exact_lookup": ["raw", "claim", "bm25", "metadata", "ledger", "graph"],
+        "structural_lookup": ["raw", "bm25", "claim", "metadata", "ledger", "graph"],
+        "ledger_filter": ["ledger", "claim", "metadata", "bm25", "graph"],
+        "aggregation": ["ledger", "claim", "metadata", "bm25", "graph"],
+        "relationship": ["graph", "claim", "metadata", "bm25", "ledger"],
+        "comparison": ["claim", "bm25", "metadata", "graph", "ledger"],
+        "procedure": ["claim", "bm25", "metadata", "graph", "ledger"],
+        "definition": ["claim", "metadata", "bm25", "graph", "ledger"],
+        "temporal_current": ["claim", "metadata", "bm25", "graph", "ledger"],
+        "temporal_as_of": ["claim", "metadata", "bm25", "graph", "ledger"],
     }
+    plan["preferred_streams"] = preferred_by_intent.get(
+        intent, ["claim", "raw", "metadata", "bm25", "graph", "ledger"]
+    )
+    return plan
 
 
 def _stream_weights(plan: dict) -> dict[str, float]:
     """Intent-aware retrieval weights for weighted RRF."""
-    base = {"metadata": 1.2, "bm25": 1.2, "graph": 1.0, "ledger": 1.0, "vector": 1.0}
+    base = {
+        "claim": 1.45,
+        "raw": 1.35,
+        "metadata": 1.2,
+        "bm25": 1.2,
+        "graph": 1.0,
+        "ledger": 1.0,
+        "vector": 1.0,
+    }
     intent = plan.get("intent")
     if intent == "ledger_filter":
-        base.update({"ledger": 2.2, "metadata": 1.0, "bm25": 0.9})
+        base.update({"ledger": 2.2, "claim": 1.3, "metadata": 1.0, "bm25": 0.9})
     elif intent == "relationship":
         base.update({"graph": 2.0, "metadata": 1.2})
     elif intent == "comparison":
         base.update({"bm25": 1.3, "vector": 1.3, "graph": 1.2})
-    elif intent == "temporal_current":
-        base.update({"metadata": 1.6, "bm25": 1.2})
+    elif intent in {"temporal_current", "temporal_as_of"}:
+        base.update({"claim": 1.9, "metadata": 1.6, "bm25": 1.2})
+    elif intent in {"exact_lookup", "structural_lookup"}:
+        base.update({"raw": 3.0, "bm25": 1.1, "claim": 1.0, "metadata": 0.9})
     return base
 
 
 def _intent_excluded_statuses(plan: dict) -> set[str]:
-    """Apply safe lifecycle defaults only when the query explicitly asks for current state."""
-    if plan.get("intent") == "temporal_current":
-        return {"superseded", "obsolete", "archived"}
+    """Do not infer applicability from a coarse lifecycle label.
+
+    A published replacement may be marked superseding before its effective date,
+    while the old rule remains operative.  Effective-time ranking happens after
+    retrieval; only explicit caller/config exclusions are applied early.
+    """
     return set()
+
+
+def structured_query_guidance(query: str, chinese: bool) -> str:
+    """Render query constraints that synthesis must not silently discard."""
+    plan = plan_query(query)
+    fields = {
+        "intent": plan.get("intent"),
+        "jurisdictions": plan.get("jurisdictions", []),
+        "audiences": plan.get("audiences", []),
+        "conditions": plan.get("conditions", []),
+        "numeric_constraints": plan.get("numeric_constraints", []),
+        "aggregation_requested": plan.get("aggregation_requested", False),
+        "relation_types": plan.get("relation_types", []),
+        "required_evidence": plan.get("required_evidence", []),
+    }
+    serialized = json.dumps(fields, ensure_ascii=False, default=str)
+    if chinese:
+        return f"""## 结构化查询约束（强制）
+{serialized}
+- 只能使用与查询对象、地区、条件和时点相匹配的事实作为直接答案。
+- 条件、例外、适用对象和脚注必须与主张一起表达；不得扩大适用范围。
+- `required_evidence` 中缺少任何一项时明确说明缺口，不得用相似事实补齐。
+- 当 `aggregation_requested` 为 true 且证据列出匹配项时，必须去重计数并直接给出总数；
+  不得仅因原文没有印刷总计或没有声明“穷尽”而拒答。"""
+    return f"""## Structured query constraints (mandatory)
+{serialized}
+- Use a fact as the direct answer only when its subject, jurisdiction, conditions, and time match.
+- Keep conditions, exceptions, audience, and footnotes attached to their claim; never broaden scope.
+- If any `required_evidence` slot is missing, state the gap instead of substituting a similar fact.
+- When `aggregation_requested` is true and evidence enumerates the matching records, deduplicate
+  and count them. Do not refuse merely because the source omits a printed total or "exhaustive" label."""
 
 
 def rewrite_query(query: str, plan: dict) -> list[str]:
@@ -193,7 +225,10 @@ def rewrite_query(query: str, plan: dict) -> list[str]:
     Only does string-level transforms (normalization, hyphen/space swaps).
     No LLM calls — the wiki is already compiled, we just need to match it.
     """
-    variants = [query]
+    from query_display import query_subject
+
+    subject = query_subject(query)
+    variants = [query] + ([subject] if subject and subject != query.casefold() else [])
     normalized = re.sub(r"[\s_]+", " ", query).strip()
     if normalized and normalized not in variants:
         variants.append(normalized)
@@ -284,25 +319,63 @@ def _coverage_diverse_results(query: str, results: list[dict], limit: int) -> li
         return results[:limit]
 
 
+def _retain_top_raw_candidates(
+    ranked: list[dict], candidates: list[dict], count: int = 2
+) -> list[dict]:
+    """Prevent a concept-heavy preselection from dropping raw fallback evidence."""
+    raw = [item for item in candidates if "raw" in set(str(item.get("stream", "")).split(","))]
+    raw.sort(
+        key=lambda item: (
+            not bool(item.get("answer_hints")),
+            int(item.get("stream_ranks", {}).get("raw", 10_000)),
+            -float(item.get("stream_scores", {}).get("raw", item.get("score", 0)) or 0),
+        )
+    )
+    output = list(ranked)
+    paths = {str(item.get("path", "")) for item in output}
+    for item in raw[:count]:
+        if str(item.get("path", "")) not in paths:
+            output.append(item)
+            paths.add(str(item.get("path", "")))
+    return output
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Reranking (lightweight heuristics — no cross-encoder, no embeddings)
 # ═══════════════════════════════════════════════════════════════════════════
 
 # Conservative entity type weights for content-rich types
 _TYPE_WEIGHTS: dict[str, float] = {
-    "concept": 1.10, "technique": 1.10, "model": 1.08, "framework": 1.05,
-    "algorithm": 1.10, "process": 1.05, "rule": 1.05, "policy": 1.05,
-    "benchmark": 0.95, "paper": 0.92, "certification": 0.95, "event": 0.92,
-    "entity": 0.95, "metric": 0.95, "tool": 0.95, "system": 0.95,
-    "product": 0.95, "role": 0.95,
+    "concept": 1.10,
+    "technique": 1.10,
+    "model": 1.08,
+    "framework": 1.05,
+    "algorithm": 1.10,
+    "process": 1.05,
+    "rule": 1.05,
+    "policy": 1.05,
+    "benchmark": 0.95,
+    "paper": 0.92,
+    "certification": 0.95,
+    "event": 0.92,
+    "entity": 0.95,
+    "metric": 0.95,
+    "tool": 0.95,
+    "system": 0.95,
+    "product": 0.95,
+    "role": 0.95,
 }
 
 # Intent → preferred entity types for smarter reranking
 _INTENT_TYPE_PREFERENCE: dict[str, list[str]] = {
+    "exact_lookup": ["source_evidence", "entity", "concept"],
+    "structural_lookup": ["source_evidence", "entity", "concept"],
     "fact": ["concept", "technique", "model", "algorithm", "framework"],
     "relationship": ["technique", "concept", "model", "framework"],
     "comparison": ["model", "framework", "benchmark", "technique"],
     "ledger_filter": ["entity", "event", "process"],
+    "temporal_current": ["policy", "rule", "process", "event", "concept"],
+    "temporal_as_of": ["policy", "rule", "process", "event", "concept"],
 }
 
 
@@ -319,9 +392,62 @@ def _entity_type_weight(entity_type: str, intent: str) -> float:
     return base
 
 
+def _annotate_page_applicability(results: list[dict], plan: dict) -> list[dict]:
+    """Attach source authority and non-destructive scope matching signals."""
+    from knowledge_claims import source_authority
+    from okf import read_markdown
+
+    annotated: list[dict] = []
+    for result in results:
+        item = dict(result)
+        path = str(item.get("path", ""))
+        metadata: dict = {}
+        if path and not path.startswith("table://"):
+            metadata, _, error = read_markdown(Path(path))
+            if error:
+                metadata = {}
+        item["source_authority"] = max(
+            float(item.get("source_authority", 0) or 0),
+            source_authority(metadata),
+        )
+        applicability = 1.0
+        reasons: list[str] = []
+        for plan_key, metadata_keys in (
+            ("jurisdictions", ("jurisdiction",)),
+            ("audiences", ("audience", "applies_to")),
+        ):
+            requested = {str(value).casefold() for value in plan.get(plan_key, [])}
+            available_values: list[str] = []
+            for key in metadata_keys:
+                value = metadata.get(key, [])
+                if not isinstance(value, list):
+                    value = [value]
+                available_values.extend(str(part).casefold() for part in value if str(part).strip())
+            if not requested:
+                continue
+            if any(
+                requested_value in available or available in requested_value
+                for requested_value in requested
+                for available in available_values
+            ):
+                applicability *= 1.15
+                reasons.append(f"{plan_key}=match")
+            elif available_values:
+                applicability *= 0.55
+                reasons.append(f"{plan_key}=mismatch")
+            else:
+                applicability *= 0.9
+                reasons.append(f"{plan_key}=unknown")
+        item["applicability_factor"] = round(applicability, 4)
+        item["applicability_reasons"] = reasons
+        annotated.append(item)
+    return annotated
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Improvement 5: Pre-search entity linking (O(n) symbol match, zero cost)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def _extract_query_entities(query: str) -> dict[str, float]:
     """Extract entity mentions from a natural-language query using entities.json.
@@ -371,6 +497,7 @@ def _extract_query_entities(query: str) -> dict[str, float]:
 # ═══════════════════════════════════════════════════════════════════════════
 # Improvement 2: Graph-powered ranking (knowledge graph as ranking signal)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def _graph_boost(results: list[dict], query_entities: dict[str, float]) -> list[dict]:
     """Annotate results with graph connection strength to query-matched entities.
@@ -433,6 +560,7 @@ def _graph_boost(results: list[dict], query_entities: dict[str, float]) -> list[
 # ═══════════════════════════════════════════════════════════════════════════
 # Improvement 1: Clear 3-signal ranking formula
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def rerank_results(
     query: str,
@@ -510,7 +638,22 @@ def rerank_results(
         signal_rrf = min(float(result.get("score", 0) or 0) * 8.0, 1.0) * 0.25
         stream_names = set(str(result.get("stream", "")).split(","))
         signal_special = 0.15 if stream_names & {"ledger", "vector"} else 0.0
+        if "raw" in stream_names:
+            raw_score = float(result.get("stream_scores", {}).get("raw", 0) or 0)
+            raw_rank = result.get("stream_ranks", {}).get("raw")
+            signal_special += min(raw_score / 12.0, 0.35)
+            if intent in {"exact_lookup", "structural_lookup"} and raw_rank:
+                signal_special += max(0.0, 0.35 - (int(raw_rank) - 1) * 0.04)
         signal_section = (section_raw.get(eid, 0) / max_section) * 0.12
+        signal_claim = 0.0
+        if result.get("matched_claim"):
+            claim_rank = result.get("stream_ranks", {}).get("claim")
+            signal_claim = 0.24 if claim_rank == 1 else 0.18 if claim_rank else 0.12
+        try:
+            authority = min(max(float(result.get("source_authority", 0.6)), 0.0), 1.0)
+        except (TypeError, ValueError):
+            authority = 0.6
+        signal_authority = authority * 0.08
         total = (
             signal_rrf
             + signal_bm25
@@ -518,12 +661,18 @@ def rerank_results(
             + signal_graph
             + signal_special
             + signal_section
+            + signal_claim
+            + signal_authority
         ) * type_w
-        return total
+        return total * float(result.get("applicability_factor", 1.0) or 1.0)
+
+    from query_display import exact_subject_match
 
     ranked = [dict(r) for r in results]
     for item in ranked:
-        item["rerank_score"] = round(score(item), 4)
+        # Exact OKF titles/legacy aliases must compete even without a graph registry.
+        item["subject_match"] = exact_subject_match(query, item.get("path", ""))
+        item["rerank_score"] = round(score(item) + (0.6 if item["subject_match"] else 0.0), 4)
     ranked.sort(key=lambda r: -r["rerank_score"])
     return ranked
 
@@ -535,6 +684,7 @@ def rerank_results(
 # ═══════════════════════════════════════════════════════════════════════════
 # Cross-link wiki pages with ledger tables (台账 ↔ Wiki 双向关联)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def _cross_link_wiki_ledger(results: list[dict]) -> list[dict]:
     """Bidirectional cross-linking between wiki pages and ledger table rows.
@@ -553,7 +703,9 @@ def _cross_link_wiki_ledger(results: list[dict]) -> list[dict]:
     O(n*m) string matching. Zero LLM calls. Sub-millisecond.
     """
     # Separate wiki page results from ledger results
-    wiki_results = [r for r in results if r.get("stream") not in ("table", "table_vector", "ledger")]
+    wiki_results = [
+        r for r in results if r.get("stream") not in ("table", "table_vector", "ledger")
+    ]
     ledger_results = [r for r in results if r.get("stream") in ("table", "table_vector", "ledger")]
 
     if not ledger_results or not wiki_results:
@@ -572,7 +724,7 @@ def _cross_link_wiki_ledger(results: list[dict]) -> list[dict]:
             name_norm = _normalize_entity_name(name)
             if name_norm and len(name_norm) >= 2:
                 name_to_eid[name_norm] = eid
-        for alias in (entity.get("aliases") or []):
+        for alias in entity.get("aliases") or []:
             alias_norm = _normalize_entity_name(str(alias))
             if alias_norm and len(alias_norm) >= 2:
                 name_to_eid[alias_norm] = eid
@@ -637,7 +789,11 @@ def _cross_link_wiki_ledger(results: list[dict]) -> list[dict]:
                 table_searchable = _normalize_entity_name(
                     f"{table_name} {' '.join(table_schema.keys())}"
                 )
-                if page_name_norm and len(page_name_norm) >= 2 and page_name_norm in table_searchable:
+                if (
+                    page_name_norm
+                    and len(page_name_norm) >= 2
+                    and page_name_norm in table_searchable
+                ):
                     if table_key not in linked_tables:
                         linked_tables[table_key] = {
                             "table": table_name,
@@ -664,11 +820,15 @@ def _cross_link_wiki_ledger(results: list[dict]) -> list[dict]:
                             }
                         # Add matching row
                         linked_tables[table_key].setdefault("matching_rows", [])
-                        linked_tables[table_key]["matching_rows"].append({
-                            "field": key,
-                            "value": val,
-                            "row_data": {k: v for k, v in row_data.items() if not str(k).startswith("_")},
-                        })
+                        linked_tables[table_key]["matching_rows"].append(
+                            {
+                                "field": key,
+                                "value": val,
+                                "row_data": {
+                                    k: v for k, v in row_data.items() if not str(k).startswith("_")
+                                },
+                            }
+                        )
                         break
 
         if linked_tables:
@@ -735,6 +895,7 @@ def _lead_section_boost(
 # Core search: BM25 + metadata + graph + ledger, fused via RRF
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def reciprocal_rank_merge(results: list[dict], limit: int = 10) -> list[dict]:
     """Deduplicate one stream while preserving rank evidence across query variants."""
     merged: dict[str, dict] = {}
@@ -744,9 +905,7 @@ def reciprocal_rank_merge(results: list[dict], limit: int = 10) -> list[dict]:
             merged[key] = dict(item)
             merged[key]["variant_score"] = 0.0
         merged[key]["variant_score"] += 1.0 / (60 + rank)
-        merged[key]["score"] = max(
-            float(merged[key].get("score", 0)), float(item.get("score", 0))
-        )
+        merged[key]["score"] = max(float(merged[key].get("score", 0)), float(item.get("score", 0)))
     sorted_items = sorted(
         merged.values(),
         key=lambda item: (float(item.get("score", 0)), item.get("variant_score", 0)),
@@ -811,12 +970,11 @@ def search_wiki(
     allowed_scopes: list[str] | set[str] | None = None,
     exclude_statuses: list[str] | set[str] | None = None,
 ) -> list[dict] | tuple[list[dict], dict]:
-    """Hybrid search: metadata + BM25 + graph + ledger, fused by RRF.
+    """Search compiled concepts and lossless source evidence, fused by RRF.
 
-    Wiki-native design: searches compiled wiki pages, not raw source chunks.
-    No embeddings, no cross-encoders, no chunking. The quality comes from
-    the compile step — well-structured wiki pages with typed entities and
-    relationships.
+    OKF pages provide semantic structure; locator-sized raw evidence prevents
+    compile-time selection from hiding exact fields, tables, footnotes, and
+    page-specific facts. Embeddings remain optional.
     """
     all_streams: list[list[dict]] = []
     candidate_limit = max(limit * 8, 20)
@@ -836,6 +994,25 @@ def search_wiki(
         "exclude_statuses": sorted(status_filter),
         "streams": {},
     }
+
+    # Lossless source evidence complements, rather than replaces, compiled OKF
+    # concepts. It is especially important for exact values and page-local lookups.
+    if "raw" in enabled_streams:
+        try:
+            from raw_evidence import search_raw_evidence
+
+            raw_results = search_raw_evidence(
+                query,
+                WIKI_DIR,
+                limit=candidate_limit,
+                plan=plan,
+            )
+            trace["streams"]["raw"] = raw_results
+            if raw_results:
+                all_streams.append(raw_results)
+        except Exception as e:
+            trace["streams"]["raw_error"] = str(e)
+            _log_exc("raw evidence stream failed")
     futures: dict[str, Future] = {}
     executor: ThreadPoolExecutor | None = None
     if get_query_config().get("parallel_search", True):
@@ -871,10 +1048,36 @@ def search_wiki(
             except Exception as e:
                 trace["streams"]["vector_error"] = str(e)
 
-    # Stream 1: Metadata search (aliases, keywords, questions, summary)
+    # Stream 1: Atomic fact search with scope and authority qualifiers
+    if "claim" in enabled_streams:
+        try:
+            from search import claim_search
+
+            claim_results = _lexical_candidates(
+                lambda variant, fetch_limit: claim_search(
+                    variant,
+                    str(PAGES_DIR),
+                    limit=fetch_limit,
+                    plan=plan,
+                ),
+                query_variants,
+                candidate_limit,
+                limit,
+                scope_filter,
+                status_filter,
+            )
+            trace["streams"]["claim"] = claim_results
+            if claim_results:
+                all_streams.append(claim_results)
+        except Exception as e:
+            trace["streams"]["claim_error"] = str(e)
+            _log_exc("claim stream failed")
+
+    # Stream 2: Metadata search (aliases, keywords, questions, summary)
     if "metadata" in enabled_streams:
         try:
             from search import metadata_search
+
             metadata_results = _lexical_candidates(
                 lambda variant, fetch_limit: metadata_search(
                     variant, str(PAGES_DIR), limit=fetch_limit
@@ -896,6 +1099,7 @@ def search_wiki(
     if "bm25" in enabled_streams:
         try:
             from search import bm25_search
+
             bm25_results = _lexical_candidates(
                 lambda variant, fetch_limit: bm25_search(
                     variant, str(PAGES_DIR), limit=fetch_limit
@@ -921,9 +1125,7 @@ def search_wiki(
             else:
                 from search import graph_search
 
-                graph_results = graph_search(
-                    query, str(WIKI_DIR / "graph"), limit=candidate_limit
-                )
+                graph_results = graph_search(query, str(WIKI_DIR / "graph"), limit=candidate_limit)
             trace["streams"]["graph_raw"] = graph_results
             if graph_results:
                 converted = []
@@ -937,15 +1139,17 @@ def search_wiki(
                         resolved = _page_path_for_id(eid, PAGES_DIR)
                         page_path = Path(resolved) if resolved else Path("")
                     if page_path.exists():
-                        converted.append({
-                            "file": eid,
-                            "path": str(page_path),
-                            "score": g.get("confidence", 0.5),
-                            "stream": "graph",
-                            "text": g.get("name", ""),
-                            "graph_path": g.get("graph_path", []),
-                            "connected": g.get("connected", []),
-                        })
+                        converted.append(
+                            {
+                                "file": eid,
+                                "path": str(page_path),
+                                "score": g.get("confidence", 0.5),
+                                "stream": "graph",
+                                "text": g.get("name", ""),
+                                "graph_path": g.get("graph_path", []),
+                                "connected": g.get("connected", []),
+                            }
+                        )
                 if converted:
                     trace["streams"]["graph"] = converted
                     all_streams.append(converted)
@@ -966,18 +1170,20 @@ def search_wiki(
             if ledger_results:
                 converted = []
                 for lr in ledger_results:
-                    converted.append({
-                        "file": lr["id"],
-                        "path": f"table://{lr['id']}",
-                        "score": lr.get("score", 1),
-                        "stream": "ledger",
-                        "ledger_name": lr["name"],
-                        "display_name": lr["name"],
-                        "table_name": lr["id"],
-                        "ledger_fields": lr.get("fields", []),
-                        "ledger_preview": lr.get("preview", []),
-                        "row_data": (lr.get("preview") or [{}])[0],
-                    })
+                    converted.append(
+                        {
+                            "file": lr["id"],
+                            "path": f"table://{lr['id']}",
+                            "score": lr.get("score", 1),
+                            "stream": "ledger",
+                            "ledger_name": lr["name"],
+                            "display_name": lr["name"],
+                            "table_name": lr["id"],
+                            "ledger_fields": lr.get("fields", []),
+                            "ledger_preview": lr.get("preview", []),
+                            "row_data": (lr.get("preview") or [{}])[0],
+                        }
+                    )
                 all_streams.append(converted)
                 trace["streams"]["ledger"] = converted
         except Exception as e:
@@ -1015,38 +1221,59 @@ def search_wiki(
     if len(all_streams) >= 2:
         try:
             from search import reciprocal_rank_fusion
+
             fused = reciprocal_rank_fusion(all_streams, weights=_stream_weights(plan))
             trace["fused"] = fused
             results = []
             seen = set()
-            for f in fused[:max(limit * 4, limit)]:
+            # Preserve the complete bounded stream candidate pool here. Early
+            # fusion truncation favors pages present in several concept streams
+            # and can erase a highly relevant raw-only page before fallback
+            # reservation has a chance to inspect it.
+            for f in fused:
                 path = f.get("path", "")
                 if path and path not in seen:
                     seen.add(path)
                     eid = f.get("file") or f.get("entity_id", "")
-                    results.append({
-                        "path": path,
-                        "score": f.get("rrf_score", 0),
-                        "id": eid,
-                        "type": _infer_type(eid),
-                        "stream": ",".join(f.get("streams", [])),
-                        "text": f.get("text", ""),
-                        "stream_ranks": f.get("stream_ranks", {}),
-                        "stream_scores": f.get("stream_scores", {}),
-                        "matched_section": f.get("matched_section", ""),
-                        "section_score": f.get("section_score", 0),
-                        "graph_path": f.get("graph_path", []),
-                        "connected": f.get("connected", []),
-                        "row_data": f.get("row_data", {}),
-                        "display_name": f.get("display_name", ""),
-                        "table_name": f.get("table_name", ""),
-                    })
+                    results.append(
+                        {
+                            "path": path,
+                            "score": f.get("rrf_score", 0),
+                            "id": eid,
+                            "type": f.get("type") or _infer_type(eid),
+                            "name": f.get("name", eid),
+                            "stream": ",".join(f.get("streams", [])),
+                            "text": f.get("text", ""),
+                            "stream_ranks": f.get("stream_ranks", {}),
+                            "stream_scores": f.get("stream_scores", {}),
+                            "matched_section": f.get("matched_section", ""),
+                            "section_score": f.get("section_score", 0),
+                            "graph_path": f.get("graph_path", []),
+                            "connected": f.get("connected", []),
+                            "row_data": f.get("row_data", {}),
+                            "display_name": f.get("display_name", ""),
+                            "table_name": f.get("table_name", ""),
+                            "matched_claim": f.get("matched_claim", {}),
+                            "claim_hits": f.get("claim_hits", []),
+                            "source_authority": f.get("source_authority", 0.6),
+                            "evidence_excerpt": f.get("evidence_excerpt", ""),
+                            "source_name": f.get("source_name", ""),
+                            "page_number": f.get("page_number"),
+                            "locator": f.get("locator", ""),
+                            "matched_fields": f.get("matched_fields", {}),
+                            "tables": f.get("tables", []),
+                            "footnotes": f.get("footnotes", []),
+                            "neighbor_evidence": f.get("neighbor_evidence", []),
+                            "answer_hints": f.get("answer_hints", []),
+                        }
+                    )
             if results:
                 # Improvement 5: pre-search entity linking
                 query_entities = _extract_query_entities(query)
                 trace["query_entities"] = query_entities
                 # Improvement 2: graph topology annotation
                 results = _graph_boost(results, query_entities)
+                results = _annotate_page_applicability(results, plan)
                 # Improvement 1: 3-signal ranking formula
                 results = rerank_results(query, results, plan, query_entities)
                 # B: lead-section density boost
@@ -1057,12 +1284,14 @@ def search_wiki(
                 results = _filter_by_excluded_statuses(results, status_filter)
                 from rerank import rerank
 
+                rerank_candidates = results
                 results = rerank(
                     query,
                     results,
                     get_reranker_config(),
-                    max(limit * 3, limit),
+                    candidate_limit,
                 )
+                results = _retain_top_raw_candidates(results, rerank_candidates)
                 results = _coverage_diverse_results(query, results, limit)
                 trace["coverage_selected"] = results
                 trace["reranked"] = results
@@ -1079,23 +1308,39 @@ def search_wiki(
             if path and path not in seen:
                 seen.add(path)
                 eid = r.get("file", "")
-                results.append({
-                    "path": path,
-                    "score": r.get("score", 0),
-                    "id": eid,
-                    "type": _infer_type(eid),
-                    "stream": r.get("stream", ""),
-                    "text": r.get("text", ""),
-                    "matched_section": r.get("matched_section", ""),
-                    "section_score": r.get("section_score", 0),
-                    "row_data": r.get("row_data", {}),
-                    "display_name": r.get("display_name", ""),
-                    "table_name": r.get("table_name", ""),
-                })
+                results.append(
+                    {
+                        "path": path,
+                        "score": r.get("score", 0),
+                        "id": eid,
+                        "type": r.get("type") or _infer_type(eid),
+                        "name": r.get("name", eid),
+                        "stream": r.get("stream", ""),
+                        "text": r.get("text", ""),
+                        "matched_section": r.get("matched_section", ""),
+                        "section_score": r.get("section_score", 0),
+                        "row_data": r.get("row_data", {}),
+                        "display_name": r.get("display_name", ""),
+                        "table_name": r.get("table_name", ""),
+                        "matched_claim": r.get("matched_claim", {}),
+                        "claim_hits": r.get("claim_hits", []),
+                        "source_authority": r.get("source_authority", 0.6),
+                        "evidence_excerpt": r.get("evidence_excerpt", ""),
+                        "source_name": r.get("source_name", ""),
+                        "page_number": r.get("page_number"),
+                        "locator": r.get("locator", ""),
+                        "matched_fields": r.get("matched_fields", {}),
+                        "tables": r.get("tables", []),
+                        "footnotes": r.get("footnotes", []),
+                        "neighbor_evidence": r.get("neighbor_evidence", []),
+                        "answer_hints": r.get("answer_hints", []),
+                    }
+                )
         if results:
             query_entities = _extract_query_entities(query)
             trace["query_entities"] = query_entities
             results = _graph_boost(results, query_entities)
+            results = _annotate_page_applicability(results, plan)
             results = rerank_results(query, results, plan, query_entities)
             # B: lead-section density boost
             results = _lead_section_boost(results, query)
@@ -1105,12 +1350,14 @@ def search_wiki(
             results = _filter_by_excluded_statuses(results, status_filter)
             from rerank import rerank
 
+            rerank_candidates = results
             results = rerank(
                 query,
                 results,
                 get_reranker_config(),
-                max(limit * 3, limit),
+                candidate_limit,
             )
+            results = _retain_top_raw_candidates(results, rerank_candidates)
             results = _coverage_diverse_results(query, results, limit)
             trace["coverage_selected"] = results
             trace["reranked"] = results
@@ -1126,8 +1373,10 @@ def search_wiki(
             if eid in seen:
                 continue
             name = data.get("name", "")
-            if query_lower in eid.lower() or query_lower in name.lower() or any(
-                qt in name for qt in query_lower.split() if len(qt) >= 2
+            if (
+                query_lower in eid.lower()
+                or query_lower in name.lower()
+                or any(qt in name for qt in query_lower.split() if len(qt) >= 2)
             ):
                 etype = data.get("type", "")
                 from search import _page_path_for_id
@@ -1136,13 +1385,16 @@ def search_wiki(
                 page_path = Path(resolved) if resolved else Path("")
                 if page_path.exists():
                     seen.add(eid)
-                    results.append({
-                        "path": str(page_path),
-                        "score": 0.80,
-                        "id": eid,
-                        "type": etype,
-                    })
+                    results.append(
+                        {
+                            "path": str(page_path),
+                            "score": 0.80,
+                            "id": eid,
+                            "type": etype,
+                        }
+                    )
 
+    results = _annotate_page_applicability(results, plan)
     results = rerank_results(query, results, plan)
     results = _filter_by_allowed_scopes(results, scope_filter)
     results = _filter_by_excluded_statuses(results, status_filter)
@@ -1156,6 +1408,7 @@ def search_wiki(
 # Answer synthesis
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def read_page_content(page_path: str) -> str:
     try:
         content = Path(page_path).read_text(encoding="utf-8")
@@ -1167,14 +1420,14 @@ def read_page_content(page_path: str) -> str:
                     end = i
                     break
             if end > 0:
-                content = "\n".join(lines[end + 1:])
+                content = "\n".join(lines[end + 1 :])
         return content.strip()
     except (OSError, UnicodeDecodeError, PermissionError):
         return ""
 
 
 MARKDOWN_IMAGE_RE = re.compile(r"!\[(?P<alt>[^\]]*)\]\((?P<target><[^>]+>|[^)\n]+)\)")
-_IMAGE_TITLE_RE = re.compile(r'''\s+(".*"|'.*?'|\(.*\))\s*$''')
+_IMAGE_TITLE_RE = re.compile(r"""\s+(".*"|'.*?'|\(.*\))\s*$""")
 
 
 def _strip_image_title(target: str) -> str:
@@ -1309,6 +1562,47 @@ def _format_page_context(page: dict, index: int, query: str = "") -> str:
     pid = page.get("id", f"unknown-{index}")
     ptype = page.get("type", "concept")
     pname = page.get("name", pid)
+    if ptype == "source_evidence" or "raw" in set(str(page.get("stream", "")).split(",")):
+        content = str(page.get("evidence_excerpt") or page.get("text") or "")
+        if not content:
+            content = read_page_content(page.get("path", ""))
+        if not content:
+            return ""
+        exact_fields = page.get("matched_fields", {})
+        fields_block = ""
+        if exact_fields:
+            fields_block = "\n\n### Exact fields detected\n" + "\n".join(
+                f"- {field}: {', '.join(str(value) for value in values)}"
+                for field, values in exact_fields.items()
+            )
+        neighbor_block = ""
+        if page.get("neighbor_evidence"):
+            neighbor_parts = []
+            for neighbor in page["neighbor_evidence"]:
+                neighbor_parts.append(
+                    f"#### Adjacent {neighbor.get('locator', 'source unit')}\n"
+                    f"{neighbor.get('text', '')}"
+                )
+            neighbor_block = (
+                "\n\n### Adjacent source context (for continued tables/steps/footnotes)\n"
+                + "\n\n".join(neighbor_parts)
+            )
+        hint_block = ""
+        if page.get("answer_hints"):
+            hint_block = "\n\n### Deterministic source calculation\n" + "\n".join(
+                f"- {hint.get('kind')}: {hint.get('value')} ({hint.get('evidence', '')})"
+                for hint in page["answer_hints"]
+            )
+        locator = page.get("locator") or (
+            f"Page {page['page_number']}" if page.get("page_number") else "Document"
+        )
+        return (
+            f"## DOC {index}: [SOURCE EVIDENCE] {pname}\n"
+            f"**Type**: source_evidence | **ID**: {pid}\n"
+            f"**Original source**: {page.get('source_name', '')} | "
+            f"**Locator**: {locator}\n\n"
+            f"{content}{fields_block}{hint_block}{neighbor_block}\n"
+        )
     # Read full page content from file — search snippets are incomplete
     content = read_page_content(page.get("path", ""))
     if not content:
@@ -1324,7 +1618,7 @@ def _format_page_context(page: dict, index: int, query: str = "") -> str:
     graph_boost = page.get("graph_boost", 0)
     score_info = ""
     if graph_boost > 1.0:
-        score_info += f" [graph-connected: +{int((graph_boost-1)*100)}%]"
+        score_info += f" [graph-connected: +{int((graph_boost - 1) * 100)}%]"
 
     # Append linked ledger data if present (table-level with schema + rows)
     ledger_block = ""
@@ -1332,7 +1626,9 @@ def _format_page_context(page: dict, index: int, query: str = "") -> str:
     if linked_tables:
         ledger_block = "\n\n### 📊 Linked Ledger Data (台账关联数据)\n"
         for lt in linked_tables[:3]:
-            match_label = "按表名/字段匹配" if lt.get("match_type") == "table_concept" else "按行数据匹配"
+            match_label = (
+                "按表名/字段匹配" if lt.get("match_type") == "table_concept" else "按行数据匹配"
+            )
             ledger_block += f"\n**表: {lt['table']}** ({match_label})\n"
             # Show schema
             schema = lt.get("schema", {})
@@ -1348,8 +1644,7 @@ def _format_page_context(page: dict, index: int, query: str = "") -> str:
                         if "row_data" in row:
                             row = row["row_data"]
                         flat = ", ".join(
-                            f"{k}={v}" for k, v in row.items()
-                            if not str(k).startswith("_")
+                            f"{k}={v}" for k, v in row.items() if not str(k).startswith("_")
                         )
                         ledger_block += f"  - {flat}\n"
             ledger_block += "\n"
@@ -1360,10 +1655,64 @@ def _format_page_context(page: dict, index: int, query: str = "") -> str:
         image_block = "\n\n### Referenced Source Images（引用原图）\n\n"
         image_block += "\n\n".join(image["markdown"] for image in images)
 
+    claim_block = ""
+    claim_hits = page.get("claim_hits") or (
+        [page["matched_claim"]] if page.get("matched_claim") else []
+    )
+    if claim_hits:
+        claim_block = "\n\n### Matched Atomic Claims\n"
+        for claim in claim_hits[:5]:
+            if not isinstance(claim, dict):
+                continue
+            qualifiers: list[str] = []
+            for field in (
+                "modality",
+                "conditions",
+                "exceptions",
+                "audience",
+                "jurisdiction",
+                "effective_from",
+                "effective_until",
+                "footnotes",
+            ):
+                value = claim.get(field)
+                if value not in (None, "", []):
+                    rendered = (
+                        ", ".join(str(item) for item in value)
+                        if isinstance(value, list)
+                        else str(value)
+                    )
+                    qualifiers.append(f"{field}={rendered}")
+            claim_block += (
+                f"- {claim.get('subject', pid)} — {claim.get('predicate', '')}: "
+                f"{claim.get('value', '')}"
+            )
+            if qualifiers:
+                claim_block += f" ({'; '.join(qualifiers)})"
+            claim_block += "\n"
+
+    temporal_block = ""
+    temporal = page.get("temporal")
+    if isinstance(temporal, dict):
+        temporal_block = (
+            "\n**Temporal State**: "
+            f"{temporal.get('state', 'undated')} at {temporal.get('as_of', 'unknown')}"
+        )
+        if temporal.get("effective_from"):
+            temporal_block += f" | effective_from={temporal['effective_from']}"
+        if temporal.get("effective_until"):
+            qualifier = (
+                " (inferred from replacement)" if temporal.get("effective_until_inferred") else ""
+            )
+            temporal_block += f" | effective_until={temporal['effective_until']}{qualifier}"
+        if temporal.get("date_basis") == "unknown":
+            temporal_block += " | applicability dates missing"
+
     return (
         f"## DOC {index}: {header}{score_info}\n"
-        f"**Type**: {ptype} | **ID**: {pid}\n\n"
+        f"**Type**: {ptype} | **ID**: {pid}{temporal_block}\n\n"
         f"{reordered}"
+        f"{claim_block}"
         f"{ledger_block}"
         f"{image_block}"
     )
@@ -1378,19 +1727,21 @@ def _reorder_for_facts(content: str) -> str:
     """
     # Find the Key Details section (English + Chinese)
     detail_match = re.search(
-        r'(##\s+(?:Key Details|关键细节)\s*\n.*?)(?=\n##\s+(?:Relationships|关联关系|Source Context|来源上下文)|\Z)',
-        content, re.DOTALL,
+        r"(##\s+(?:Key Details|关键细节)\s*\n.*?)(?=\n##\s+(?:Relationships|关联关系|Source Context|来源上下文)|\Z)",
+        content,
+        re.DOTALL,
     )
     overview_match = re.search(
-        r'(##\s+(?:Overview|概述)\s*\n.*?)(?=\n##\s+(?:Key Details|关键细节|Key Facts|关键事实)|\Z)',
-        content, re.DOTALL,
+        r"(##\s+(?:Overview|概述)\s*\n.*?)(?=\n##\s+(?:Key Details|关键细节|Key Facts|关键事实)|\Z)",
+        content,
+        re.DOTALL,
     )
 
     if not detail_match:
         return content  # No Key Details section found, return as-is
 
     # Extract parts
-    title_end = content.find('\n## ')
+    title_end = content.find("\n## ")
     if title_end < 0:
         title_end = len(content)
 
@@ -1403,12 +1754,19 @@ def _reorder_for_facts(content: str) -> str:
     if overview_match:
         overview = overview_match.group(1)
         # Put: Title → Key Details → Overview → rest (without duplicate detail)
-        return f"{title_section}\n\n{detail_section.strip()}\n\n{overview.strip()}\n\n{rest.strip()}"
+        return (
+            f"{title_section}\n\n{detail_section.strip()}\n\n{overview.strip()}\n\n{rest.strip()}"
+        )
     else:
         return f"{title_section}\n\n{detail_section.strip()}\n\n{rest.strip()}"
 
 
-def synthesize_answer(query: str, pages: list[dict], fmt: str = "markdown") -> str:
+def synthesize_answer(
+    query: str,
+    pages: list[dict],
+    fmt: str = "markdown",
+    temporal_context: dict | None = None,
+) -> str:
     if not pages:
         return "No relevant wiki pages found. Try adding more sources with `wiki add`."
 
@@ -1421,16 +1779,17 @@ def synthesize_answer(query: str, pages: list[dict], fmt: str = "markdown") -> s
             row_data = page.get("row_data", {})
             if row_data:
                 row_str = "\n".join(
-                    f"- {k}: {v}" for k, v in row_data.items()
-                    if not k.startswith("_")
+                    f"- {k}: {v}" for k, v in row_data.items() if not k.startswith("_")
                 )
                 # Show linked wiki pages for this ledger row
                 linked = page.get("linked_wiki_pages", [])
                 linked_str = ""
                 if linked:
-                    linked_str = f"\n**Related Wiki Pages**: {', '.join(f'[[{p}]]' for p in linked)}"
+                    linked_str = (
+                        f"\n**Related Wiki Pages**: {', '.join(f'[[{p}]]' for p in linked)}"
+                    )
                 contexts.append(
-                    f"## DOC {i+1}: [TABLE] {table_name} (row {row_id}){linked_str}\n{row_str}"
+                    f"## DOC {i + 1}: [TABLE] {table_name} (row {row_id}){linked_str}\n{row_str}"
                 )
             continue
 
@@ -1444,23 +1803,35 @@ def synthesize_answer(query: str, pages: list[dict], fmt: str = "markdown") -> s
     # Structured answer template — guides LLM to complete, cited answers
     format_prompts = {
         "markdown": """## Output Format
-Structure your answer as follows:
-
-**Direct Answer**: [2-3 sentence summary directly answering the question]
-
-**Key Details**:
-- [Specific fact 1 from the wiki pages] — [[source-id]]
-- [Specific fact 2] — [[source-id]]
-- [Include specific numbers, dates, names when available]
-
-**Sources**:
-- [[page-id-1]] — how this page contributed to the answer
-- [[page-id-2]] — how this page contributed to the answer
-
-**Related Topics**: [[related-1]], [[related-2]] (optional)
-
-If a claim cannot be verified from the provided wiki pages, mark it as **[uncertain]**.""",
-
+Write a final answer in the same language as the user's question.
+Start with the exact requested value, entity, date, count, or conclusion. Include only details,
+formulas or examples needed to understand that answer; do not enumerate every retrieved fact.
+Use short paragraphs; use a list or table only when the question calls for it.
+Source-evidence documents are authoritative verbatim excerpts and may be cited by their supplied ID.
+Deterministic source calculations are high-precision extractions from the supplied evidence; when
+their kind matches the question, use their value as the direct answer and explain the calculation.
+For a step count, count only the actions requested by the procedure; do not add a later verification
+or usage action unless the source explicitly labels it as a step. A sentence beginning "After you
+have finished" is a postcondition, not an extra step, unless it is itself numbered. When multiple
+named variants appear, match every modifier in the question exactly and never add an unrequested
+modifier such as "Light". If the source directly attributes a feature to X (for example, "in X"),
+answer X without rejecting it merely because the excerpt does not repeat X's ontology label.
+For totals, count the complete enumerated records across continued pages and exclude records outside
+the requested category; an explicit printed total is not required when the complete list is present.
+For weekday operating hours, "when does it close" asks for the range's ending time, not whether the
+office is closed all day. If awkward wording closely matches a clearly labeled source measure, answer
+that measure instead of refusing after quoting it. Never claim the evidence lacks an answer and then
+quote the matching answer later in the same response. For a statement-to-case question, prefer the
+footnote following the specific proposition over earlier footnotes that only define background law.
+When a `statement_footnote_case` calculation is present, its cited case is the direct answer; do
+not substitute the title or citation of the enclosing judicial opinion.
+Do not replace the requested value with a related category, process, or interpretation.
+Do not repeat the answer in a summary or use fixed labels like "Direct Answer" / "Key Details".
+Cite supporting facts inline with ordinary Markdown links: [title](/concept-id.md).
+Do not wrap links in double brackets. Use the exact concept IDs supplied in the documents.
+Do not append a Sources list, Related Topics list, raw excerpts, image gallery or retrieval log:
+the caller presents original retrieved material separately as expandable references.
+If a claim cannot be verified from the provided wiki pages, mark it as uncertain.""",
         "table": """## Output Format
 Provide a comparison table:
 
@@ -1473,7 +1844,6 @@ Provide a comparison table:
 | name | detail | detail | use case |
 
 **Sources**: [[page-id-1]] — data source""",
-
         "timeline": """## Output Format
 Provide a timeline of key events/milestones:
 
@@ -1486,7 +1856,6 @@ Provide a timeline of key events/milestones:
 | 2024-01 | Event | Description |
 
 **Sources**: [[page-id-1]] — supporting evidence""",
-
         "slides": """## Output Format
 Create a Marp slide deck presentation:
 
@@ -1507,7 +1876,6 @@ theme: default
 ...
 
 **Sources**: [[page-id-1]]""",
-
         "json": """## Output Format
 Output ONLY valid JSON (no markdown, no explanation):
 
@@ -1519,14 +1887,22 @@ Output ONLY valid JSON (no markdown, no explanation):
 }""",
     }
 
-    is_chinese = any('一' <= c <= '鿿' for c in query)
+    is_chinese = any("一" <= c <= "鿿" for c in query)
     contexts_text = "\n".join(contexts)
+    from query_temporal import temporal_guidance
+
+    applicability_rules = temporal_guidance(temporal_context or {}, is_chinese)
+    query_constraints = structured_query_guidance(query, is_chinese)
 
     if is_chinese:
         system_prompt = f"""你是一个精确的维基查询引擎。
 你唯一的知识来源是下面提供的维基文档——你没有其他知识。
 
 {format_prompts.get(fmt, format_prompts["markdown"])}
+
+{applicability_rules}
+
+{query_constraints}
 
 ## ⚠️ 关键规则 — 违反任何一条都会产生错误结果
 0. **★先提取再判断（最重要！）**:
@@ -1544,7 +1920,7 @@ Output ONLY valid JSON (no markdown, no explanation):
 6. **使用精确数值**: 当文档包含具体数字/日期/名称时，逐字使用原文。
 7. **区分来源**: 如果多篇文档对同一主题有不同说法，明确标注分歧。
 8. **简洁但完整**: 直接回答问题。不要添加与查询无直接关系的背景内容。
-9. **保留图片证据**: 检索文档包含与答案直接相关的原图时，在答案中保留其 Markdown 图片引用，不得只改写成文字描述。"""
+9. **来源图片**: 原图由调用方在参考资料中提供。正文整理与问题有关的信息，不要铺开原始召回图片或图片清单。"""
         user_prompt = f"""## 查询
 {query}
 
@@ -1552,13 +1928,19 @@ Output ONLY valid JSON (no markdown, no explanation):
 {contexts_text}
 
 ## 任务
-只使用上面维基文档中的信息回答问题。每个事实都要标明 OKF 概念链接。
+只使用上面知识页和原始证据中的信息回答问题。先给出问题所要求的精确值、实体、日期、数量或结论；
+不要用相关概念替代所问对象。步骤计数只统计原文标记的操作步骤，不把后续验证或使用动作另算一步。
+每个事实都要标明对应的概念或原始证据链接。
 如果文档中缺少答案，明确说明——不要猜测或使用外部知识。保留与答案直接相关的原图引用。"""
     else:
         system_prompt = f"""You are a precise wiki query engine.
 Your ONLY knowledge source is the wiki documents provided below — you have NO other knowledge.
 
 {format_prompts.get(fmt, format_prompts["markdown"])}
+
+{applicability_rules}
+
+{query_constraints}
 
 ## ⚠️ CRITICAL RULES — Violating Any Will Produce Incorrect Results
 0. **★ EXTRACT BEFORE YOU DECIDE (MOST IMPORTANT!)**:
@@ -1586,9 +1968,13 @@ When the documents contain specific numbers/dates/names, use them verbatim.
 If multiple documents say different things about the same topic, note the disagreement.
 8. **CONCISE BUT COMPLETE**:
 Answer the query directly. Don't add background context unless directly relevant.
-9. **PRESERVE IMAGE EVIDENCE**:
-When a retrieved document includes a relevant source image, keep its Markdown image
-reference in the answer instead of replacing it with a text-only description."""
+9. **SOURCE IMAGES**:
+The caller provides original images in expandable references. Explain relevant findings
+in the answer; do not reproduce raw retrieved images or an image list.
+10. **ANSWER THE REQUESTED FIELD**:
+Start with the exact requested value/entity/date/count. Do not substitute a related category,
+mutation/process, or explanatory label. For step counts, count only source-labelled procedure
+actions and exclude later verification/use unless the source calls it a step."""
 
         user_prompt = f"""## Query
 {query}
@@ -1597,8 +1983,9 @@ reference in the answer instead of replacing it with a text-only description."""
 {contexts_text}
 
 ## Task
-Answer the query using ONLY information from the wiki documents above. For each fact,
-cite the source as an OKF concept link inline immediately after the claim. If the documents lack the
+Answer the query using ONLY information from the wiki and verbatim source-evidence documents above.
+Start with the exact requested field. For each fact, cite the supplied concept/evidence ID inline
+immediately after the claim. If the documents lack the
 answer, say so explicitly — do NOT guess or use outside knowledge."""
 
     return call_llm(system_prompt, user_prompt)
@@ -1609,6 +1996,7 @@ def synthesize_answer_agent(
     pages: list[dict],
     fmt: str = "markdown",
     retrieval_evidence: dict | None = None,
+    temporal_context: dict | None = None,
 ) -> str:
     """Return an Agent synthesis task using retrieved wiki pages only.
 
@@ -1626,12 +2014,9 @@ def synthesize_answer_agent(
             row_data = page.get("row_data", {})
             if row_data:
                 row_str = "\n".join(
-                    f"- {k}: {v}" for k, v in row_data.items()
-                    if not k.startswith("_")
+                    f"- {k}: {v}" for k, v in row_data.items() if not k.startswith("_")
                 )
-                contexts.append(
-                    f"## DOC {i + 1}: [TABLE] {table_name} (row {row_id})\n{row_str}"
-                )
+                contexts.append(f"## DOC {i + 1}: [TABLE] {table_name} (row {row_id})\n{row_str}")
             continue
 
         ctx = _format_page_context(page, i + 1, query)
@@ -1643,8 +2028,7 @@ def synthesize_answer_agent(
     contexts_text = "\n".join(contexts)
 
     source_links = ", ".join(
-        f"[{page.get('id', 'unknown')}](/"
-        f"{page.get('id', 'unknown')}.md)" for page in pages[:8]
+        f"[{page.get('id', 'unknown')}](/{page.get('id', 'unknown')}.md)" for page in pages[:8]
     )
     output_hint = {
         "markdown": "Answer in concise Markdown with inline OKF concept links.",
@@ -1656,13 +2040,27 @@ def synthesize_answer_agent(
     evidence = retrieval_evidence or {}
     missing = evidence.get("missing_subgoals", [])
     coverage_block = (
-        f"Retrieval subgoal coverage: {evidence.get('coverage', 0):.0%}.\n"
-        + (
-            "Missing or weakly supported subgoals: " + "; ".join(missing)
-            if missing
-            else "All detected retrieval subgoals have direct evidence."
+        (
+            f"Retrieval subgoal coverage: {evidence.get('coverage', 0):.0%}.\n"
+            + (
+                "Missing or weakly supported subgoals: " + "; ".join(missing)
+                if missing
+                else "All detected retrieval subgoals have direct evidence."
+            )
         )
-    ) if evidence else "Retrieval coverage was not calculated."
+        if evidence
+        else "Retrieval coverage was not calculated."
+    )
+    from query_temporal import temporal_guidance
+
+    applicability_rules = temporal_guidance(
+        temporal_context or {},
+        any("一" <= character <= "鿿" for character in query),
+    )
+    query_constraints = structured_query_guidance(
+        query,
+        any("一" <= character <= "鿿" for character in query),
+    )
 
     return f"""# Agent Query Synthesis Task
 
@@ -1685,11 +2083,32 @@ This task was generated in Agent mode. Do not call the configured LLM API.
 
 {output_hint}
 
+{applicability_rules}
+
+{query_constraints}
+
 ## Retrieval Evidence Coverage
 
 {coverage_block}
 
-Use ONLY the wiki documents below. Cite every factual claim with its OKF concept link.
+Use ONLY the wiki and source-evidence documents below. Start with the exact requested
+value/entity/date/count and do not substitute a related concept. Cite every factual claim
+with its supplied concept or evidence link.
+Treat adjacent source context as valid evidence when a table, numbered procedure, or footnote
+continues across a page boundary. A sentence beginning "After you have finished" is a
+postcondition, not an extra numbered step. Match every variant modifier exactly; do not add
+an unrequested modifier such as "Light". If an excerpt directly says a feature is "in X",
+answer X without refusing merely because the excerpt does not separately label X as a paper.
+Deterministic source calculations are high-precision extractions; when their kind matches the
+question, use the calculated value as the direct answer and show the short calculation.
+For totals, count all enumerated records across continued pages and exclude records outside the
+requested category; do not require an explicitly printed total. For weekday operating hours,
+"when does it close" asks for the range's ending time. If awkward wording matches a clearly
+labeled source measure, answer that measure rather than refusing after quoting it. Never claim the
+evidence lacks an answer and then quote that answer later in the response. For a statement-to-case
+query, prefer the footnote following the specific proposition over earlier background-law footnotes.
+When a `statement_footnote_case` calculation is present, answer with that cited case rather than
+the title or citation of the enclosing judicial opinion.
 If the documents do not contain enough information, say so and summarize the
 partial information that is available. Do not use outside knowledge.
 Keep any directly relevant Markdown source images in the synthesized answer.
@@ -1761,15 +2180,13 @@ provenance: query
         "created": now,
     }
 
-    entities_file.write_text(
-        json.dumps(entities, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    entities_file.write_text(json.dumps(entities, indent=2, ensure_ascii=False), encoding="utf-8")
 
     return str(page_path)
 
 
 def verify_answer_evidence(answer: str, pages: list[dict]) -> dict:
-    """Check citation coverage, source identity, and exact values against evidence."""
+    """Check citation coverage, source identity, values, and claim entailment."""
     available = {str(page.get("id", "")) for page in pages}
     evidence = {
         str(page.get("id", "")): read_page_content(str(page.get("path", "")))
@@ -1787,12 +2204,11 @@ def verify_answer_evidence(answer: str, pages: list[dict]) -> dict:
         and (re.search(r"\d", line) or len(line.strip()) >= 40)
     ]
     cited_claims = sum(
-        1
-        for line in claim_lines
-        if re.search(r"\]\(/[^)]+\.md", line) or "[[" in line
+        1 for line in claim_lines if re.search(r"\]\(/[^)]+\.md", line) or "[[" in line
     )
     coverage = cited_claims / len(claim_lines) if claim_lines else 1.0
     unverified_values = []
+    unsupported_claims = []
     for line in claim_lines:
         line_citations = set(re.findall(r"\]\(/([^)#]+)\.md(?:#[^)]+)?\)", line))
         line_citations.update(re.findall(r"\[\[([^\]|]+)", line))
@@ -1802,55 +2218,85 @@ def verify_answer_evidence(answer: str, pages: list[dict]) -> dict:
         for value in re.findall(r"(?<!\w)\d[\d,.%:/-]*", line):
             if value not in source_text:
                 unverified_values.append({"value": value, "claim": line[:240]})
+        claim_text = re.sub(r"\[[^\]]+\]\(/[^)]+\)|\[\[[^\]]+\]\]", "", line)
+        claim_terms = {
+            token.casefold()
+            for token in re.findall(r"[A-Za-z0-9_]{3,}|[\u4e00-\u9fff]{2,}", claim_text)
+            if token.casefold()
+            not in {
+                "this",
+                "that",
+                "with",
+                "from",
+                "the",
+                "and",
+                "以及",
+                "可以",
+                "当前",
+                "因此",
+            }
+        }
+        normalized_source = re.sub(r"\s+", "", source_text).casefold()
+        normalized_claim = re.sub(r"\s+", "", claim_text).casefold()
+        matched_terms = {
+            term for term in claim_terms if re.sub(r"\s+", "", term) in normalized_source
+        }
+        entailment = (
+            1.0
+            if normalized_claim and normalized_claim in normalized_source
+            else len(matched_terms) / len(claim_terms)
+            if claim_terms
+            else 1.0
+        )
+        if entailment < 0.45:
+            unsupported_claims.append(
+                {
+                    "claim": line[:240],
+                    "citation_ids": sorted(line_citations),
+                    "lexical_support": round(entailment, 4),
+                }
+            )
     return {
         "status": (
             "pass"
-            if not unsupported and not unverified_values and coverage >= 0.8
+            if not unsupported
+            and not unverified_values
+            and not unsupported_claims
+            and coverage >= 0.8
             else "warning"
         ),
         "citation_coverage": round(coverage, 4),
         "cited_concepts": sorted(cited),
         "unsupported_citations": unsupported,
         "unverified_values": unverified_values,
+        "unsupported_claims": unsupported_claims,
         "claims_checked": len(claim_lines),
     }
 
 
-def _read_snippet(path: str, query: str, max_len: int = 120) -> str:
-    """Extract a relevant snippet from a page near query terms."""
-    try:
-        content = Path(path).read_text(encoding="utf-8")
-        content = re.sub(r'^---\s*\n.*?\n---\s*\n', '', content, flags=re.DOTALL)
-        query_terms = [t for t in query.split() if len(t) >= 2]
-        for term in query_terms:
-            idx = content.lower().find(term.lower())
-            if idx >= 0:
-                start = max(0, idx - 40)
-                end = min(len(content), idx + len(term) + max_len)
-                snippet = content[start:end].replace("\n", " ").strip()
-                prefix = "..." if start > 0 else ""
-                suffix = "..." if end < len(content) else ""
-                return prefix + snippet + suffix
-        for line in content.split("\n"):
-            line = line.strip()
-            if line and not line.startswith("#") and len(line) > 10:
-                return line[:max_len] + "..."
-    except Exception:
-        _log_exc("_read_snippet failed")
-        pass
-    return ""
+def _read_snippet(path: str, query: str, max_len: int = 220) -> str:
+    """Extract meaningful page evidence for terminal and structured output."""
+    from query_display import read_snippet
+
+    return read_snippet(path, query, max_len)
+
 
 # ── Graph intent detection ─────────────────────────────────────────────
 
 # Patterns for detecting graph-traversal intents in natural language queries
 _PATH_INTENT_PATTERNS_ZH = [
-    (r"(.+?)\s*(?:和|与|跟|同)\s*(.+?)\s*(?:之间|之间|间)\s*(?:的)?\s*(?:关系|依赖|关联|联系|路径|连接)",
-     "path"),
+    (
+        r"(.+?)\s*(?:和|与|跟|同)\s*(.+?)\s*(?:之间|之间|间)\s*(?:的)?\s*(?:关系|依赖|关联|联系|路径|连接)",
+        "path",
+    ),
     (r"(.+?)\s*(?:如何|怎么)\s*(?:依赖|关联|影响|连接)(?:于|到)\s*(.+)", "path"),
     (r"从\s*(.+?)\s*到\s*(.+?)\s*(?:的)?\s*(?:路径|关系|依赖链)", "path"),
 ]
 _PATH_INTENT_PATTERNS_EN = [
-    (r"(?:how|what).*(?:relationship|relation|connection|path|link).*between\s+(.+?)\s+and\s+(.+)", "path"),
+    (
+        r"(?:how|what).*(?:relationship|relation|connection|path|link).*between\s+(.+?)\s+and\s+(.+)",
+        "path",
+    ),
     (r"(.+?)\s+(?:->|→|depends on|relates to|connects to)\s+(.+)", "path"),
     (r"path\s+(?:from|between)\s+(.+?)\s+(?:to|and)\s+(.+)", "path"),
 ]
@@ -1861,7 +2307,10 @@ _IMPACT_INTENT_PATTERNS_ZH = [
 _IMPACT_INTENT_PATTERNS_EN = [
     (r"what\s+(?:depends on|relies on|uses|is affected by)\s+(.+)", "impact"),
     (r"(.+?)\s+(?:impact|influence|affect)(?:s)?\s+(?:analysis|what|which)", "impact"),
-    (r"what\s+(?:would|will)\s+(?:happen|break)\s+(?:if|when)\s+(.+?)\s+(?:changes|breaks|fails)", "impact"),
+    (
+        r"what\s+(?:would|will)\s+(?:happen|break)\s+(?:if|when)\s+(.+?)\s+(?:changes|breaks|fails)",
+        "impact",
+    ),
 ]
 
 
@@ -1941,7 +2390,7 @@ def _format_path_result(path: list[dict] | None, source: str, target: str) -> st
         etype = edge.get("type", "relates_to")
         src = edge.get("source", "?")
         tgt = edge.get("target", "?")
-        lines.append(f"  {i+1}. **[[{src}]]** —{etype}→ **[[{tgt}]]**")
+        lines.append(f"  {i + 1}. **[[{src}]]** —{etype}→ **[[{tgt}]]**")
 
     lines.append("")
     lines.append(f"💡 共 {len(path)} 步，涉及 {_count_unique_nodes(path)} 个实体。")
@@ -1964,12 +2413,12 @@ def _format_impact_result(impact: dict, entity: str) -> str:
         eid = ent.get("id", "?")
         ename = ent.get("name", eid)
         etype = ent.get("type", "?")
-        lines.append(f"  {i+1}. **[[{eid}]]** ({etype}) — {ename}")
+        lines.append(f"  {i + 1}. **[[{eid}]]** ({etype}) — {ename}")
 
     lines.append("")
     lines.append("### 影响路径")
     for i, path_nodes in enumerate(paths[:5]):
-        lines.append(f"  {i+1}. {' → '.join(f'**[[{n}]]**' for n in path_nodes)}")
+        lines.append(f"  {i + 1}. {' → '.join(f'**[[{n}]]**' for n in path_nodes)}")
 
     if len(affected) > 15:
         lines.append(f"  ... 及其他 {len(affected) - 15} 个实体")
@@ -2034,7 +2483,7 @@ def _format_debug_table(trace: dict) -> str:
     lines.append("")
     lines.append("| Stream | Results | Error |")
     lines.append("|--------|---------|-------|")
-    for stream_name in ("metadata", "bm25", "graph", "ledger"):
+    for stream_name in ("claim", "metadata", "bm25", "graph", "ledger"):
         stream_data = trace.get("streams", {}).get(stream_name)
         error = trace.get("streams", {}).get(f"{stream_name}_error", "")
         count = len(stream_data) if isinstance(stream_data, list) else (1 if stream_data else 0)
@@ -2091,17 +2540,29 @@ def _format_debug_table(trace: dict) -> str:
             cols = [str(i + 1), pid, ptype]
             if has_bm25:
                 bm25_s = ss.get("bm25", 0)
-                cols.append(f"{bm25_s:.3f}" if isinstance(bm25_s, (int, float)) else str(bm25_s)[:5])
+                cols.append(
+                    f"{bm25_s:.3f}" if isinstance(bm25_s, (int, float)) else str(bm25_s)[:5]
+                )
             if has_metadata:
                 meta_s = ss.get("metadata", 0)
-                cols.append(f"{meta_s:.3f}" if isinstance(meta_s, (int, float)) else str(meta_s)[:5])
+                cols.append(
+                    f"{meta_s:.3f}" if isinstance(meta_s, (int, float)) else str(meta_s)[:5]
+                )
             if has_graph:
                 graph_s = ss.get("graph", 0)
-                cols.append(f"{graph_s:.3f}" if isinstance(graph_s, (int, float)) else str(graph_s)[:5])
+                cols.append(
+                    f"{graph_s:.3f}" if isinstance(graph_s, (int, float)) else str(graph_s)[:5]
+                )
             if has_ledger:
                 ledger_s = ss.get("ledger", 0)
-                cols.append(f"{ledger_s:.3f}" if isinstance(ledger_s, (int, float)) else str(ledger_s)[:5])
-            cols.append(f"{final_score:.3f}" if isinstance(final_score, (int, float)) else str(final_score)[:5])
+                cols.append(
+                    f"{ledger_s:.3f}" if isinstance(ledger_s, (int, float)) else str(ledger_s)[:5]
+                )
+            cols.append(
+                f"{final_score:.3f}"
+                if isinstance(final_score, (int, float))
+                else str(final_score)[:5]
+            )
 
             lines.append("| " + " | ".join(cols) + " |")
 
@@ -2115,10 +2576,13 @@ def _format_debug_table(trace: dict) -> str:
     lines.append("### Score Components")
     lines.append("")
     lines.append("- **BM25**: Keyword match score (TF-IDF with BM25 saturation)")
+    lines.append("- **Claim**: Atomic fact match with scope, time, and authority qualifiers")
     lines.append("- **Meta**: Frontmatter metadata match (aliases, keywords, questions)")
     lines.append("- **Graph**: Knowledge graph entity linking + 1-hop traversal")
     lines.append("- **Ledger**: Structured data cross-reference (台账)")
-    lines.append("- **Final**: Weighted fusion of all enabled streams + entity-type boost + graph boost")
+    lines.append(
+        "- **Final**: Weighted fusion of all enabled streams + entity-type boost + graph boost"
+    )
     lines.append("")
 
     return "\n".join(lines)
@@ -2133,41 +2597,73 @@ def query_wiki(
     mode: str | None = None,
     multi_hop: bool | None = None,
     max_hops: int | None = None,
+    conversation: list[dict[str, str]] | None = None,
 ) -> dict:
+    original_query = query
+    if conversation is not None:
+        from query_conversation import validate_history
+
+        conversation = validate_history(conversation)
+    if conversation:
+        from query_conversation import answer_context, resolve_followup
+
+        query = resolve_followup(query, conversation)
+        synthesis_query = answer_context(original_query, query, conversation)
+    else:
+        synthesis_query = query
     query_cfg = get_query_config()
     synthesis_mode = mode or query_cfg.get("synthesis_mode", "agent")
+    from query_temporal import query_time_context, rank_temporal_results
+
+    temporal_context = query_time_context(query)
+    structured_plan = plan_query(query)
 
     if not synthesis:
         pass
-    elif "llm_synthesis" in query_cfg:
+    elif mode != "llm" and "llm_synthesis" in query_cfg:
         synthesis = query_cfg.get("llm_synthesis", True)
 
     max_results = max(1, int(query_cfg.get("max_results", 5) or 5))
+    # Applicability ranking needs both the current rule and a scheduled or
+    # historical neighbor.  Retrieve a wider pool, then choose by effective
+    # time without silently deleting non-current evidence.
+    retrieval_limit = max_results * 3 if temporal_context.get("requested") else max_results
     use_multi_hop = (
         bool(query_cfg.get("multi_hop_enabled", True)) if multi_hop is None else multi_hop
     )
-    hop_setting = (
-        max_hops
-        if max_hops is not None
-        else query_cfg.get("multi_hop_max_hops", 3)
-    )
+    hop_setting = max_hops if max_hops is not None else query_cfg.get("multi_hop_max_hops", 3)
     configured_hops = max(1, min(int(hop_setting or 3), 5))
     if use_multi_hop:
         if debug_search:
             pages, trace = multi_hop_search(
                 query,
-                limit=max_results,
+                limit=retrieval_limit,
                 max_hops=configured_hops,
                 debug=True,
             )
         else:
-            pages = multi_hop_search(query, limit=max_results, max_hops=configured_hops)
+            pages = multi_hop_search(query, limit=retrieval_limit, max_hops=configured_hops)
             trace = {}
     elif debug_search:
-        pages, trace = search_wiki(query, limit=max_results, debug=True)
+        pages, trace = search_wiki(query, limit=retrieval_limit, debug=True)
     else:
-        pages = search_wiki(query, limit=max_results)
+        pages = search_wiki(query, limit=retrieval_limit)
         trace = {}
+    pages = rank_temporal_results(pages, temporal_context, max_results)
+    if debug_search and temporal_context.get("requested"):
+        trace["temporal"] = {
+            "mode": temporal_context.get("mode"),
+            "as_of": temporal_context["as_of"].isoformat(),
+            "selected": [
+                {
+                    "id": page.get("id", ""),
+                    "state": page.get("temporal", {}).get("state", "undated"),
+                    "effective_from": page.get("temporal", {}).get("effective_from", ""),
+                    "effective_until": page.get("temporal", {}).get("effective_until", ""),
+                }
+                for page in pages
+            ],
+        }
     pages = _attach_page_images(pages)
     retrieved_images = _collect_retrieved_images(pages)
     try:
@@ -2212,59 +2708,75 @@ def query_wiki(
             _log_exc("graph intent query failed")
             pass  # graph query failed — continue with normal search
 
-    if pages and not synthesis:
+    from query_display import source_detail
+
+    source_details = [source_detail(page, query) for page in pages]
+    if not synthesis:
         # Fast path: return raw search results without LLM call
         lines = [f"## 搜索结果: {query}\n"]
         for i, p in enumerate(pages[:10], 1):
-            snippet = _read_snippet(p["path"], query)
+            detail = source_details[i - 1]
+            snippet = detail["snippet"]
             lines.append(
-                f"{i}. **[{p['id']}](/"
+                f"{i}. **[{detail['title']}](/"
                 f"{p['id']}.md)** ({p['type']}) — score: {p['score']:.2f}"
             )
             if snippet:
                 lines.append(f"   > {snippet}")
+            temporal = p.get("temporal", {})
+            if temporal:
+                lines.append(
+                    "   - 时效状态: "
+                    f"`{temporal.get('state', 'undated')}` @ {temporal.get('as_of', 'unknown')}"
+                )
             for image in p.get("images", []):
                 lines.append(f"   {image['markdown']}")
             lines.append("")
+        if not pages:
+            lines.append("未找到相关知识页。试试更具体的关键词，或先导入并编译资料。")
         return {
-            "query": query,
+            "query": original_query,
+            "retrieval_query": query,
             "format": "fast",
             "answer": "\n".join(lines),
             "pages_searched": len(pages),
             "sources": [p.get("id", "unknown") for p in pages],
-            "source_details": [
-                {
-                    "id": p.get("id", "unknown"),
-                    "name": p.get("name", p.get("id", "unknown")),
-                    "path": p.get("path", ""),
-                    "page_type": p.get("type", "unknown"),
-                    "relevance": p.get("score", 0),
-                    "retrieval_hop": p.get("retrieval_hop", 1),
-                    "matched_section": p.get("matched_section", ""),
-                    "images": p.get("images", []),
-                }
-                for p in pages
-            ],
+            "source_details": source_details,
             "images": retrieved_images,
             "debug_search": trace if debug_search else {},
             "retrieval_strategy": "multi_hop" if use_multi_hop else "single_hop",
             "max_hops": configured_hops if use_multi_hop else 1,
             "retrieval_evidence": retrieval_evidence,
+            "query_plan": structured_plan,
+            "temporal_context": {
+                "requested": temporal_context.get("requested", False),
+                "mode": temporal_context.get("mode", "unspecified"),
+                "as_of": temporal_context["as_of"].isoformat(),
+            },
         }
 
     if pages:
         if synthesis_mode == "llm":
-            answer = graph_section + synthesize_answer(query, pages, fmt=fmt)
+            answer = graph_section + synthesize_answer(
+                synthesis_query,
+                pages,
+                fmt=fmt,
+                temporal_context=temporal_context,
+            )
         else:
             answer = graph_section + synthesize_answer_agent(
-                query,
+                synthesis_query,
                 pages,
                 fmt=fmt,
                 retrieval_evidence=retrieval_evidence,
+                temporal_context=temporal_context,
             )
     else:
         answer = graph_section or "No relevant wiki pages found."
 
+    if pages and not answer.strip():
+        raise ValueError("模型未返回答案，请重新生成")
+    answer_text = answer
     if retrieved_images and synthesis_mode == "llm" and fmt != "json":
         gallery = "\n\n## 引用原图\n\n" + "\n\n".join(
             image["markdown"] for image in retrieved_images
@@ -2272,29 +2784,25 @@ def query_wiki(
         answer = answer.rstrip() + gallery
 
     result = {
-        "query": query,
+        "query": original_query,
+        "retrieval_query": query,
         "format": fmt,
         "mode": synthesis_mode,
         "answer": answer,
+        "answer_text": answer_text,
         "pages_searched": len(pages),
         "sources": [p.get("id", "unknown") for p in pages],
-        "source_details": [
-            {
-                "id": p.get("id", "unknown"),
-                "name": p.get("name", p.get("id", "unknown")),
-                "path": p.get("path", ""),
-                "page_type": p.get("type", "unknown"),
-                "relevance": p.get("score", 0),
-                "retrieval_hop": p.get("retrieval_hop", 1),
-                "matched_section": p.get("matched_section", ""),
-                "images": p.get("images", []),
-            }
-            for p in pages
-        ],
+        "source_details": source_details,
         "images": retrieved_images,
         "retrieval_strategy": "multi_hop" if use_multi_hop else "single_hop",
         "max_hops": configured_hops if use_multi_hop else 1,
         "retrieval_evidence": retrieval_evidence,
+        "query_plan": structured_plan,
+        "temporal_context": {
+            "requested": temporal_context.get("requested", False),
+            "mode": temporal_context.get("mode", "unspecified"),
+            "as_of": temporal_context["as_of"].isoformat(),
+        },
     }
     if query_cfg.get("verify_answers", True):
         result["verification"] = (
@@ -2317,8 +2825,7 @@ def query_wiki(
 def main():
     parser = argparse.ArgumentParser(description="Query wiki and answer questions")
     parser.add_argument("query", help="Question to answer")
-    parser.add_argument("--file-back", action="store_true",
-                        help="File answer back to wiki")
+    parser.add_argument("--file-back", action="store_true", help="File answer back to wiki")
     parser.add_argument(
         "--format",
         choices=["markdown", "table", "timeline", "slides", "json", "graph"],
@@ -2356,16 +2863,21 @@ def main():
 
     if args.format == "graph":
         import subprocess
+
         code, out = subprocess.run(
             [sys.executable, str(Path(__file__).parent / "graph.py"), "show"],
-            capture_output=True, text=True
+            capture_output=True,
+            text=True,
         )
         print(out if code == 0 else f"Graph error: {out}")
         return
 
     result = query_wiki(
-        args.query, file_back=args.file_back, fmt=args.format,
-        synthesis=not args.no_synthesis, debug_search=args.debug_search,
+        args.query,
+        file_back=args.file_back,
+        fmt=args.format,
+        synthesis=not args.no_synthesis,
+        debug_search=args.debug_search,
         mode=args.mode,
         multi_hop=False if args.single_hop else None,
         max_hops=args.max_hops,

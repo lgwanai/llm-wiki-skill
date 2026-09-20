@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-from __future__ import annotations
 """bulk.py — Bulk Operations for LLM Wiki v2.
 
 Operations:
@@ -18,16 +17,17 @@ Usage:
     python3 scripts/bulk.py stats                  # detailed stats
 """
 
+from __future__ import annotations
+
 import argparse
 import json
-import os
 import shutil
-import sys
 from datetime import datetime, timezone
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
-from config import get_wiki_dir
+try:
+    from .config import get_wiki_dir
+except ImportError:
+    from config import get_wiki_dir
 
 WIKI_DIR = get_wiki_dir()
 PAGES_DIR = WIKI_DIR / "pages"
@@ -60,7 +60,14 @@ def cmd_delete_stale(dry_run: bool = False) -> dict:
     entities = json.loads(entities_file.read_text(encoding="utf-8"))
     now = datetime.now(timezone.utc)
 
-    decay = {"architecture": 260, "project": 130, "bug": 20, "meeting": 10, "pattern": 87, "preference": 527}
+    decay = {
+        "architecture": 260,
+        "project": 130,
+        "bug": 20,
+        "meeting": 10,
+        "pattern": 87,
+        "preference": 527,
+    }
     deleted = []
 
     for eid, entity in list(entities.items()):
@@ -78,8 +85,14 @@ def cmd_delete_stale(dry_run: bool = False) -> dict:
         retention = math.exp(-days / half_life) if half_life > 0 else 1.0
 
         if retention < 0.15:
-            deleted.append({"id": eid, "name": entity.get("name", eid),
-                            "days_old": days, "retention": round(retention, 3)})
+            deleted.append(
+                {
+                    "id": eid,
+                    "name": entity.get("name", eid),
+                    "days_old": days,
+                    "retention": round(retention, 3),
+                }
+            )
 
     if not dry_run:
         for item in deleted:
@@ -91,7 +104,9 @@ def cmd_delete_stale(dry_run: bool = False) -> dict:
                     trash_path.parent.mkdir(parents=True, exist_ok=True)
                     shutil.move(str(page_path), str(trash_path))
 
-        entities_file.write_text(json.dumps(entities, indent=2, ensure_ascii=False), encoding="utf-8")
+        entities_file.write_text(
+            json.dumps(entities, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
         write_audit("bulk_delete_stale", {"count": len(deleted), "items": deleted})
 
     return {"status": "ok", "deleted_count": len(deleted), "dry_run": dry_run, "items": deleted}
@@ -107,8 +122,13 @@ def cmd_delete_low_confidence(threshold: float, dry_run: bool = False) -> dict:
 
     for eid, entity in list(entities.items()):
         if entity.get("confidence", 1.0) < threshold:
-            deleted.append({"id": eid, "name": entity.get("name", eid),
-                            "confidence": entity.get("confidence", 0)})
+            deleted.append(
+                {
+                    "id": eid,
+                    "name": entity.get("name", eid),
+                    "confidence": entity.get("confidence", 0),
+                }
+            )
 
     if not dry_run:
         for item in deleted:
@@ -120,7 +140,9 @@ def cmd_delete_low_confidence(threshold: float, dry_run: bool = False) -> dict:
                     trash_path.parent.mkdir(parents=True, exist_ok=True)
                     shutil.move(str(page_path), str(trash_path))
 
-        entities_file.write_text(json.dumps(entities, indent=2, ensure_ascii=False), encoding="utf-8")
+        entities_file.write_text(
+            json.dumps(entities, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
         write_audit("bulk_delete_low_confidence", {"count": len(deleted), "threshold": threshold})
 
     return {"status": "ok", "deleted_count": len(deleted), "dry_run": dry_run, "items": deleted}
@@ -178,8 +200,13 @@ def cmd_merge(dry_run: bool = False) -> dict:
     for key, ids in duplicates.items():
         primary = ids[0]
         for dup in ids[1:]:
-            merges.append({"primary": primary, "duplicate": dup,
-                           "name": entities[primary].get("name", primary)})
+            merges.append(
+                {
+                    "primary": primary,
+                    "duplicate": dup,
+                    "name": entities[primary].get("name", primary),
+                }
+            )
 
     if not dry_run and merges:
         for m in merges:
@@ -190,11 +217,18 @@ def cmd_merge(dry_run: bool = False) -> dict:
                 if page_path.exists():
                     shutil.move(str(page_path), str(TRASH_DIR / f"{m['duplicate']}.md"))
 
-        entities_file.write_text(json.dumps(entities, indent=2, ensure_ascii=False), encoding="utf-8")
+        entities_file.write_text(
+            json.dumps(entities, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
         write_audit("bulk_merge", {"count": len(merges), "merges": merges})
 
-    return {"status": "ok", "duplicates_found": len(duplicates), "merges": len(merges),
-            "dry_run": dry_run, "merge_items": merges}
+    return {
+        "status": "ok",
+        "duplicates_found": len(duplicates),
+        "merges": len(merges),
+        "dry_run": dry_run,
+        "merge_items": merges,
+    }
 
 
 def cmd_clean(dry_run: bool = False) -> dict:
@@ -215,8 +249,12 @@ def cmd_clean(dry_run: bool = False) -> dict:
                     shutil.move(str(page_path), str(trash_path))
         write_audit("bulk_clean", {"orphans_removed": len(orphan_ids)})
 
-    return {"status": "ok", "orphans": len(orphans), "broken_links": len(broken),
-            "dry_run": dry_run}
+    return {
+        "status": "ok",
+        "orphans": len(orphans),
+        "broken_links": len(broken),
+        "dry_run": dry_run,
+    }
 
 
 def cmd_stats() -> dict:
@@ -258,6 +296,7 @@ def cmd_stats() -> dict:
         edges_count = len(edges) if isinstance(edges, list) else 0
 
     from collections import Counter
+
     edge_types = Counter()
     if edges_file.exists():
         edge_types = Counter(e["type"] for e in edges)
@@ -279,7 +318,9 @@ def main():
 
     del_parser = subparsers.add_parser("delete", help="Bulk delete pages")
     del_parser.add_argument("--stale", action="store_true", help="Delete stale pages")
-    del_parser.add_argument("--confidence", type=float, help="Delete pages below confidence threshold")
+    del_parser.add_argument(
+        "--confidence", type=float, help="Delete pages below confidence threshold"
+    )
     del_parser.add_argument("--dry-run", action="store_true", help="Preview only")
 
     export_parser = subparsers.add_parser("export", help="Export wiki subset")

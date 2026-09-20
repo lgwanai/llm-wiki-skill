@@ -15,12 +15,14 @@ def tmp_wiki():
 class TestEnsureGitRepo:
     def test_creates_git_repo(self, tmp_wiki):
         from scripts._snapshot import ensure_git_repo
+
         result = ensure_git_repo(tmp_wiki)
         if result:
             assert (tmp_wiki / ".git").is_dir()
 
     def test_idempotent(self, tmp_wiki):
         from scripts._snapshot import ensure_git_repo
+
         first = ensure_git_repo(tmp_wiki)
         second = ensure_git_repo(tmp_wiki)
         assert first == second
@@ -29,6 +31,7 @@ class TestEnsureGitRepo:
 class TestCreateSnapshot:
     def test_returns_hash(self, tmp_wiki):
         from scripts._snapshot import create_snapshot, ensure_git_repo
+
         if not ensure_git_repo(tmp_wiki):
             pytest.skip("git not available")
         (tmp_wiki / "test.md").write_text("# test")
@@ -37,6 +40,7 @@ class TestCreateSnapshot:
 
     def test_empty_repo_ok(self, tmp_wiki):
         from scripts._snapshot import create_snapshot, ensure_git_repo
+
         if not ensure_git_repo(tmp_wiki):
             pytest.skip("git not available")
         assert create_snapshot(tmp_wiki, "empty") is not None
@@ -45,6 +49,7 @@ class TestCreateSnapshot:
 class TestRollback:
     def test_restores_file(self, tmp_wiki):
         from scripts._snapshot import create_snapshot, ensure_git_repo, rollback
+
         if not ensure_git_repo(tmp_wiki):
             pytest.skip("git not available")
         (tmp_wiki / "page.md").write_text("before")
@@ -57,4 +62,5 @@ class TestRollback:
 class TestListSnapshots:
     def test_empty_for_non_repo(self, tmp_wiki):
         from scripts._snapshot import list_snapshots
+
         assert list_snapshots(tmp_wiki) == []

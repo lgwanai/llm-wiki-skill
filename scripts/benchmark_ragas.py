@@ -23,6 +23,10 @@ Usage:
     python scripts/benchmark_ragas.py -o evals/ragas_results.json --report evals/RAGAS_REPORT.md
 """
 
+# Evaluator prompts and generated Markdown tables intentionally preserve long
+# semantic lines; wrapping them would change judge input or report rendering.
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 import argparse
@@ -62,7 +66,7 @@ PUBLISHED_RAG_BASELINES = {
         "context_precision": 0.65,
         "context_recall": 0.68,
         "answer_correctness": 0.65,
-        "source": "RAGAS paper (Es et al., 2024) / RGB benchmark"
+        "source": "RAGAS paper (Es et al., 2024) / RGB benchmark",
     },
     "RAG + Reranker": {
         "faithfulness": 0.83,
@@ -70,7 +74,7 @@ PUBLISHED_RAG_BASELINES = {
         "context_precision": 0.78,
         "context_recall": 0.76,
         "answer_correctness": 0.78,
-        "source": "RAGAS benchmarks / LangChain evaluation"
+        "source": "RAGAS benchmarks / LangChain evaluation",
     },
     "GraphRAG (Microsoft)": {
         "faithfulness": 0.88,
@@ -78,7 +82,7 @@ PUBLISHED_RAG_BASELINES = {
         "context_precision": 0.82,
         "context_recall": 0.84,
         "answer_correctness": 0.83,
-        "source": "Microsoft GraphRAG paper (Edge et al., 2024)"
+        "source": "Microsoft GraphRAG paper (Edge et al., 2024)",
     },
     "RAGFlow (estimated)": {
         "faithfulness": 0.86,
@@ -86,7 +90,7 @@ PUBLISHED_RAG_BASELINES = {
         "context_precision": 0.80,
         "context_recall": 0.79,
         "answer_correctness": 0.80,
-        "source": "RAGFlow GitHub benchmarks (DeepDoc + hybrid retrieval)"
+        "source": "RAGFlow GitHub benchmarks (DeepDoc + hybrid retrieval)",
     },
 }
 
@@ -95,9 +99,11 @@ PUBLISHED_RAG_BASELINES = {
 # LLM-as-Judge — uses project's configured LLM
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def _get_llm_config() -> dict:
     """Load LLM config from the project's wiki_config.yaml or env vars."""
     from config import get_llm_config
+
     return get_llm_config()
 
 
@@ -106,7 +112,7 @@ def _call_judge_llm(prompt: str, system: str = "You are an expert evaluator.") -
 
     Retries up to 3 times on failure, with exponential backoff.
     """
-    from config import get_llm_config, get_api_url
+    from config import get_api_url, get_llm_config
 
     llm_config = get_llm_config()
     provider = llm_config.get("provider", "deepseek")
@@ -149,7 +155,7 @@ def _call_judge_llm(prompt: str, system: str = "You are an expert evaluator.") -
             resp = requests.post(api_url, json=payload, headers=headers, timeout=120)
 
             if resp.status_code == 429:
-                wait = min(2 ** attempt * 3, 30)
+                wait = min(2**attempt * 3, 30)
                 print(f"    Rate limited (429), retrying in {wait}s...", file=sys.stderr)
                 time.sleep(wait)
                 continue
@@ -162,8 +168,11 @@ def _call_judge_llm(prompt: str, system: str = "You are an expert evaluator.") -
                 return (data["choices"][0]["message"].get("content") or "").strip()
         except Exception as e:
             if attempt < 2:
-                wait = min(2 ** attempt * 2, 15)
-                print(f"    Judge LLM attempt {attempt+1} failed: {e}, retrying in {wait}s...", file=sys.stderr)
+                wait = min(2**attempt * 2, 15)
+                print(
+                    f"    Judge LLM attempt {attempt + 1} failed: {e}, retrying in {wait}s...",
+                    file=sys.stderr,
+                )
                 time.sleep(wait)
             else:
                 print(f"    [WARN] Judge LLM failed after 3 attempts: {e}", file=sys.stderr)
@@ -182,17 +191,17 @@ def _parse_score_ratio(text: str, prefix: str) -> tuple[int, int] | None:
       RECALL: 3/4
     """
     # Try exact pattern first
-    match = re.search(rf'{prefix}:\s*(\d+)\s*/\s*(\d+)', text, re.IGNORECASE)
+    match = re.search(rf"{prefix}:\s*(\d+)\s*/\s*(\d+)", text, re.IGNORECASE)
     if match:
         return int(match.group(1)), int(match.group(2))
 
     # Try finding any X/Y near the prefix
-    match = re.search(rf'{prefix}[^0-9]*(\d+)\s*/\s*(\d+)', text, re.IGNORECASE)
+    match = re.search(rf"{prefix}[^0-9]*(\d+)\s*/\s*(\d+)", text, re.IGNORECASE)
     if match:
         return int(match.group(1)), int(match.group(2))
 
     # Last resort: find last X/Y in the text
-    matches = re.findall(r'(\d+)\s*/\s*(\d+)', text)
+    matches = re.findall(r"(\d+)\s*/\s*(\d+)", text)
     if matches:
         return int(matches[-1][0]), int(matches[-1][1])
 
@@ -205,17 +214,18 @@ def _parse_score_5(text: str, prefix: str) -> float:
     Handles: 'RATING: 4/5', 'CORRECTNESS: 5/5', 'RATING: 4', etc.
     """
     # Exact pattern
-    match = re.search(rf'{prefix}:\s*(\d+)\s*/\s*5', text, re.IGNORECASE)
+    match = re.search(rf"{prefix}:\s*(\d+)\s*/\s*5", text, re.IGNORECASE)
     if match:
         return (int(match.group(1)) - 1) / 4.0
 
     # Just a number after the prefix
-    match = re.search(rf'{prefix}:\s*(\d+)', text, re.IGNORECASE)
+    match = re.search(rf"{prefix}:\s*(\d+)", text, re.IGNORECASE)
     if match:
         rating = min(max(int(match.group(1)), 1), 5)
         return (rating - 1) / 4.0
 
     return 0.5  # default: middle score
+
 
 def _score_faithfulness(question: str, answer: str, contexts: list[str]) -> float:
     """Check if every factual claim in the answer is supported by at least one context.
@@ -226,7 +236,7 @@ def _score_faithfulness(question: str, answer: str, contexts: list[str]) -> floa
         return 0.0
 
     context_text = "\n\n---\n\n".join(
-        f"Context {i+1}:\n{c[:3000]}" for i, c in enumerate(contexts[:5])
+        f"Context {i + 1}:\n{c[:3000]}" for i, c in enumerate(contexts[:5])
     )
 
     prompt = f"""Your task is to evaluate the factual faithfulness of an AI-generated answer.
@@ -264,8 +274,8 @@ Now evaluate:"""
         return supported / total if total > 0 else 0.0
 
     # Fallback: count SUPPORTED vs UNSUPPORTED
-    supported_count = len(re.findall(r'\bSUPPORTED\b', response))
-    unsupported_count = len(re.findall(r'\bUNSUPPORTED\b', response))
+    supported_count = len(re.findall(r"\bSUPPORTED\b", response))
+    unsupported_count = len(re.findall(r"\bUNSUPPORTED\b", response))
     total_claims = supported_count + unsupported_count
     return supported_count / total_claims if total_claims > 0 else 0.0
 
@@ -315,7 +325,9 @@ def _score_context_precision(question: str, contexts: list[str], ground_truth: s
         return 0.0
 
     context_summary = "\n\n".join(
-        f"Context {i+1} (position {i+1}):\n{c[:1000]}..." if len(c) > 1000 else f"Context {i+1} (position {i+1}):\n{c}"
+        f"Context {i + 1} (position {i + 1}):\n{c[:1000]}..."
+        if len(c) > 1000
+        else f"Context {i + 1} (position {i + 1}):\n{c}"
         for i, c in enumerate(contexts[:5])
     )
 
@@ -361,7 +373,7 @@ Now evaluate:"""
         total_count += 1
         weight = 1.0 / i  # position weight (rank 1 = 1.0, rank 2 = 0.5, ...)
         weight_sum += weight
-        if re.search(rf'CONTEXT\s+{i}:\s*RELEVANT', response, re.IGNORECASE):
+        if re.search(rf"CONTEXT\s+{i}:\s*RELEVANT", response, re.IGNORECASE):
             relevant_count += 1
             weighted_sum += weight
 
@@ -379,7 +391,7 @@ def _score_context_recall(contexts: list[str], ground_truth: str) -> float:
         return 0.0
 
     context_text = "\n\n---\n\n".join(
-        f"Context {i+1}:\n{c[:3000]}" for i, c in enumerate(contexts[:5])
+        f"Context {i + 1}:\n{c[:3000]}" for i, c in enumerate(contexts[:5])
     )
 
     prompt = f"""Your task is to evaluate whether the retrieved contexts adequately cover the information in the ground truth answer.
@@ -413,8 +425,8 @@ Now evaluate:"""
         covered, total = parsed
         return covered / total if total > 0 else 0.0
 
-    covered_count = len(re.findall(r'\bCOVERED\b', response))
-    not_covered_count = len(re.findall(r'\bNOT COVERED\b', response))
+    covered_count = len(re.findall(r"\bCOVERED\b", response))
+    not_covered_count = len(re.findall(r"\bNOT COVERED\b", response))
     total = covered_count + not_covered_count
     return covered_count / total if total > 0 else 0.0
 
@@ -460,6 +472,7 @@ Now evaluate:"""
 # Wiki Pipeline Setup
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def setup_wiki(force_rebuild: bool = False) -> Path:
     """Set up a .wiki directory with test documents ingested via compile_v2.
 
@@ -477,7 +490,7 @@ def _setup_wiki_compile(force_rebuild: bool = False) -> Path:
     # Check cache
     if not force_rebuild and manifest_path.exists():
         try:
-            manifest = json.loads(manifest_path.read_text())
+            json.loads(manifest_path.read_text())
             if wiki_dir.exists() and (wiki_dir / "pages").exists():
                 return wiki_dir
         except Exception:
@@ -506,6 +519,7 @@ def _setup_wiki_compile(force_rebuild: bool = False) -> Path:
     os.environ["LLM_WIKI_DIR"] = str(wiki_dir)
     try:
         import config
+
         config.reset_config()
         from compile_v2 import compile_path
 
@@ -530,11 +544,15 @@ def _setup_wiki_compile(force_rebuild: bool = False) -> Path:
     # source content is searchable even when entity extraction partially fails.
     _ensure_source_pages(source_dir, wiki_dir)
 
-    manifest_path.write_text(json.dumps({
-        "mode": "compile_v2",
-        "document_count": doc_count,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }))
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "mode": "compile_v2",
+                "document_count": doc_count,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+    )
 
     return wiki_dir
 
@@ -564,7 +582,7 @@ def _ensure_source_pages(source_dir: Path, wiki_dir: Path):
         page = f"""---
 id: source-{src_file.stem}
 type: paper
-name: "{content.split(chr(10))[0].lstrip('# ').strip()}"
+name: "{content.split(chr(10))[0].lstrip("# ").strip()}"
 confidence: 0.60
 source: {src_file.name}
 ---
@@ -573,7 +591,11 @@ source: {src_file.name}
         (papers_dir / f"source-{src_file.stem}.md").write_text(page, encoding="utf-8")
         # Register in entities.json
         try:
-            entities = json.loads(entities_file.read_text(encoding="utf-8")) if entities_file.exists() else {}
+            entities = (
+                json.loads(entities_file.read_text(encoding="utf-8"))
+                if entities_file.exists()
+                else {}
+            )
         except Exception:
             entities = {}
         entities[f"source-{src_file.stem}"] = {
@@ -587,12 +609,16 @@ source: {src_file.name}
         entities_file.write_text(json.dumps(entities, ensure_ascii=False))
         added += 1
     if added:
-        print(f"  Source fallback: added {added} docs as wiki pages (entity extraction missed them)", file=sys.stderr)
+        print(
+            f"  Source fallback: added {added} docs as wiki pages (entity extraction missed them)",
+            file=sys.stderr,
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # Main Evaluation
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def _read_page(page_path: str, wiki_dir: Path | None = None) -> str:
     """Read a wiki page, stripping YAML frontmatter.
@@ -609,8 +635,10 @@ def _read_page(page_path: str, wiki_dir: Path | None = None) -> str:
     if not resolved.is_absolute() and wiki_dir is not None:
         # Try common resolutions relative to wiki_dir
         candidates = [
-            wiki_dir / page_path,            # wiki_dir/pages/papers/foo.md
-            wiki_dir / "pages" / page_path,  # wiki_dir/pages/papers/foo.md (if page_path is "papers/foo.md")
+            wiki_dir / page_path,  # wiki_dir/pages/papers/foo.md
+            wiki_dir
+            / "pages"
+            / page_path,  # wiki_dir/pages/papers/foo.md (if page_path is "papers/foo.md")
         ]
         for candidate in candidates:
             if candidate.exists():
@@ -643,12 +671,12 @@ def run_ragas_benchmark(
     if max_cases is not None:
         test_cases = test_cases[:max_cases]
 
-    print(f"\n{'='*60}", file=sys.stderr)
-    print(f"  RAGAS Black-Box Evaluation", file=sys.stderr)
-    print(f"  Pipeline: compile_v2 → embed → search → synthesize", file=sys.stderr)
+    print(f"\n{'=' * 60}", file=sys.stderr)
+    print("  RAGAS Black-Box Evaluation", file=sys.stderr)
+    print("  Pipeline: compile_v2 → embed → search → synthesize", file=sys.stderr)
     print(f"  Test cases: {len(test_cases)}", file=sys.stderr)
     print(f"  Domains: {', '.join(test_cases_data['domains'].keys())}", file=sys.stderr)
-    print(f"{'='*60}\n", file=sys.stderr)
+    print(f"{'=' * 60}\n", file=sys.stderr)
 
     # Step 1: Set up wiki via compile_v2
     t0 = time.time()
@@ -661,6 +689,7 @@ def run_ragas_benchmark(
     if streams:
         os.environ["LLM_WIKI_SEARCH_STREAMS"] = streams
     import config
+
     config.reset_config()
 
     # Reload modules to pick up new WIKI_DIR
@@ -672,9 +701,13 @@ def run_ragas_benchmark(
     t0 = time.time()
     try:
         from generate_embeddings import generate_all
+
         emb_result = generate_all(force=False, batch_size=32)
         embed_time = time.time() - t0
-        print(f"  Embeddings built: {emb_result.get('total_embeddings', 0)} vectors in {embed_time:.1f}s", file=sys.stderr)
+        print(
+            f"  Embeddings built: {emb_result.get('total_embeddings', 0)} vectors in {embed_time:.1f}s",
+            file=sys.stderr,
+        )
     except Exception as e:
         embed_time = time.time() - t0
         print(f"  Embeddings skipped/built in {embed_time:.1f}s ({e})", file=sys.stderr)
@@ -692,7 +725,7 @@ def run_ragas_benchmark(
         query = tc["query"]
         ground_truth = tc["ground_truth"]
 
-        print(f"  [{idx+1}/{len(test_cases)}] {case_id}: {query[:80]}...", file=sys.stderr)
+        print(f"  [{idx + 1}/{len(test_cases)}] {case_id}: {query[:80]}...", file=sys.stderr)
 
         # Search: retrieve 15 candidates, graph expansion + reranker will pick top 5
         t_search = time.time()
@@ -730,7 +763,7 @@ def run_ragas_benchmark(
         synth_latency = time.time() - t_synth
 
         # Evaluate
-        print(f"    Evaluating...", file=sys.stderr)
+        print("    Evaluating...", file=sys.stderr)
         faithfulness = _score_faithfulness(query, answer, contexts)
         relevance = _score_answer_relevancy(query, answer)
         precision = _score_context_precision(query, contexts, ground_truth)
@@ -832,8 +865,10 @@ def run_ragas_benchmark(
     if latencies:
         aggregate["latency"] = {
             "mean_sec": round(statistics.mean(latencies), 3),
-            "p50_sec": round(sorted(latencies)[len(latencies)//2], 3),
-            "p95_sec": round(sorted(latencies)[int(len(latencies)*0.95)], 3) if len(latencies) >= 20 else round(max(latencies), 3),
+            "p50_sec": round(sorted(latencies)[len(latencies) // 2], 3),
+            "p95_sec": round(sorted(latencies)[int(len(latencies) * 0.95)], 3)
+            if len(latencies) >= 20
+            else round(max(latencies), 3),
             "min_sec": round(min(latencies), 3),
             "max_sec": round(max(latencies), 3),
         }
@@ -855,6 +890,7 @@ def run_ragas_benchmark(
 # ═══════════════════════════════════════════════════════════════════════
 # Report Generation
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def generate_report(output: dict[str, Any]) -> str:
     """Generate a comprehensive Markdown report with industry comparison."""
@@ -884,25 +920,29 @@ def generate_report(output: dict[str, Any]) -> str:
             f"{scores['context_precision']:.3f} | {scores['context_recall']:.3f} | {scores['answer_correctness']:.3f} |"
         )
 
-    lines.extend([
-        "",
-        "> Baseline scores are from published literature (RAGAS paper, RGB benchmark, Microsoft GraphRAG paper).",
-        "> RAGFlow scores are estimated from their public benchmark reports.",
-        "> All scores use LLM-as-judge methodology aligned with the RAGAS framework.",
-        "",
-        "---",
-        "",
-        "## llm-wiki vs Industry Baseline — Radar View",
-        "",
-    ])
+    lines.extend(
+        [
+            "",
+            "> Baseline scores are from published literature (RAGAS paper, RGB benchmark, Microsoft GraphRAG paper).",
+            "> RAGFlow scores are estimated from their public benchmark reports.",
+            "> All scores use LLM-as-judge methodology aligned with the RAGAS framework.",
+            "",
+            "---",
+            "",
+            "## llm-wiki vs Industry Baseline — Radar View",
+            "",
+        ]
+    )
 
     # Domain breakdown
-    lines.extend([
-        "## Domain Breakdown",
-        "",
-        "| Domain | Cases | Faithfulness | Answer Relevance | Context Precision | Context Recall | Answer Correctness |",
-        "|--------|-------|-------------|-----------------|-------------------|---------------|-------------------|",
-    ])
+    lines.extend(
+        [
+            "## Domain Breakdown",
+            "",
+            "| Domain | Cases | Faithfulness | Answer Relevance | Context Precision | Context Recall | Answer Correctness |",
+            "|--------|-------|-------------|-----------------|-------------------|---------------|-------------------|",
+        ]
+    )
     for domain, metrics in agg["by_domain"].items():
         lines.append(
             f"| {domain} | {metrics['cases']} | {metrics['faithfulness']:.3f} | {metrics['answer_relevancy']:.3f} | "
@@ -910,13 +950,15 @@ def generate_report(output: dict[str, Any]) -> str:
         )
 
     # Difficulty breakdown
-    lines.extend([
-        "",
-        "## Difficulty Breakdown",
-        "",
-        "| Difficulty | Cases | Faithfulness | Answer Relevance | Context Precision | Context Recall | Answer Correctness |",
-        "|------------|-------|-------------|-----------------|-------------------|---------------|-------------------|",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Difficulty Breakdown",
+            "",
+            "| Difficulty | Cases | Faithfulness | Answer Relevance | Context Precision | Context Recall | Answer Correctness |",
+            "|------------|-------|-------------|-----------------|-------------------|---------------|-------------------|",
+        ]
+    )
     for diff in ["easy", "medium", "hard"]:
         if diff in agg["by_difficulty"]:
             m = agg["by_difficulty"][diff]
@@ -926,13 +968,15 @@ def generate_report(output: dict[str, Any]) -> str:
             )
 
     # Query type breakdown
-    lines.extend([
-        "",
-        "## Query Type Breakdown",
-        "",
-        "| Type | Cases | Faithfulness | Answer Relevance | Context Precision | Context Recall | Answer Correctness |",
-        "|------|-------|-------------|-----------------|-------------------|---------------|-------------------|",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Query Type Breakdown",
+            "",
+            "| Type | Cases | Faithfulness | Answer Relevance | Context Precision | Context Recall | Answer Correctness |",
+            "|------|-------|-------------|-----------------|-------------------|---------------|-------------------|",
+        ]
+    )
     for typ in ["factual", "synthesis", "comparison", "temporal"]:
         if typ in agg["by_type"]:
             m = agg["by_type"][typ]
@@ -944,27 +988,31 @@ def generate_report(output: dict[str, Any]) -> str:
     # Latency
     if "latency" in agg:
         lat = agg["latency"]
-        lines.extend([
-            "",
-            "## Latency",
-            "",
-            f"| Metric | Value |",
-            f"|--------|-------|",
-            f"| Mean search latency | {lat['mean_sec']:.3f}s |",
-            f"| P50 search latency | {lat['p50_sec']:.3f}s |",
-            f"| P95 search latency | {lat['p95_sec']:.3f}s |",
-            f"| Min search latency | {lat['min_sec']:.3f}s |",
-            f"| Max search latency | {lat['max_sec']:.3f}s |",
-        ])
+        lines.extend(
+            [
+                "",
+                "## Latency",
+                "",
+                "| Metric | Value |",
+                "|--------|-------|",
+                f"| Mean search latency | {lat['mean_sec']:.3f}s |",
+                f"| P50 search latency | {lat['p50_sec']:.3f}s |",
+                f"| P95 search latency | {lat['p95_sec']:.3f}s |",
+                f"| Min search latency | {lat['min_sec']:.3f}s |",
+                f"| Max search latency | {lat['max_sec']:.3f}s |",
+            ]
+        )
 
     # Per-case detail
-    lines.extend([
-        "",
-        "## Per-Case Results",
-        "",
-        "| ID | Domain | Type | Difficulty | Faith | Relevance | Precision | Recall | Correctness | Pages | Search Latency |",
-        "|----|--------|------|-----------|-------|----------|-----------|--------|------------|-------|---------------|",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Per-Case Results",
+            "",
+            "| ID | Domain | Type | Difficulty | Faith | Relevance | Precision | Recall | Correctness | Pages | Search Latency |",
+            "|----|--------|------|-----------|-------|----------|-----------|--------|------------|-------|---------------|",
+        ]
+    )
     for r in output["results"]:
         m = r["metrics"]
         lines.append(
@@ -975,48 +1023,50 @@ def generate_report(output: dict[str, Any]) -> str:
         )
 
     # Interpretation
-    lines.extend([
-        "",
-        "---",
-        "",
-        "## Interpretation Guide",
-        "",
-        "### What These Scores Mean",
-        "",
-        "- **Faithfulness** (0-1): Higher = less hallucination. Measures whether claims in the answer are supported by retrieved contexts. Score of 0.85 means 85% of claims are grounded.",
-        "- **Answer Relevance** (0-1): Higher = more on-topic. Measures whether the answer addresses the question. Low scores suggest the system is retrieving wrong contexts or generating off-topic responses.",
-        "- **Context Precision** (0-1): Higher = better ranking. Measures whether relevant documents appear at the top. Position-weighted (rank 1 counts more than rank 5).",
-        "- **Context Recall** (0-1): Higher = more complete retrieval. Measures whether the retrieved contexts collectively cover the ground truth information.",
-        "- **Answer Correctness** (0-1): Higher = more factually accurate. Direct LLM comparison of generated answer against ground truth.",
-        "",
-        "### How This Differs From BEIR Benchmarks",
-        "",
-        "| Aspect | BEIR (benchmark_beir.py) | RAGAS (this benchmark) |",
-        "|--------|-------------------------|------------------------|",
-        "| What it tests | BM25/Dense retriever in isolation | Complete product pipeline |",
-        "| User perspective | Tests a component no user sees | Tests what the user actually experiences |",
-        "| Knowledge ingestion | Documents → direct index (no compile) | Documents → compile_v2 → entity extraction → graph → index |",
-        "| Answer synthesis | Not tested | Tested: search_wiki → synthesize_answer |",
-        "| Comparison target | Embedding models (BGE, Qwen) | RAG products (RAGFlow, GraphRAG) |",
-        "| Hallucination check | Not measured | Measured via faithfulness score |",
-        "",
-        "### Limitations",
-        "",
-        "- Test dataset is synthetic and relatively small (12 docs, 19 test cases). Scores will shift with larger-scale testing.",
-        "- LLM-as-judge scores have inherent variance (±0.05-0.10). Run multiple times for confidence intervals.",
-        "- Industry baseline scores are from published papers, not from running the exact same test set — they indicate approximate capability levels.",
-        "- The `--no-compile` fast path skips entity extraction and graph building, which reduces the pipeline's differentiating capabilities vs naive RAG.",
-        "",
-        "### Sources",
-        "",
-        "- RAGAS: Es et al., \"RAGAS: Automated Evaluation of Retrieval Augmented Generation\" (2024)",
-        "- RGB: Chen et al., \"Benchmarking Large Language Models in Retrieval-Augmented Generation\" (2024)",
-        "- GraphRAG: Edge et al., \"From Local to Global: A Graph RAG Approach to Query-Focused Summarization\" (2024)",
-        "- RAGFlow: Public benchmarks from https://github.com/infiniflow/ragflow",
-        "",
-        "---",
-        f"*Report generated by benchmark_ragas.py — {output['timestamp']}*",
-    ])
+    lines.extend(
+        [
+            "",
+            "---",
+            "",
+            "## Interpretation Guide",
+            "",
+            "### What These Scores Mean",
+            "",
+            "- **Faithfulness** (0-1): Higher = less hallucination. Measures whether claims in the answer are supported by retrieved contexts. Score of 0.85 means 85% of claims are grounded.",
+            "- **Answer Relevance** (0-1): Higher = more on-topic. Measures whether the answer addresses the question. Low scores suggest the system is retrieving wrong contexts or generating off-topic responses.",
+            "- **Context Precision** (0-1): Higher = better ranking. Measures whether relevant documents appear at the top. Position-weighted (rank 1 counts more than rank 5).",
+            "- **Context Recall** (0-1): Higher = more complete retrieval. Measures whether the retrieved contexts collectively cover the ground truth information.",
+            "- **Answer Correctness** (0-1): Higher = more factually accurate. Direct LLM comparison of generated answer against ground truth.",
+            "",
+            "### How This Differs From BEIR Benchmarks",
+            "",
+            "| Aspect | BEIR (benchmark_beir.py) | RAGAS (this benchmark) |",
+            "|--------|-------------------------|------------------------|",
+            "| What it tests | BM25/Dense retriever in isolation | Complete product pipeline |",
+            "| User perspective | Tests a component no user sees | Tests what the user actually experiences |",
+            "| Knowledge ingestion | Documents → direct index (no compile) | Documents → compile_v2 → entity extraction → graph → index |",
+            "| Answer synthesis | Not tested | Tested: search_wiki → synthesize_answer |",
+            "| Comparison target | Embedding models (BGE, Qwen) | RAG products (RAGFlow, GraphRAG) |",
+            "| Hallucination check | Not measured | Measured via faithfulness score |",
+            "",
+            "### Limitations",
+            "",
+            "- Test dataset is synthetic and relatively small (12 docs, 19 test cases). Scores will shift with larger-scale testing.",
+            "- LLM-as-judge scores have inherent variance (±0.05-0.10). Run multiple times for confidence intervals.",
+            "- Industry baseline scores are from published papers, not from running the exact same test set — they indicate approximate capability levels.",
+            "- The `--no-compile` fast path skips entity extraction and graph building, which reduces the pipeline's differentiating capabilities vs naive RAG.",
+            "",
+            "### Sources",
+            "",
+            '- RAGAS: Es et al., "RAGAS: Automated Evaluation of Retrieval Augmented Generation" (2024)',
+            '- RGB: Chen et al., "Benchmarking Large Language Models in Retrieval-Augmented Generation" (2024)',
+            '- GraphRAG: Edge et al., "From Local to Global: A Graph RAG Approach to Query-Focused Summarization" (2024)',
+            "- RAGFlow: Public benchmarks from https://github.com/infiniflow/ragflow",
+            "",
+            "---",
+            f"*Report generated by benchmark_ragas.py — {output['timestamp']}*",
+        ]
+    )
 
     return "\n".join(lines)
 
@@ -1024,6 +1074,7 @@ def generate_report(output: dict[str, Any]) -> str:
 # ═══════════════════════════════════════════════════════════════════════
 # CLI
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -1035,12 +1086,13 @@ def main():
   %(prog)s --force-rebuild           # Clear cache and rebuild wiki
   %(prog)s -o results.json --report REPORT.md""",
     )
-    parser.add_argument("--force-rebuild", action="store_true",
-                        help="Clear wiki cache and rebuild from scratch")
-    parser.add_argument("--cases", type=int, default=None,
-                        help="Limit to first N test cases")
-    parser.add_argument("--streams", default=None,
-                        help="Override search streams (default: all enabled)")
+    parser.add_argument(
+        "--force-rebuild", action="store_true", help="Clear wiki cache and rebuild from scratch"
+    )
+    parser.add_argument("--cases", type=int, default=None, help="Limit to first N test cases")
+    parser.add_argument(
+        "--streams", default=None, help="Override search streams (default: all enabled)"
+    )
     parser.add_argument("-o", "--output", help="Write JSON results to file")
     parser.add_argument("--report", help="Write Markdown report to file")
     args = parser.parse_args()
@@ -1078,20 +1130,22 @@ def main():
 
     # Always print summary to stdout
     agg = output["aggregate"]["overall"]
-    print(f"\n{'='*70}")
-    print(f"  RAGAS BLACK-BOX EVALUATION SUMMARY")
-    print(f"{'='*70}")
+    print(f"\n{'=' * 70}")
+    print("  RAGAS BLACK-BOX EVALUATION SUMMARY")
+    print(f"{'=' * 70}")
     print(f"  Faithfulness:      {agg['faithfulness']:.3f}  (claims grounded in context)")
     print(f"  Answer Relevance:  {agg['answer_relevancy']:.3f}  (answer matches question)")
     print(f"  Context Precision: {agg['context_precision']:.3f}  (relevant docs ranked higher)")
     print(f"  Context Recall:    {agg['context_recall']:.3f}  (key info covered by contexts)")
-    print(f"  Answer Correctness:{agg['answer_correctness']:.3f}  (factual accuracy vs ground truth)")
-    print(f"{'='*70}")
-    print(f"\nIndustry comparison:")
-    print(f"  Naive RAG:          Faithfulness ~0.72  (baseline)")
-    print(f"  RAG + Reranker:     Faithfulness ~0.83")
-    print(f"  GraphRAG:           Faithfulness ~0.88")
-    print(f"  RAGFlow (est.):     Faithfulness ~0.86")
+    print(
+        f"  Answer Correctness:{agg['answer_correctness']:.3f}  (factual accuracy vs ground truth)"
+    )
+    print(f"{'=' * 70}")
+    print("\nIndustry comparison:")
+    print("  Naive RAG:          Faithfulness ~0.72  (baseline)")
+    print("  RAG + Reranker:     Faithfulness ~0.83")
+    print("  GraphRAG:           Faithfulness ~0.88")
+    print("  RAGFlow (est.):     Faithfulness ~0.86")
     print(f"  llm-wiki (this run):Faithfulness  {agg['faithfulness']:.3f}")
     print()
 

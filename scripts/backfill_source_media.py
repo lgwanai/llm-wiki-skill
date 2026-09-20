@@ -68,16 +68,16 @@ def backfill_source_media(
         for page_number in cited_pages:
             media_pages.update({page_number - 1, page_number + 1})
         source_image_count = sum(
-            len(page_map.get(page_number, []))
-            for page_number in media_pages
-            if page_number > 0
+            len(page_map.get(page_number, [])) for page_number in media_pages if page_number > 0
         )
         if not cited_pages:
-            records.append({
-                "page": str(page),
-                "status": "skipped_no_page_citation",
-                "source_images": 0,
-            })
+            records.append(
+                {
+                    "page": str(page),
+                    "status": "skipped_no_page_citation",
+                    "source_images": 0,
+                }
+            )
             continue
         before = len(list(compile_v2.MARKDOWN_IMAGE_RE.finditer(content)))
         if apply:
@@ -100,13 +100,15 @@ def backfill_source_media(
             }
             images_added = len(expected_names - existing_names)
             changed = images_added > 0
-        records.append({
-            "page": str(page),
-            "status": ("updated" if apply else "would_update") if changed else "unchanged",
-            "cited_pages": cited_pages,
-            "source_images": source_image_count,
-            "images_added": images_added,
-        })
+        records.append(
+            {
+                "page": str(page),
+                "status": ("updated" if apply else "would_update") if changed else "unchanged",
+                "cited_pages": cited_pages,
+                "source_images": source_image_count,
+                "images_added": images_added,
+            }
+        )
 
     return {
         "status": "applied" if apply else "preview",

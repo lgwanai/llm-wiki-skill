@@ -26,11 +26,7 @@ def iter_concepts(bundle_root: str | Path) -> list[Path]:
     root = Path(bundle_root)
     if not root.is_dir():
         return []
-    return [
-        path
-        for path in sorted(root.rglob("*.md"))
-        if path.name not in RESERVED
-    ]
+    return [path for path in sorted(root.rglob("*.md")) if path.name not in RESERVED]
 
 
 def find_concept(bundle_root: str | Path, identifier: str) -> Path | None:
@@ -97,6 +93,23 @@ def validate_bundle(bundle: str | Path) -> dict:
             errors.append({"path": rel, "message": error})
         elif not str(metadata.get("type", "")).strip():
             errors.append({"path": rel, "message": "required field 'type' is empty"})
+        else:
+            try:
+                from knowledge_claims import validate_claims
+
+                for message in validate_claims(metadata.get("claims")):
+                    warnings.append({"path": rel, "message": message})
+            except ImportError:
+                pass
+            if metadata.get("source_authority") not in (None, ""):
+                try:
+                    authority = float(metadata["source_authority"])
+                except (TypeError, ValueError):
+                    authority = -1.0
+                if not 0.0 <= authority <= 1.0:
+                    warnings.append(
+                        {"path": rel, "message": "source_authority must be between 0 and 1"}
+                    )
 
     return {"valid": not errors, "concepts": concepts, "errors": errors, "warnings": warnings}
 
@@ -186,9 +199,7 @@ def migrate_native_bundle(bundle: str | Path | None = None) -> dict:
         if tags:
             okf_meta["tags"] = tags
         timestamp = (
-            metadata.get("timestamp")
-            or metadata.get("published_at")
-            or metadata.get("created_at")
+            metadata.get("timestamp") or metadata.get("published_at") or metadata.get("created_at")
         )
         if timestamp:
             okf_meta["timestamp"] = timestamp

@@ -25,17 +25,21 @@ EDGES_FILE = os.path.join(GRAPH_DIR, "edges.json")
 
 def _load_json(path: str) -> dict | list:
     if not os.path.exists(path):
-        return [] if 'working' in path or 'memory' in path else ({'edges': []} if 'edges' in path else {})
+        return (
+            []
+            if "working" in path or "memory" in path
+            else ({"edges": []} if "edges" in path else {})
+        )
     try:
-        with open(path, encoding='utf-8') as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
     except (json.JSONDecodeError, OSError):
-        return [] if 'working' in path else ({'edges': []} if 'edges' in path else {})
+        return [] if "working" in path else ({"edges": []} if "edges" in path else {})
 
 
 def _save_json(path: str, data) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, 'w', encoding='utf-8') as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False, default=str)
 
 
@@ -44,7 +48,7 @@ def _now() -> str:
 
 
 def _slugify(name: str) -> str:
-    return re.sub(r'[^a-z0-9-]', '', name.lower().replace(' ', '-').replace('_', '-'))
+    return re.sub(r"[^a-z0-9-]", "", name.lower().replace(" ", "-").replace("_", "-"))
 
 
 def _auto_digest(topic: str, date: str) -> str | None:
@@ -56,7 +60,7 @@ def _auto_digest(topic: str, date: str) -> str | None:
         return None
 
     slug = _slugify(topic)
-    digest_id = f'session-{date}-{slug}'
+    digest_id = f"session-{date}-{slug}"
     now = _now()
 
     digest = f"""---
@@ -100,8 +104,8 @@ if this session contained valuable insights.
 
     sessions_dir = os.path.join(PAGES_DIR, "sessions")
     os.makedirs(sessions_dir, exist_ok=True)
-    digest_path = os.path.join(sessions_dir, f'{digest_id}.md')
-    with open(digest_path, 'w', encoding='utf-8') as f:
+    digest_path = os.path.join(sessions_dir, f"{digest_id}.md")
+    with open(digest_path, "w", encoding="utf-8") as f:
         f.write(digest)
 
     return digest_path
@@ -112,14 +116,18 @@ def on_memory_write(entity_id: str, claim: str, confidence: float) -> list[dict]
 
     Returns list of contradictions found.
     """
-    contradictions = check_contradictions([{
-        'id': f'fact-{_slugify(claim[:30])}',
-        'content': claim,
-        'entity_id': entity_id,
-        'confidence': confidence,
-    }])
+    contradictions = check_contradictions(
+        [
+            {
+                "id": f"fact-{_slugify(claim[:30])}",
+                "content": claim,
+                "entity_id": entity_id,
+                "confidence": confidence,
+            }
+        ]
+    )
     if contradictions:
-        msg = f'CONTRADICTION: {entity_id} — {claim[:60]}...'
+        msg = f"CONTRADICTION: {entity_id} — {claim[:60]}..."
         print(msg, file=sys.stderr)
     return contradictions
 
@@ -129,22 +137,22 @@ def create_digest(session_file: str, topic: str, date: str) -> str:
     if not os.path.exists(session_file):
         raise FileNotFoundError(f"Session file not found: {session_file}")
 
-    with open(session_file, encoding='utf-8') as f:
+    with open(session_file, encoding="utf-8") as f:
         content = f.read()
 
     slug = _slugify(topic)
-    digest_id = f'session-{date}-{slug}'
+    digest_id = f"session-{date}-{slug}"
 
     entities = []
-    for match in re.finditer(r'\[\[([^\]]+)\]\]', content):
-        target = match.group(1).split('|')[0].strip()
+    for match in re.finditer(r"\[\[([^\]]+)\]\]", content):
+        target = match.group(1).split("|")[0].strip()
         if target:
             entities.append(target)
 
     findings = []
-    for line in content.split('\n'):
+    for line in content.split("\n"):
         line = line.strip()
-        if line.startswith('- ') and len(line) > 10:
+        if line.startswith("- ") and len(line) > 10:
             findings.append(line[2:].strip())
 
     digest = f"""---
@@ -174,17 +182,17 @@ Auto-crystallized from working session.
 
 """
     for f in findings[:10]:
-        digest += f'- {f}\n'
+        digest += f"- {f}\n"
 
     digest += """
 ## Entities Discovered or Updated
 
 """
     for e in list(set(entities))[:10]:
-        digest += f'| [{e}](/concepts/{_slugify(e)}.md) | unknown | identified | 0.5 |\n'
+        digest += f"| [{e}](/concepts/{_slugify(e)}.md) | unknown | identified | 0.5 |\n"
 
     if entities:
-        digest = digest[:digest.rfind('\n')] + '\n'
+        digest = digest[: digest.rfind("\n")] + "\n"
 
     digest += """
 ## Open Questions
@@ -201,8 +209,8 @@ Auto-crystallized from working session.
 
     sessions_dir = os.path.join(PAGES_DIR, "sessions")
     os.makedirs(sessions_dir, exist_ok=True)
-    digest_path = os.path.join(sessions_dir, f'{digest_id}.md')
-    with open(digest_path, 'w', encoding='utf-8') as f:
+    digest_path = os.path.join(sessions_dir, f"{digest_id}.md")
+    with open(digest_path, "w", encoding="utf-8") as f:
         f.write(digest)
 
     return digest_path
@@ -211,26 +219,28 @@ Auto-crystallized from working session.
 def extract_facts(digest_content: str) -> list[dict]:
     """Extract standalone facts from digest for working memory."""
     facts = []
-    lines = digest_content.split('\n')
+    lines = digest_content.split("\n")
     in_findings = False
 
     for line in lines:
-        if '## Key Findings' in line:
+        if "## Key Findings" in line:
             in_findings = True
             continue
-        if in_findings and line.startswith('##'):
+        if in_findings and line.startswith("##"):
             break
-        if in_findings and line.startswith('- ') and len(line) > 5:
+        if in_findings and line.startswith("- ") and len(line) > 5:
             claim = line[2:].strip()
-            fact_id = f'fact-{_slugify(claim[:30])}'
-            facts.append({
-                'id': fact_id,
-                'content': claim,
-                'source': 'session-digest',
-                'entity_ids': [],
-                'timestamp': _now(),
-                'confidence': 0.5,
-            })
+            fact_id = f"fact-{_slugify(claim[:30])}"
+            facts.append(
+                {
+                    "id": fact_id,
+                    "content": claim,
+                    "source": "session-digest",
+                    "entity_ids": [],
+                    "timestamp": _now(),
+                    "confidence": 0.5,
+                }
+            )
 
     return facts
 
@@ -241,24 +251,25 @@ def update_graph(entities: list[dict], edges: list[dict]):
     if isinstance(registry, list):
         registry = {}
     for entity in entities:
-        eid = entity.get('id', '')
+        eid = entity.get("id", "")
         if eid and eid not in registry:
             registry[eid] = {
-                'id': eid, 'type': entity.get('type', 'unknown'),
-                'name': entity.get('name', eid),
-                'attributes': entity.get('attributes', {}),
-                'confidence': entity.get('confidence', 0.5),
-                'sources': [entity.get('source', 'crystallize')],
-                'page': f'pages/entities/{eid}.md',
+                "id": eid,
+                "type": entity.get("type", "unknown"),
+                "name": entity.get("name", eid),
+                "attributes": entity.get("attributes", {}),
+                "confidence": entity.get("confidence", 0.5),
+                "sources": [entity.get("source", "crystallize")],
+                "page": f"pages/entities/{eid}.md",
             }
     _save_json(ENTITIES_FILE, registry)
 
     edges_data = _load_json(EDGES_FILE)
-    all_edges = edges_data.get('edges', []) if isinstance(edges_data, dict) else []
+    all_edges = edges_data.get("edges", []) if isinstance(edges_data, dict) else []
     for edge in edges:
-        edge['created_at'] = _now()
+        edge["created_at"] = _now()
         all_edges.append(edge)
-    _save_json(EDGES_FILE, {'edges': all_edges})
+    _save_json(EDGES_FILE, {"edges": all_edges})
 
 
 def check_contradictions(facts: list[dict]) -> list[dict]:
@@ -269,47 +280,49 @@ def check_contradictions(facts: list[dict]) -> list[dict]:
 
     contradictions = []
     for fact in facts:
-        claim = fact.get('content') or fact.get('claim') or ''
+        claim = fact.get("content") or fact.get("claim") or ""
         for eid, entity in entities_data.items():
-            name = entity.get('name', '')
+            name = entity.get("name", "")
             if name and name.lower() in claim.lower():
-                existing_conf = entity.get('confidence', 0)
-                new_conf = fact.get('confidence', 0)
+                existing_conf = entity.get("confidence", 0)
+                new_conf = fact.get("confidence", 0)
                 if abs(existing_conf - new_conf) > 0.4:
-                    contradictions.append({
-                        'fact_id': fact.get('id'),
-                        'existing_entity': eid,
-                        'existing_confidence': existing_conf,
-                        'new_confidence': new_conf,
-                        'claim': claim[:80],
-                    })
+                    contradictions.append(
+                        {
+                            "fact_id": fact.get("id"),
+                            "existing_entity": eid,
+                            "existing_confidence": existing_conf,
+                            "new_confidence": new_conf,
+                            "claim": claim[:80],
+                        }
+                    )
     return contradictions
 
 
 def _main() -> None:
-    parser = argparse.ArgumentParser(description='llm-wiki Session Crystallization')
-    parser.add_argument('--session-file', help='Path to session transcript')
-    parser.add_argument('--topic', help='Session topic')
-    parser.add_argument('--date', help='Session date (default: today)')
-    parser.add_argument('--auto', action='store_true', help='Run without interaction')
+    parser = argparse.ArgumentParser(description="llm-wiki Session Crystallization")
+    parser.add_argument("--session-file", help="Path to session transcript")
+    parser.add_argument("--topic", help="Session topic")
+    parser.add_argument("--date", help="Session date (default: today)")
+    parser.add_argument("--auto", action="store_true", help="Run without interaction")
     args = parser.parse_args()
 
-    date = args.date or datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    date = args.date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     if args.auto and not args.session_file:
-        auto_topic = args.topic or f'auto-session-{date}'
+        auto_topic = args.topic or f"auto-session-{date}"
         digest_path = _auto_digest(auto_topic, date)
         if digest_path is None:
-            print(json.dumps({'status': 'skipped', 'reason': 'No wiki initialized'}, indent=2))
+            print(json.dumps({"status": "skipped", "reason": "No wiki initialized"}, indent=2))
             return
-        with open(digest_path, encoding='utf-8') as f:
+        with open(digest_path, encoding="utf-8") as f:
             digest_content = f.read()
     elif args.session_file:
         if not args.topic:
-            parser.error('--topic is required when --session-file is provided')
+            parser.error("--topic is required when --session-file is provided")
             sys.exit(1)
         digest_path = create_digest(args.session_file, args.topic, date)
-        with open(digest_path, encoding='utf-8') as f:
+        with open(digest_path, encoding="utf-8") as f:
             digest_content = f.read()
     else:
         parser.print_help()
@@ -326,13 +339,13 @@ def _main() -> None:
     contradictions = check_contradictions(facts)
 
     output = {
-        'digest_path': digest_path,
-        'facts_extracted': len(facts),
-        'working_memory_size': len(working),
-        'contradictions_found': len(contradictions),
+        "digest_path": digest_path,
+        "facts_extracted": len(facts),
+        "working_memory_size": len(working),
+        "contradictions_found": len(contradictions),
     }
     if contradictions:
-        output['contradiction_details'] = contradictions
+        output["contradiction_details"] = contradictions
 
     print(json.dumps(output, indent=2, ensure_ascii=False, default=str))
 

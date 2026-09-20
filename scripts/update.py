@@ -14,8 +14,17 @@ REPO_URL = "https://github.com/lgwanai/llm-wiki-skill"
 ROOT = Path(__file__).parent.parent
 BACKUP_DIR = ROOT / "backup"
 
-SKIP_DIRS = {".git", "__pycache__", ".venv", "venv", "dist", "backup", ".wiki", "node_modules",
-             "__MACOSX"}
+SKIP_DIRS = {
+    ".git",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "dist",
+    "backup",
+    ".wiki",
+    "node_modules",
+    "__MACOSX",
+}
 SKIP_GLOBS = ["*.pyc", ".DS_Store", "Thumbs.db", "*.egg-info"]
 
 
@@ -40,7 +49,8 @@ def backup_files():
         for f in sorted(files):
             tar.add(str(f), arcname=str(f.relative_to(ROOT)))
 
-    print(f"  Created: {backup_path.name} ({backup_path.stat().st_size / 1024:.0f} KB, {len(files)} files)")
+    size_kb = backup_path.stat().st_size / 1024
+    print(f"  Created: {backup_path.name} ({size_kb:.0f} KB, {len(files)} files)")
     return len(files)
 
 
@@ -61,8 +71,9 @@ def sync_files(src: Path):
         existing = local_config.read_text(encoding="utf-8")
         if "lgwanai" not in existing:
             local_config.write_text(
-                existing.replace("url =", f"# url =") + 
-                f'\n[remote "origin"]\n\turl = {REPO_URL}\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n'
+                existing.replace("url =", "# url =")
+                + f'\n[remote "origin"]\n\turl = {REPO_URL}\n'
+                + "\tfetch = +refs/heads/*:refs/remotes/origin/*\n"
             )
 
 
@@ -81,15 +92,14 @@ def cmd_update():
         os.chdir(ROOT)
 
         # Check for unstaged changes — stash if needed
-        has_changes = subprocess.run(
-            ["git", "diff", "--quiet"], capture_output=True
-        ).returncode != 0
+        has_changes = (
+            subprocess.run(["git", "diff", "--quiet"], capture_output=True).returncode != 0
+        )
 
         stashed = False
         if has_changes:
             result = subprocess.run(
-                ["git", "stash", "--include-untracked"],
-                capture_output=True, text=True, timeout=30
+                ["git", "stash", "--include-untracked"], capture_output=True, text=True, timeout=30
             )
             if result.returncode == 0:
                 stashed = True
@@ -98,17 +108,16 @@ def cmd_update():
         try:
             result = subprocess.run(
                 ["git", "pull", "--rebase", "origin", "main"],
-                capture_output=True, text=True, timeout=60
+                capture_output=True,
+                text=True,
+                timeout=60,
             )
             print(f"  {result.stdout.strip()}")
             if result.returncode != 0:
                 print(f"  WARNING: {result.stderr.strip()}")
         finally:
             if stashed:
-                subprocess.run(
-                    ["git", "stash", "pop"],
-                    capture_output=True, text=True, timeout=30
-                )
+                subprocess.run(["git", "stash", "pop"], capture_output=True, text=True, timeout=30)
                 print("  Restored local changes.")
     else:
         print("\n[1/3] No .git found — backing up then cloning...")
@@ -119,7 +128,9 @@ def cmd_update():
             try:
                 result = subprocess.run(
                     ["git", "clone", "--depth", "1", REPO_URL, tmp],
-                    capture_output=True, text=True, timeout=120
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
                 )
                 if result.returncode != 0:
                     print(f"  ERROR: clone failed: {result.stderr.strip()}")
@@ -128,10 +139,7 @@ def cmd_update():
 
                 # Copy .git and all files from clone
                 print("  Syncing files...")
-                shutil.copytree(
-                    str(Path(tmp) / ".git"), str(ROOT / ".git"),
-                    dirs_exist_ok=True
-                )
+                shutil.copytree(str(Path(tmp) / ".git"), str(ROOT / ".git"), dirs_exist_ok=True)
                 sync_files(Path(tmp))
             except subprocess.TimeoutExpired:
                 print("  ERROR: clone timed out. Check network.")

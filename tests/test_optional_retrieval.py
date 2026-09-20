@@ -14,9 +14,9 @@ import scripts.zvec_backend as zvec_backend
 
 
 def test_zvec_disabled_is_dependency_free(tmp_path):
-    assert zvec_backend.vector_search(
-        "query", tmp_path / "pages", tmp_path, {"enabled": False}
-    ) == []
+    assert (
+        zvec_backend.vector_search("query", tmp_path / "pages", tmp_path, {"enabled": False}) == []
+    )
 
 
 def test_flag_reranker_orders_candidates(monkeypatch):
@@ -65,8 +65,6 @@ def test_zvec_preserves_nested_okf_concept_id(monkeypatch, tmp_path):
         "index_path": "graph/zvec",
     }
 
-    results = zvec_backend.vector_search(
-        "approval", tmp_path / "pages", tmp_path, config, limit=3
-    )
+    results = zvec_backend.vector_search("approval", tmp_path / "pages", tmp_path, config, limit=3)
 
     assert results[0]["file"] == "legal/policy"

@@ -1,0 +1,2562 @@
+[
+  {
+    "doc_id": "fdac8d1e9ef56519371df7e6532df27d.pdf",
+    "question": "What is NARL stand for in this document?",
+    "answer": "National Atmospheric Research Laboratory",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[19]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Research report / Introduction",
+    "response": "In this document, NARL stands for **National Atmospheric Research Laboratory** [National Atmospheric Research Laboratory (NARL)](/entities/national-atmospheric-research-laboratory-narl.md) [source evidence, Page 19](/source/evidence/fdac8d1e9ef56519371df7e6532df27d-749bfb9a9992/pages/page-0019.md).\n\nThe document describes NARL as located at Gadanki near Tirupati, an autonomous society supported by the Department of Space (DOS), and a centre for atmospheric research [National Atmospheric Research Laboratory (NARL)](/entities/national-atmospheric-research-laboratory-narl.md).",
+    "retrieved_sources": [
+      "source/evidence/fdac8d1e9ef56519371df7e6532df27d-749bfb9a9992/pages/page-0016",
+      "source/evidence/fdac8d1e9ef56519371df7e6532df27d-749bfb9a9992/pages/page-0019",
+      "entities/national-atmospheric-research-laboratory-narl",
+      "entities/department-of-space-dos",
+      "entities/north-eastern-space-applications-centre-ne-sac"
+    ],
+    "pages_searched": 5,
+    "query_seconds": 2.638,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "entities/national-atmospheric-research-laboratory-narl",
+        "source/evidence/fdac8d1e9ef56519371df7e6532df27d-749bfb9a9992/pages/page-0019"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "749",
+          "claim": "In this document, NARL stands for **National Atmospheric Research Laboratory** [National Atmospheric Research Laboratory (NARL)](/entities/national-atmospheric-research-laboratory-narl.md) [source evidence, Page 19](/source/evidence/fdac8d1"
+        },
+        {
+          "value": "0019.",
+          "claim": "In this document, NARL stands for **National Atmospheric Research Laboratory** [National Atmospheric Research Laboratory (NARL)](/entities/national-atmospheric-research-laboratory-narl.md) [source evidence, Page 19](/source/evidence/fdac8d1"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "2310.05634v2.pdf",
+    "question": "According to author's definition on conscious incompetence, when can a sentence map to both [NA] and a list of sub-graph knowledge?",
+    "answer": "If it can be partially verified by the knowledge graph G",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[2, 3]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Academic paper",
+    "response": "According to the author's definition, a sentence can map to both [NA] and a list of sub-graph knowledge when it can be **partially verified by the knowledge graph G** [source/evidence/2310.05634v2-adfbf629a1bb/pages/page-0002].\n\nThe task formulation states that each sentence *s* may be grounded by zero up to multiple knowledge, where each knowledge *k* is a sub-graph of G [source/evidence/2310.05634v2-adfbf629a1bb/pages/page-0002]. In the \"Conscious Incompetence\" setting, [NA] is not a citation in the conventional sense but an indicator of a knowledge gap — i.e., the sentence requires supporting knowledge that is absent from the knowledge graph [source/evidence/2310.05634v2-adfbf629a1bb/pages/page-0002]. So when a sentence is only partially verifiable by G, it is grounded by the sub-graph knowledge that *is* present while simultaneously receiving [NA] for the absent knowledge.\n\nThis is illustrated in the model output examples, where a sentence such as \"Sentence2 [k2][k6][NA]\" carries both sub-graph citations and the [NA] indicator [source/evidence/2310.05634v2-adfbf629a1bb/pages/page-0004].",
+    "retrieved_sources": [
+      "source/evidence/2310.05634v2-adfbf629a1bb/pages/page-0002",
+      "source/evidence/2310.05634v2-adfbf629a1bb/pages/page-0004"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.494,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "2401.18059v1.pdf",
+    "question": "What model is the clustering algorithm of this paper based on, and what presents a challenge to it?",
+    "answer": "['Gaussian Mixture Models', 'the high dimensionality of vector embeddings']",
+    "answer_format": "List",
+    "task_type": "lookup",
+    "evidence_pages": "[3, 4]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Academic paper",
+    "response": "The clustering algorithm is based on **Gaussian Mixture Models (GMMs)** — specifically soft clustering, where nodes can belong to multiple clusters without a fixed number of clusters [Gaussian Mixture Models Clustering](/concepts/gaussian-mixture-models-clustering.md). The likelihood of a text vector x given membership in the kth Gaussian is P(x|k) = N(x; µk, Σk), with overall distribution P(x) = Σ πk N(x; µk, Σk) [source/evidence/2401.18059v1-60a23c2f08ac/pages/page-0004](/source/evidence/2401.18059v1-60a23c2f08ac/pages/page-0004).\n\nWhat presents a challenge to it is the **high dimensionality of vector embeddings**: distance metrics may behave poorly when used to measure similarity in high-dimensional spaces, which is a problem for traditional GMMs [source/evidence/2401.18059v1-60a23c2f08ac/pages/page-0004](/source/evidence/2401.18059v1-60a23c2f08ac/pages/page-0004). To mitigate this, the method employs Uniform Manifold Approximation and Projection (UMAP) for dimensionality reduction before GMM clustering [Gaussian Mixture Models Clustering](/concepts/gaussian-mixture-models-clustering.md).",
+    "retrieved_sources": [
+      "source/evidence/2401.18059v1-60a23c2f08ac/pages/page-0004",
+      "source/evidence/2401.18059v1-60a23c2f08ac/pages/page-0003",
+      "concepts/gaussian-mixture-models-clustering",
+      "concepts/expectation-maximization-algorithm"
+    ],
+    "pages_searched": 4,
+    "query_seconds": 3.754,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "concepts/gaussian-mixture-models-clustering"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "60",
+          "claim": "The clustering algorithm is based on **Gaussian Mixture Models (GMMs)** — specifically soft clustering, where nodes can belong to multiple clusters without a fixed number of clusters [Gaussian Mixture Models Clustering](/concepts/gaussian-m"
+        },
+        {
+          "value": "0004",
+          "claim": "The clustering algorithm is based on **Gaussian Mixture Models (GMMs)** — specifically soft clustering, where nodes can belong to multiple clusters without a fixed number of clusters [Gaussian Mixture Models Clustering](/concepts/gaussian-m"
+        },
+        {
+          "value": "60",
+          "claim": "The clustering algorithm is based on **Gaussian Mixture Models (GMMs)** — specifically soft clustering, where nodes can belong to multiple clusters without a fixed number of clusters [Gaussian Mixture Models Clustering](/concepts/gaussian-m"
+        },
+        {
+          "value": "0004",
+          "claim": "The clustering algorithm is based on **Gaussian Mixture Models (GMMs)** — specifically soft clustering, where nodes can belong to multiple clusters without a fixed number of clusters [Gaussian Mixture Models Clustering](/concepts/gaussian-m"
+        },
+        {
+          "value": "60",
+          "claim": "What presents a challenge to it is the **high dimensionality of vector embeddings**: distance metrics may behave poorly when used to measure similarity in high-dimensional spaces, which is a problem for traditional GMMs [source/evidence/240"
+        },
+        {
+          "value": "0004",
+          "claim": "What presents a challenge to it is the **high dimensionality of vector embeddings**: distance metrics may behave poorly when used to measure similarity in high-dimensional spaces, which is a problem for traditional GMMs [source/evidence/240"
+        },
+        {
+          "value": "60",
+          "claim": "What presents a challenge to it is the **high dimensionality of vector embeddings**: distance metrics may behave poorly when used to measure similarity in high-dimensional spaces, which is a problem for traditional GMMs [source/evidence/240"
+        },
+        {
+          "value": "0004",
+          "claim": "What presents a challenge to it is the **high dimensionality of vector embeddings**: distance metrics may behave poorly when used to measure similarity in high-dimensional spaces, which is a problem for traditional GMMs [source/evidence/240"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "watch_d.pdf",
+    "question": "How many steps are needed to customize the function of the Down Button?",
+    "answer": "2",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[9, 10]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Guidebook",
+    "response": "2 steps.\n\nTo customize the function of the Down button: (1) open the app list and go to the Down button customization screen, then (2) select an app and customize the function of the Down button [watch_d.pdf — Page 10](/source/evidence/watch_d-84d575b93dc3/pages/page-0010). The deterministic source calculation confirms a numbered procedure step count of 2 for this procedure.\n\nThe sentence \"After you have finished customizing the function, return to the home screen and press the Down button to open the current app\" is a postcondition/usage note, not an additional numbered step [watch_d.pdf — Page 10](/source/evidence/watch_d-84d575b93dc3/pages/page-0010).",
+    "retrieved_sources": [
+      "source/evidence/watch_d-84d575b93dc3/pages/page-0003",
+      "source/evidence/watch_d-84d575b93dc3/pages/page-0010"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.105,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "2312.10997v5.pdf",
+    "question": "Which method integrates knowledge into white-box models via directive fine-tuning?",
+    "answer": "PKG",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[9, 10]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Academic paper",
+    "response": "PKG\n\nThe method is PKG, described as \"an innovative method for integrating knowledge into white-box models via directive fine-tuning\" [2312.10997v5.pdf — Page 10](/source/evidence/2312.10997v5-ec04f19bfcc5/pages/page-0010). In this approach, the retriever module is directly substituted to generate relevant documents according to a query, which helps address difficulties encountered during fine-tuning and enhances model performance [2312.10997v5.pdf — Page 10](/source/evidence/2312.10997v5-ec04f19bfcc5/pages/page-0010).\n\nNote: the deterministic source calculation also extracts the named method as PKG from the same passage.",
+    "retrieved_sources": [
+      "source/evidence/2312.10997v5-ec04f19bfcc5/pages/page-0010",
+      "source/evidence/2312.10997v5-ec04f19bfcc5/pages/page-0016"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.182,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "379f44022bb27aa53efd5d322c7b57bf.pdf",
+    "question": "What is the telephone no for The Limes Residential Home?",
+    "answer": "01983 873655",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[1]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Research report / Introduction",
+    "response": "01983 873655\n\nThe telephone number for The Limes Residential Home is **01983 873655**, listed alongside its address at 43 Foreland Road, Bembridge, Isle of Wight, PO35 5XN on the inspection report cover page ([The Limes Residential Care Home Limited](/entities/the-limes-residential-care-home-limited.md), [report page 1](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0001.md)).",
+    "retrieved_sources": [
+      "source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0012",
+      "source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0001",
+      "entities/the-limes-residential-care-home-limited",
+      "concepts/complaints-handling"
+    ],
+    "pages_searched": 4,
+    "query_seconds": 1.6,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.5,
+      "cited_concepts": [
+        "entities/the-limes-residential-care-home-limited",
+        "source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0001"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "0001.",
+          "claim": "The telephone number for The Limes Residential Home is **01983 873655**, listed alongside its address at 43 Foreland Road, Bembridge, Isle of Wight, PO35 5XN on the inspection report cover page ([The Limes Residential Care Home Limited](/en"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "379f44022bb27aa53efd5d322c7b57bf.pdf",
+    "question": "How many regulations of the HSCA 2008 are breached in all according to this report?",
+    "answer": "7",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[6, 7, 8, 9, 10, 12, 13]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Research report / Introduction",
+    "response": "7 regulations of the HSCA 2008 (Regulated Activities) Regulations 2014 are breached in all.\n\nThe report states there were \"multiple breaches of the Health and Social Care Act 2008 (Regulated Activities) Regulations 2014\" [Summary of findings](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0002.md). The deterministic source calculation over the report's regulation tables gives a unique regulation count of 7, comprising HSCA regulation numbers 9, 10, 11, 12, 13, 17 and 18.\n\nThe individual regulations cited across the report's action tables are:\n\n| Regulation | Subject |\n|---|---|\n| Regulation 9 | Person-centred care [Action we have told the provider to take](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0015.md) |\n| Regulation 10 | Dignity and respect [Action we have told the provider to take](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0015.md) |\n| Regulation 11 | Need for consent [Action we have told the provider to take](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0015.md) |\n| Regulation 12 | (included in the calculated set of 7) |\n| Regulation 13 | Safeguarding service users from abuse and improper treatment [Enforcement actions](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0017.md) |\n| Regulation 17 | Good governance [Action we have told the provider to take](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0016.md) |\n| Regulation 18 | Staffing [Action we have told the provider to take](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0015.md) |\n\nNote that the report also cites \"Regulation 18 CQC (Registration) Regulations 2009 – Notification of other incidents\" [Action we have told the provider to take](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0016.md); this is a separate 2009 registration regulation, not one of the 7 HSCA 2008 (RA) Regulations 2014 counted above.",
+    "retrieved_sources": [
+      "source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0002",
+      "source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0015"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 9.134,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.5,
+      "cited_concepts": [
+        "source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0002",
+        "source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0015",
+        "source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0016",
+        "source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0017"
+      ],
+      "unsupported_citations": [
+        "source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0016",
+        "source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0017"
+      ],
+      "unverified_values": [
+        {
+          "value": "0002.",
+          "claim": "The report states there were \"multiple breaches of the Health and Social Care Act 2008 (Regulated Activities) Regulations 2014\" [Summary of findings](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0002.md). The de"
+        },
+        {
+          "value": "7,",
+          "claim": "The report states there were \"multiple breaches of the Health and Social Care Act 2008 (Regulated Activities) Regulations 2014\" [Summary of findings](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0002.md). The de"
+        },
+        {
+          "value": "9,",
+          "claim": "The report states there were \"multiple breaches of the Health and Social Care Act 2008 (Regulated Activities) Regulations 2014\" [Summary of findings](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0002.md). The de"
+        },
+        {
+          "value": "10,",
+          "claim": "The report states there were \"multiple breaches of the Health and Social Care Act 2008 (Regulated Activities) Regulations 2014\" [Summary of findings](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0002.md). The de"
+        },
+        {
+          "value": "11,",
+          "claim": "The report states there were \"multiple breaches of the Health and Social Care Act 2008 (Regulated Activities) Regulations 2014\" [Summary of findings](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0002.md). The de"
+        },
+        {
+          "value": "12,",
+          "claim": "The report states there were \"multiple breaches of the Health and Social Care Act 2008 (Regulated Activities) Regulations 2014\" [Summary of findings](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0002.md). The de"
+        },
+        {
+          "value": "13,",
+          "claim": "The report states there were \"multiple breaches of the Health and Social Care Act 2008 (Regulated Activities) Regulations 2014\" [Summary of findings](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0002.md). The de"
+        },
+        {
+          "value": "17",
+          "claim": "The report states there were \"multiple breaches of the Health and Social Care Act 2008 (Regulated Activities) Regulations 2014\" [Summary of findings](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0002.md). The de"
+        },
+        {
+          "value": "18.",
+          "claim": "The report states there were \"multiple breaches of the Health and Social Care Act 2008 (Regulated Activities) Regulations 2014\" [Summary of findings](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0002.md). The de"
+        },
+        {
+          "value": "18",
+          "claim": "Note that the report also cites \"Regulation 18 CQC (Registration) Regulations 2009 – Notification of other incidents\" [Action we have told the provider to take](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0016."
+        },
+        {
+          "value": "2009",
+          "claim": "Note that the report also cites \"Regulation 18 CQC (Registration) Regulations 2009 – Notification of other incidents\" [Action we have told the provider to take](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0016."
+        },
+        {
+          "value": "379",
+          "claim": "Note that the report also cites \"Regulation 18 CQC (Registration) Regulations 2009 – Notification of other incidents\" [Action we have told the provider to take](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0016."
+        },
+        {
+          "value": "1",
+          "claim": "Note that the report also cites \"Regulation 18 CQC (Registration) Regulations 2009 – Notification of other incidents\" [Action we have told the provider to take](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0016."
+        },
+        {
+          "value": "0016.",
+          "claim": "Note that the report also cites \"Regulation 18 CQC (Registration) Regulations 2009 – Notification of other incidents\" [Action we have told the provider to take](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0016."
+        },
+        {
+          "value": "2009",
+          "claim": "Note that the report also cites \"Regulation 18 CQC (Registration) Regulations 2009 – Notification of other incidents\" [Action we have told the provider to take](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0016."
+        },
+        {
+          "value": "7",
+          "claim": "Note that the report also cites \"Regulation 18 CQC (Registration) Regulations 2009 – Notification of other incidents\" [Action we have told the provider to take](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0016."
+        },
+        {
+          "value": "2008",
+          "claim": "Note that the report also cites \"Regulation 18 CQC (Registration) Regulations 2009 – Notification of other incidents\" [Action we have told the provider to take](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0016."
+        },
+        {
+          "value": "2014",
+          "claim": "Note that the report also cites \"Regulation 18 CQC (Registration) Regulations 2009 – Notification of other incidents\" [Action we have told the provider to take](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0016."
+        }
+      ],
+      "unsupported_claims": [
+        {
+          "claim": "Note that the report also cites \"Regulation 18 CQC (Registration) Regulations 2009 – Notification of other incidents\" [Action we have told the provider to take](/source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0016.",
+          "citation_ids": [
+            "source/evidence/379f44022bb27aa53efd5d322c7b57bf-1c312d19c387/pages/page-0016"
+          ],
+          "lexical_support": 0.0
+        }
+      ],
+      "claims_checked": 4
+    },
+    "error": null
+  },
+  {
+    "doc_id": "0b85477387a9d0cc33fca0f4becaa0e5.pdf",
+    "question": "Who Visited the U.S. Naval Medical Research centre on November 29, 2012 in the document?",
+    "answer": "Tim Ziemer",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[1]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "Rear Adm. (Ret.) Tim Ziemer, the U.S. Global Malaria Coordinator for the President's Malaria Initiative, visited the Naval Medical Research Center (NMRC) on November 29, 2012 [Rear Adm. Tim Ziemer](/entities/rear-adm.-tim-ziemer.md).\n\nHe came for a brief on current malaria vaccine research efforts and to tour the facility, where he visited a laboratory focused on the liver stage of infection as a vaccine target, spoke with researchers about antigen discovery and the humanized mouse model developed at NMRC, and toured the insectary to hear about clinical immunology and current malaria vaccine clinical trials [Rear Adm. Tim Ziemer](/entities/rear-adm.-tim-ziemer.md). The visit was covered in the NMRC newsletter under the headline \"NMRC Hosts Visit from U.S. Global Malaria Coordinator, President's Malaria Initiative\" [source evidence](/source/evidence/0b85477387a9d0cc33fca0f4becaa0e5-5734940bf6d6/pages/page-0001.md).",
+    "retrieved_sources": [
+      "source/evidence/0b85477387a9d0cc33fca0f4becaa0e5-5734940bf6d6/pages/page-0001",
+      "source/evidence/0b85477387a9d0cc33fca0f4becaa0e5-5734940bf6d6/pages/page-0008",
+      "entities/rear-adm.-tim-ziemer",
+      "entities/nmrc-rickettsial-diseases-research-program"
+    ],
+    "pages_searched": 4,
+    "query_seconds": 2.814,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "entities/rear-adm.-tim-ziemer",
+        "source/evidence/0b85477387a9d0cc33fca0f4becaa0e5-5734940bf6d6/pages/page-0001"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "5734940",
+          "claim": "He came for a brief on current malaria vaccine research efforts and to tour the facility, where he visited a laboratory focused on the liver stage of infection as a vaccine target, spoke with researchers about antigen discovery and the huma"
+        },
+        {
+          "value": "0001.",
+          "claim": "He came for a brief on current malaria vaccine research efforts and to tour the facility, where he visited a laboratory focused on the liver stage of infection as a vaccine target, spoke with researchers about antigen discovery and the huma"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "698bba535087fa9a7f9009e172a7f763.pdf",
+    "question": "What is the Email address in this document on the second cover page?",
+    "answer": "['combshj@unk.edu']",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[3]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Research report / Introduction",
+    "response": "combshj@unk.edu\n\nThis is the email address listed on the second cover page (Page 2), under the \"Prepared by\" block for H. Jason Combs (PI), Anne M. Bauer, and John T. Bauer, along with the address 501 West 28th Street, Kearney, Nebraska 68845, and phone (308) 236-5137 [source/evidence/698bba535087fa9a7f9009e172a7f763-bb8227756736/pages/page-0002](/source/evidence/698bba535087fa9a7f9009e172a7f763-bb8227756736/pages/page-0002.md).",
+    "retrieved_sources": [
+      "source/evidence/698bba535087fa9a7f9009e172a7f763-bb8227756736/pages/page-0002",
+      "source/evidence/698bba535087fa9a7f9009e172a7f763-bb8227756736/pages/page-0009"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.156,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "source/evidence/698bba535087fa9a7f9009e172a7f763-bb8227756736/pages/page-0002"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "68845,",
+          "claim": "This is the email address listed on the second cover page (Page 2), under the \"Prepared by\" block for H. Jason Combs (PI), Anne M. Bauer, and John T. Bauer, along with the address 501 West 28th Street, Kearney, Nebraska 68845, and phone (30"
+        },
+        {
+          "value": "0002",
+          "claim": "This is the email address listed on the second cover page (Page 2), under the \"Prepared by\" block for H. Jason Combs (PI), Anne M. Bauer, and John T. Bauer, along with the address 501 West 28th Street, Kearney, Nebraska 68845, and phone (30"
+        },
+        {
+          "value": "0002.",
+          "claim": "This is the email address listed on the second cover page (Page 2), under the \"Prepared by\" block for H. Jason Combs (PI), Anne M. Bauer, and John T. Bauer, along with the address 501 West 28th Street, Kearney, Nebraska 68845, and phone (30"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 1
+    },
+    "error": null
+  },
+  {
+    "doc_id": "698bba535087fa9a7f9009e172a7f763.pdf",
+    "question": "How many square miles did the Hamilton country covers on year 1882? Return me a rounded integer.",
+    "answer": "538",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[11]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Research report / Introduction",
+    "response": "538 square miles — rounded to the nearest integer, **538**.\n\nThe survey states that \"Hamilton County covers approximately 538 square miles\" [Hamilton County Historic Building Survey](/source/evidence/698bba535087fa9a7f9009e172a7f763-bb8227756736/pages/page-0009.md). The same passage notes that Andreas (1882), in the *History of the State of Nebraska*, described the area as the \"garden portion of the state,\" and that elevations range from 1,660 feet in the east to nearly 1,900 feet in the west [Hamilton County Historic Building Survey](/source/evidence/698bba535087fa9a7f9009e172a7f763-bb8227756736/pages/page-0009.md).\n\nNote: the 538 figure is given as the county's approximate area in the survey text; the document does not present a separate 1882-specific measurement, so the 1882 attribution applies only to Andreas's description, not to a distinct acreage figure for that year [uncertain].",
+    "retrieved_sources": [
+      "source/evidence/698bba535087fa9a7f9009e172a7f763-bb8227756736/pages/page-0007",
+      "source/evidence/698bba535087fa9a7f9009e172a7f763-bb8227756736/pages/page-0009"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.498,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.3333,
+      "cited_concepts": [
+        "source/evidence/698bba535087fa9a7f9009e172a7f763-bb8227756736/pages/page-0009"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "0009.",
+          "claim": "The survey states that \"Hamilton County covers approximately 538 square miles\" [Hamilton County Historic Building Survey](/source/evidence/698bba535087fa9a7f9009e172a7f763-bb8227756736/pages/page-0009.md). The same passage notes that Andrea"
+        },
+        {
+          "value": "0009.",
+          "claim": "The survey states that \"Hamilton County covers approximately 538 square miles\" [Hamilton County Historic Building Survey](/source/evidence/698bba535087fa9a7f9009e172a7f763-bb8227756736/pages/page-0009.md). The same passage notes that Andrea"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "698bba535087fa9a7f9009e172a7f763.pdf",
+    "question": "How many square miles does the Hamilton country covers according to the document? Give me an appropriate integer.",
+    "answer": "538",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[11]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Research report / Introduction",
+    "response": "538 square miles.\n\nAccording to the survey document, \"Hamilton County covers approximately 538 square miles\" [source/evidence/698bba535087fa9a7f9009e172a7f763-bb8227756736/pages/page-0009]. The appropriate integer is 538.",
+    "retrieved_sources": [
+      "source/evidence/698bba535087fa9a7f9009e172a7f763-bb8227756736/pages/page-0009",
+      "source/evidence/698bba535087fa9a7f9009e172a7f763-bb8227756736/pages/page-0007"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.824,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "e79deb02a0c0e87511080836c5d4347b.pdf",
+    "question": "Who produced the document that was revised on May 2016?",
+    "answer": "Florida Department of Health",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[2]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "Florida Department of Health\n\nThe document revised May 2016 states \"Produced by: Florida Department of Health, 4052 Bald Cypress Way, Bin # A00, Tallahassee, FL 32399-1701\" [source/evidence/e79deb02a0c0e87511080836c5d4347b-3c7e1da15eb5/pages/page-0002](/source/evidence/e79deb02a0c0e87511080836c5d4347b-3c7e1da15eb5/pages/page-0002). This is the Division of Medical Quality Assurance Strategic Plan 2016-2018 [source/evidence/e79deb02a0c0e87511080836c5d4347b-3c7e1da15eb5/pages/page-0002](/source/evidence/e79deb02a0c0e87511080836c5d4347b-3c7e1da15eb5/pages/page-0002).",
+    "retrieved_sources": [
+      "source/evidence/e79deb02a0c0e87511080836c5d4347b-3c7e1da15eb5/pages/page-0002",
+      "source/evidence/e79deb02a0c0e87511080836c5d4347b-3c7e1da15eb5/pages/page-0004"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.08,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 1
+    },
+    "error": null
+  },
+  {
+    "doc_id": "e79deb02a0c0e87511080836c5d4347b.pdf",
+    "question": "What is the name of the governor as mentioned on the first page of the document?",
+    "answer": "Rick Scott",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[1]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "Rick Scott\n\nOn the first page of the document, the governor is listed as Rick Scott, appearing under the title \"GOVERNOR\" [Florida Department of Health, Page 1](/source/evidence/e79deb02a0c0e87511080836c5d4347b-3c7e1da15eb5/pages/page-0001.md). The same page also identifies Celeste Philip, MD, MPH, as State Surgeon General and Secretary.",
+    "retrieved_sources": [
+      "source/evidence/e79deb02a0c0e87511080836c5d4347b-3c7e1da15eb5/pages/page-0001",
+      "source/evidence/e79deb02a0c0e87511080836c5d4347b-3c7e1da15eb5/pages/page-0011"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.965,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "source/evidence/e79deb02a0c0e87511080836c5d4347b-3c7e1da15eb5/pages/page-0001"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "0001.",
+          "claim": "On the first page of the document, the governor is listed as Rick Scott, appearing under the title \"GOVERNOR\" [Florida Department of Health, Page 1](/source/evidence/e79deb02a0c0e87511080836c5d4347b-3c7e1da15eb5/pages/page-0001.md). The sam"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 1
+    },
+    "error": null
+  },
+  {
+    "doc_id": "User_Manual_1500S_Classic_EN.pdf",
+    "question": "How many coffee quality levels can the coffee machine be set to?",
+    "answer": "7",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[39]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Guidebook",
+    "response": "The coffee machine can be set to **7 coffee quality levels** (levels 1 to 7) [WMF 1500 S Beverage Settings](/entities/wmf-1500-s-beverage-settings).\n\nThe quality levels influence coffee brewing, and the higher the level, the more intensive the release of flavour and aromatic substances in the coffee. The levels are: 1 = after pressing, space is provided for the ground coffee to swell; 2 = after pressing, the coffee is brewed immediately; 3 = after pressing, a pre-infusion occurs; 4 = after pressing and a pre-infusion, wet pressing occurs; 5 = same as Quality 4, but with stronger wet pressing; 6 = same as Quality 5, but with stronger and longer wet pressing; 7 = same as Quality 6, but with stronger and longer wet pressing [User Manual Page 39](/source/evidence/user_manual_1500s_classic_en-212b26f853e5/pages/page-0039).\n\nNote that this is distinct from the Dynamic Milk foam quality levels (Firm, Soft, Creamy, Fluffy), which are a separate setting for milk foam rather than coffee quality [User Manual Page 39](/source/evidence/user_manual_1500s_classic_en-212b26f853e5/pages/page-0039).",
+    "retrieved_sources": [
+      "source/evidence/user_manual_1500s_classic_en-212b26f853e5/pages/page-0039",
+      "source/evidence/user_manual_1500s_classic_en-212b26f853e5/pages/page-0059",
+      "entities/wmf-1500-s-beverage-settings"
+    ],
+    "pages_searched": 3,
+    "query_seconds": 2.425,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "camry_ebrochure.pdf",
+    "question": "What technology does the car’s Wi-Fi Connect use?",
+    "answer": "4G",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[6]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Brochure",
+    "response": "4G connectivity. The Camry's Wi-Fi Connect turns the vehicle into a hotspot using 4G connectivity [camry_ebrochure.pdf — Page 6](/source/evidence/camry_ebrochure-f742e1843c48/pages/page-0006). The same page notes the service is \"4G network dependent\" and lists it as an AT&T Hotspot [camry_ebrochure.pdf — Page 6](/source/evidence/camry_ebrochure-f742e1843c48/pages/page-0006).",
+    "retrieved_sources": [
+      "source/evidence/camry_ebrochure-f742e1843c48/pages/page-0025",
+      "source/evidence/camry_ebrochure-f742e1843c48/pages/page-0006"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.601,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 1
+    },
+    "error": null
+  },
+  {
+    "doc_id": "8dfc21ec151fb9d3578fc32d5c4e5df9.pdf",
+    "question": "What's the geographic market name for EPS Code AR01?\n\n",
+    "answer": "Little Rock",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[8]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Guidebook",
+    "response": "Little Rock [Enrollment Planning Service, p.8](/source/evidence/8dfc21ec151fb9d3578fc32d5c4e5df9-d14f843adb7b/pages/page-0008.md).\n\nIn the Arkansas (AR) section of the EPS geographic market table, market 1 is listed as \"Little Rock\" with EPS Code AR01 [p.8](/source/evidence/8dfc21ec151fb9d3578fc32d5c4e5df9-d14f843adb7b/pages/page-0008.md). This matches the code format described in the EPS Geographic Market Codes concept, where each code is the state's two-letter abbreviation plus a two-digit number [EPS Geographic Market Codes](/concepts/eps-geographic-market-codes.md).",
+    "retrieved_sources": [
+      "source/evidence/8dfc21ec151fb9d3578fc32d5c4e5df9-d14f843adb7b/pages/page-0008",
+      "source/evidence/8dfc21ec151fb9d3578fc32d5c4e5df9-d14f843adb7b/pages/page-0001",
+      "concepts/eps-geographic-market-codes"
+    ],
+    "pages_searched": 3,
+    "query_seconds": 2.714,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "concepts/eps-geographic-market-codes",
+        "source/evidence/8dfc21ec151fb9d3578fc32d5c4e5df9-d14f843adb7b/pages/page-0008"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "0008.",
+          "claim": "Little Rock [Enrollment Planning Service, p.8](/source/evidence/8dfc21ec151fb9d3578fc32d5c4e5df9-d14f843adb7b/pages/page-0008.md)."
+        },
+        {
+          "value": "0008.",
+          "claim": "In the Arkansas (AR) section of the EPS geographic market table, market 1 is listed as \"Little Rock\" with EPS Code AR01 [p.8](/source/evidence/8dfc21ec151fb9d3578fc32d5c4e5df9-d14f843adb7b/pages/page-0008.md). This matches the code format d"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "mmdetection-readthedocs-io-en-v2.18.0.pdf",
+    "question": "If I want to use the decoupled variant of the detector in the paper `SOLO: Segmenting Objects by Locations`, what is the implemented class name in `mmdet.models.dense_heads`?",
+    "answer": "DecoupledSOLOHead",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[336]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Guidebook",
+    "response": "`mmdet.models.dense_heads.DecoupledSOLOHead` — this is the decoupled SOLO mask head used in *SOLO: Segmenting Objects by Locations* [DecoupledSOLOHead](/source/evidence/mmdetection-readthedocs-io-en-v2.18.0-1026bd089de9/pages/page-0335.md).\n\nNote that the page also lists a separate `DecoupledSOLOLightHead` (\"Decoupled Light SOLO mask head used in SOLO: Segmenting Objects by Locations\") [DecoupledSOLOLightHead](/source/evidence/mmdetection-readthedocs-io-en-v2.18.0-1026bd089de9/pages/page-0336.md); since you asked for the decoupled variant without the \"Light\" modifier, the matching class is `DecoupledSOLOHead`.",
+    "retrieved_sources": [
+      "source/evidence/mmdetection-readthedocs-io-en-v2.18.0-1026bd089de9/pages/page-0336",
+      "source/evidence/mmdetection-readthedocs-io-en-v2.18.0-1026bd089de9/pages/page-0335"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 6.219,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "source/evidence/mmdetection-readthedocs-io-en-v2.18.0-1026bd089de9/pages/page-0335",
+        "source/evidence/mmdetection-readthedocs-io-en-v2.18.0-1026bd089de9/pages/page-0336"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "18.0-1026",
+          "claim": "`mmdet.models.dense_heads.DecoupledSOLOHead` — this is the decoupled SOLO mask head used in *SOLO: Segmenting Objects by Locations* [DecoupledSOLOHead](/source/evidence/mmdetection-readthedocs-io-en-v2.18.0-1026bd089de9/pages/page-0335.md)."
+        },
+        {
+          "value": "0335.",
+          "claim": "`mmdet.models.dense_heads.DecoupledSOLOHead` — this is the decoupled SOLO mask head used in *SOLO: Segmenting Objects by Locations* [DecoupledSOLOHead](/source/evidence/mmdetection-readthedocs-io-en-v2.18.0-1026bd089de9/pages/page-0335.md)."
+        },
+        {
+          "value": "18.0-1026",
+          "claim": "Note that the page also lists a separate `DecoupledSOLOLightHead` (\"Decoupled Light SOLO mask head used in SOLO: Segmenting Objects by Locations\") [DecoupledSOLOLightHead](/source/evidence/mmdetection-readthedocs-io-en-v2.18.0-1026bd089de9/"
+        },
+        {
+          "value": "0336.",
+          "claim": "Note that the page also lists a separate `DecoupledSOLOLightHead` (\"Decoupled Light SOLO mask head used in SOLO: Segmenting Objects by Locations\") [DecoupledSOLOLightHead](/source/evidence/mmdetection-readthedocs-io-en-v2.18.0-1026bd089de9/"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "mmdetection-readthedocs-io-en-v2.18.0.pdf",
+    "question": "Which paper uses the Fast NMS processing?",
+    "answer": "YOLACT",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[229]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Guidebook",
+    "response": "The paper is **YOLACT** — the `fast_nms` function is documented as \"Fast NMS in YOLACT\" [mmdetection-readthedocs-io-en-v2.18.0.pdf — Page 229](/source/evidence/mmdetection-readthedocs-io-en-v2.18.0-1026bd089de9/pages/page-0228.md).\n\nThe function signature is `mmdet.core.post_processing.fast_nms(multi_bboxes, multi_scores, multi_coeffs, score_thr, iou_thr, top_k, max_num=-1)`. The documentation explains that Fast NMS allows already-removed detections to suppress other detections so that every instance can be decided to be kept or discarded in parallel, which is not possible in traditional NMS; this relaxation allows Fast NMS to be implemented entirely in standard GPU-accelerated matrix operations [mmdetection-readthedocs-io-en-v2.18.0.pdf — Page 229](/source/evidence/mmdetection-readthedocs-io-en-v2.18.0-1026bd089de9/pages/page-0228.md).",
+    "retrieved_sources": [
+      "source/evidence/mmdetection-readthedocs-io-en-v2.18.0-1026bd089de9/pages/page-0228",
+      "source/evidence/mmdetection-readthedocs-io-en-v2.18.0-1026bd089de9/pages/page-0230"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 3.655,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "source/evidence/mmdetection-readthedocs-io-en-v2.18.0-1026bd089de9/pages/page-0228"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "18.0-1026",
+          "claim": "The paper is **YOLACT** — the `fast_nms` function is documented as \"Fast NMS in YOLACT\" [mmdetection-readthedocs-io-en-v2.18.0.pdf — Page 229](/source/evidence/mmdetection-readthedocs-io-en-v2.18.0-1026bd089de9/pages/page-0228.md)."
+        },
+        {
+          "value": "0228.",
+          "claim": "The paper is **YOLACT** — the `fast_nms` function is documented as \"Fast NMS in YOLACT\" [mmdetection-readthedocs-io-en-v2.18.0.pdf — Page 229](/source/evidence/mmdetection-readthedocs-io-en-v2.18.0-1026bd089de9/pages/page-0228.md)."
+        },
+        {
+          "value": "18.0-1026",
+          "claim": "The function signature is `mmdet.core.post_processing.fast_nms(multi_bboxes, multi_scores, multi_coeffs, score_thr, iou_thr, top_k, max_num=-1)`. The documentation explains that Fast NMS allows already-removed detections to suppress other d"
+        },
+        {
+          "value": "0228.",
+          "claim": "The function signature is `mmdet.core.post_processing.fast_nms(multi_bboxes, multi_scores, multi_coeffs, score_thr, iou_thr, top_k, max_num=-1)`. The documentation explains that Fast NMS allows already-removed detections to suppress other d"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "e639029d16094ea71d964e2fb953952b.pdf",
+    "question": "Since what year has Mr. Kildee been involved with child nutrition?",
+    "answer": "1954",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[8]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "1954 — Mr. Kildee states he has been involved with child nutrition since about 1954, per the deterministic source calculation (involvement_start_year: 1954) drawn from his statement on [Page 8](/source/evidence/e639029d16094ea71d964e2fb953952b-0b75d5f5d158/pages/page-0008.md), where his remarks begin \"I have been involved with child nutrition since about 1954.\"",
+    "retrieved_sources": [
+      "source/evidence/e639029d16094ea71d964e2fb953952b-0b75d5f5d158/pages/page-0008",
+      "source/evidence/e639029d16094ea71d964e2fb953952b-0b75d5f5d158/pages/page-0010"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.756,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "source/evidence/e639029d16094ea71d964e2fb953952b-0b75d5f5d158/pages/page-0008"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "0008.",
+          "claim": "1954 — Mr. Kildee states he has been involved with child nutrition since about 1954, per the deterministic source calculation (involvement_start_year: 1954) drawn from his statement on [Page 8](/source/evidence/e639029d16094ea71d964e2fb9539"
+        },
+        {
+          "value": "1954.",
+          "claim": "1954 — Mr. Kildee states he has been involved with child nutrition since about 1954, per the deterministic source calculation (involvement_start_year: 1954) drawn from his statement on [Page 8](/source/evidence/e639029d16094ea71d964e2fb9539"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 1
+    },
+    "error": null
+  },
+  {
+    "doc_id": "e639029d16094ea71d964e2fb953952b.pdf",
+    "question": "What date is mentioned at the beginning of page(1)? Format the date as YYYY-MM-DD",
+    "answer": "2003-10-07",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[5]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "2003-10-07\n\nThe date at the beginning of page 1 is October 7, 2003, appearing beneath \"One Hundred Eighth Congress / First Session\" [source/evidence/e639029d16094ea71d964e2fb953952b-0b75d5f5d158/pages/page-0001]. This matches the hearing date recorded elsewhere: the hearing was held on October 7, 2003 [entities/hearing-on-improving-the-quality-and-efficiency-of-commodity-distribution-to-federal-child-nutrition-programs] and was the first Full Committee hearing to prepare members for child nutrition reauthorization [concepts/child-nutrition-act-reauthorization].",
+    "retrieved_sources": [
+      "source/evidence/e639029d16094ea71d964e2fb953952b-0b75d5f5d158/pages/page-0001",
+      "source/evidence/e639029d16094ea71d964e2fb953952b-0b75d5f5d158/pages/page-0014",
+      "concepts/child-nutrition-act-reauthorization",
+      "entities/hearing-on-improving-the-quality-and-efficiency-of-commodity-distribution-to-federal-child-nutrition-programs"
+    ],
+    "pages_searched": 4,
+    "query_seconds": 1.926,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "a5879805d70c854ea4361e43a84e3bb2.pdf",
+    "question": "Format the date mentioned on page 14 as YYYY-MM-DD.",
+    "answer": "2021-02-08",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[14]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "2021-02-08\n\nThe date on page 14 is \"Montréal, February 8, 2021\" [a5879805d70c854ea4361e43a84e3bb2.pdf — Page 14](/source/evidence/a5879805d70c854ea4361e43a84e3bb2-58acf97cad25/pages/page-0014), which the page's detected fields also record as `date: February 8, 2021`. Formatted as YYYY-MM-DD, that is 2021-02-08.",
+    "retrieved_sources": [
+      "source/evidence/a5879805d70c854ea4361e43a84e3bb2-58acf97cad25/pages/page-0014",
+      "source/evidence/a5879805d70c854ea4361e43a84e3bb2-58acf97cad25/pages/page-0011"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.82,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "a5879805d70c854ea4361e43a84e3bb2.pdf",
+    "question": "What is INF SERCRL LLP FAX No on page fourteen?",
+    "answer": "514-312-0292",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[14]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The INF SERCRL LLP fax number on page fourteen is **514-312-0292**.\n\nPage 14 lists \"INF LLP\" (Mtre Marianne Ignacz and Mtre Laurent Nahmiash) at 255, Saint-Jacques Street, 3rd floor, Montréal, Québec H2Y 1M6, with Tel: 514-312-0293 and Fax: 514-312-0292, as attorneys for The Toronto-Dominion Bank [page-0014](/source/evidence/a5879805d70c854ea4361e43a84e3bb2-58acf97cad25/pages/page-0014.md). The same fax number appears on the following page's cover block [page-0015](/source/evidence/a5879805d70c854ea4361e43a84e3bb2-58acf97cad25/pages/page-0015.md).\n\nNote: the document names the firm \"INF LLP,\" not \"INF SERCRL LLP\"; the fax value is unchanged.",
+    "retrieved_sources": [
+      "source/evidence/a5879805d70c854ea4361e43a84e3bb2-58acf97cad25/pages/page-0014",
+      "source/evidence/a5879805d70c854ea4361e43a84e3bb2-58acf97cad25/pages/page-0015"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.931,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.3333,
+      "cited_concepts": [
+        "source/evidence/a5879805d70c854ea4361e43a84e3bb2-58acf97cad25/pages/page-0014",
+        "source/evidence/a5879805d70c854ea4361e43a84e3bb2-58acf97cad25/pages/page-0015"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "514-312-0292,",
+          "claim": "Page 14 lists \"INF LLP\" (Mtre Marianne Ignacz and Mtre Laurent Nahmiash) at 255, Saint-Jacques Street, 3rd floor, Montréal, Québec H2Y 1M6, with Tel: 514-312-0293 and Fax: 514-312-0292, as attorneys for The Toronto-Dominion Bank [page-0014]"
+        },
+        {
+          "value": "0014",
+          "claim": "Page 14 lists \"INF LLP\" (Mtre Marianne Ignacz and Mtre Laurent Nahmiash) at 255, Saint-Jacques Street, 3rd floor, Montréal, Québec H2Y 1M6, with Tel: 514-312-0293 and Fax: 514-312-0292, as attorneys for The Toronto-Dominion Bank [page-0014]"
+        },
+        {
+          "value": "0014.",
+          "claim": "Page 14 lists \"INF LLP\" (Mtre Marianne Ignacz and Mtre Laurent Nahmiash) at 255, Saint-Jacques Street, 3rd floor, Montréal, Québec H2Y 1M6, with Tel: 514-312-0293 and Fax: 514-312-0292, as attorneys for The Toronto-Dominion Bank [page-0014]"
+        },
+        {
+          "value": "0015",
+          "claim": "Page 14 lists \"INF LLP\" (Mtre Marianne Ignacz and Mtre Laurent Nahmiash) at 255, Saint-Jacques Street, 3rd floor, Montréal, Québec H2Y 1M6, with Tel: 514-312-0293 and Fax: 514-312-0292, as attorneys for The Toronto-Dominion Bank [page-0014]"
+        },
+        {
+          "value": "0015.",
+          "claim": "Page 14 lists \"INF LLP\" (Mtre Marianne Ignacz and Mtre Laurent Nahmiash) at 255, Saint-Jacques Street, 3rd floor, Montréal, Québec H2Y 1M6, with Tel: 514-312-0293 and Fax: 514-312-0292, as attorneys for The Toronto-Dominion Bank [page-0014]"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "a5879805d70c854ea4361e43a84e3bb2.pdf",
+    "question": "What type of court is noted on the cover page?",
+    "answer": "SUPERIOR COURT",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[1]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "Superior Court (Class Action Division) of Québec.\n\nThe cover page of the defence identifies the court as \"SUPERIOR COURT\" with the notation \"(Class Action)\" [a5879805d70c854ea4361e43a84e3bb2.pdf — Page 1](/source/evidence/a5879805d70c854ea4361e43a84e3bb2-58acf97cad25/pages/page-0001), and the backsheet repeats \"SUPERIOR COURT (Class Action Division)\" [a5879805d70c854ea4361e43a84e3bb2.pdf — Page 15](/source/evidence/a5879805d70c854ea4361e43a84e3bb2-58acf97cad25/pages/page-0015). The entity record likewise lists the court as \"Superior Court of Québec (Class Action Division)\" [Defence of the Defendant The Toronto-Dominion Bank](/entities/defence-of-the-defendant-the-toronto-dominion-bank).",
+    "retrieved_sources": [
+      "source/evidence/a5879805d70c854ea4361e43a84e3bb2-58acf97cad25/pages/page-0001",
+      "source/evidence/a5879805d70c854ea4361e43a84e3bb2-58acf97cad25/pages/page-0013",
+      "entities/defence-of-the-defendant-the-toronto-dominion-bank"
+    ],
+    "pages_searched": 3,
+    "query_seconds": 1.999,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "a5879805d70c854ea4361e43a84e3bb2.pdf",
+    "question": "what is the email id of the mtre laurent nahmiash ?",
+    "answer": "lnahmiash@infavocats.com",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[14]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The email address of Mtre Laurent Nahmiash is **lnahmiash@infavocats.com** [Page 14](/source/evidence/a5879805d70c854ea4361e43a84e3bb2-58acf97cad25/pages/page-0014), [Page 15](/source/evidence/a5879805d70c854ea4361e43a84e3bb2-58acf97cad25/pages/page-0015).\n\nHe is listed at INF LLP alongside Mtre Marianne Ignacz (mignacz@infavocats.com), at 255, Saint-Jacques Street, 3rd floor, Montréal, Québec H2Y 1M6, as attorneys for The Toronto-Dominion Bank [Page 14](/source/evidence/a5879805d70c854ea4361e43a84e3bb2-58acf97cad25/pages/page-0014).",
+    "retrieved_sources": [
+      "source/evidence/a5879805d70c854ea4361e43a84e3bb2-58acf97cad25/pages/page-0014",
+      "source/evidence/a5879805d70c854ea4361e43a84e3bb2-58acf97cad25/pages/page-0015"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.065,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "owners-manual-2170416.pdf",
+    "question": "In the \"Before Using Your Refrigerator\" Section, \"Installing it properly\" is the step before or after the step \"Plugging it in\"? ",
+    "answer": "after",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[7, 8]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Guidebook",
+    "response": "\"Installing it properly\" comes **after** \"Plugging it in\".\n\nIn the \"Before Using Your Refrigerator\" section, the order of topics is: Cleaning your refrigerator, then Plugging it in, then Installing it properly, then Leveling it. This is confirmed by the table of contents, which lists \"Plugging it in ......... 6\" before \"Installing it properly ......... 7\" [owners-manual-2170416.pdf — Page 2](/source/evidence/owners-manual-2170416-c62e830cb7ec/pages/page-0002.md). The section itself also states it tells you how to \"clean it, connect it to a power source, install it, and level it\" [owners-manual-2170416.pdf — Page 7](/source/evidence/owners-manual-2170416-c62e830cb7ec/pages/page-0007.md), placing installation after the power connection.",
+    "retrieved_sources": [
+      "source/evidence/owners-manual-2170416-c62e830cb7ec/pages/page-0007",
+      "source/evidence/owners-manual-2170416-c62e830cb7ec/pages/page-0002"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.437,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.5,
+      "cited_concepts": [
+        "source/evidence/owners-manual-2170416-c62e830cb7ec/pages/page-0002",
+        "source/evidence/owners-manual-2170416-c62e830cb7ec/pages/page-0007"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "2170416-",
+          "claim": "In the \"Before Using Your Refrigerator\" section, the order of topics is: Cleaning your refrigerator, then Plugging it in, then Installing it properly, then Leveling it. This is confirmed by the table of contents, which lists \"Plugging it in"
+        },
+        {
+          "value": "0002.",
+          "claim": "In the \"Before Using Your Refrigerator\" section, the order of topics is: Cleaning your refrigerator, then Plugging it in, then Installing it properly, then Leveling it. This is confirmed by the table of contents, which lists \"Plugging it in"
+        },
+        {
+          "value": "2170416-",
+          "claim": "In the \"Before Using Your Refrigerator\" section, the order of topics is: Cleaning your refrigerator, then Plugging it in, then Installing it properly, then Leveling it. This is confirmed by the table of contents, which lists \"Plugging it in"
+        },
+        {
+          "value": "0007.",
+          "claim": "In the \"Before Using Your Refrigerator\" section, the order of topics is: Cleaning your refrigerator, then Plugging it in, then Installing it properly, then Leveling it. This is confirmed by the table of contents, which lists \"Plugging it in"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "owners-manual-2170416.pdf",
+    "question": "How many steps are required to replace the grille? Write the answer in integer format.",
+    "answer": "3",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[17]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Guidebook",
+    "response": "3\n\nTo replace the grille: (1) line up the grille support tabs with the metal clips, (2) push firmly to snap it into place, and (3) close the doors [Removing the base grille](/source/evidence/owners-manual-2170416-c62e830cb7ec/pages/page-0017.md).",
+    "retrieved_sources": [
+      "source/evidence/owners-manual-2170416-c62e830cb7ec/pages/page-0028",
+      "source/evidence/owners-manual-2170416-c62e830cb7ec/pages/page-0017"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.606,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.5,
+      "cited_concepts": [
+        "source/evidence/owners-manual-2170416-c62e830cb7ec/pages/page-0017"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "2170416-",
+          "claim": "To replace the grille: (1) line up the grille support tabs with the metal clips, (2) push firmly to snap it into place, and (3) close the doors [Removing the base grille](/source/evidence/owners-manual-2170416-c62e830cb7ec/pages/page-0017.m"
+        },
+        {
+          "value": "0017.",
+          "claim": "To replace the grille: (1) line up the grille support tabs with the metal clips, (2) push firmly to snap it into place, and (3) close the doors [Removing the base grille](/source/evidence/owners-manual-2170416-c62e830cb7ec/pages/page-0017.m"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "Campaign_038_Introducing_AC_Whitepaper_v5e.pdf",
+    "question": "How many data centers does the China's largest cloud provider have?",
+    "answer": "18",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[5, 6]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Brochure",
+    "response": "18 data centers.\n\nAlibaba Cloud — described as China's largest public cloud service provider [Alibaba Cloud](/entities/alibaba-cloud) — has an international network of 18 data centers, including access to Mainland China [Alibaba Cloud](/entities/alibaba-cloud). The same figure appears in the source whitepaper, which states \"Alibaba Cloud has an international network of 18 data centers, including access to Mainland China\" [Page 5](/source/evidence/campaign_038_introducing_ac_whitepaper_v5e-56a0744f0afe/pages/page-0005) and repeats that \"Having 18 data centers around the world means that network latency is reduced\" [Page 13](/source/evidence/campaign_038_introducing_ac_whitepaper_v5e-56a0744f0afe/pages/page-0013).\n\nNote on scope: the 18 figure is the global/international network total. A separate page states that Alibaba Cloud's China network specifically includes seven data centers and over 1100 CDN nodes [Gateway to China](/concepts/gateway-to-china); that is a China-only subset, not the total.",
+    "retrieved_sources": [
+      "source/evidence/campaign_038_introducing_ac_whitepaper_v5e-56a0744f0afe/pages/page-0005",
+      "source/evidence/campaign_038_introducing_ac_whitepaper_v5e-56a0744f0afe/pages/page-0013",
+      "entities/alibaba-cloud",
+      "concepts/gateway-to-china"
+    ],
+    "pages_searched": 4,
+    "query_seconds": 2.61,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "7c3f6204b3241f142f0f8eb8e1fefe7a.pdf",
+    "question": "Write the filling id and case number in this document?",
+    "answer": "['48897809', '5152012']",
+    "answer_format": "List",
+    "task_type": "lookup",
+    "evidence_pages": "[1, 1]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "Filing ID 48897809 and Case Number 515,2012 [source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0001].\n\nThese appear in the header of the document, alongside the e-filing stamp \"EFiled: Jan 14 2013 09:42AM EST\" [source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0001]. Note that the opinion's own caption lists a different docket number, C.A. No. 11A–06–001(ESB) [source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0001].",
+    "retrieved_sources": [
+      "source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0001",
+      "source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0015"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 9.159,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "7c3f6204b3241f142f0f8eb8e1fefe7a.pdf",
+    "question": "Which case is related to the statement that \"PIC also never determined if Hanson's qualified immunity defense would overcome her conflicts of interest.\"?",
+    "answer": "FN54. Wong v. Allison, 208 F.3d 224, 2000 WL 206572",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[13, 14]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The statement \"PIC also never determined if Hanson's qualified immunity defense would overcome her conflicts of interest\" is related to the case reported at **2012 WL 3860732 (Del.Super.)** — *Not Reported in A.3d* [Page 13](/source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0013.md).\n\nThe opinion's section on \"The Qualified Immunity Defense\" states that \"There is not substantial evidence in the record or legal analysis to support PIC's finding that the Clarifying Ordinance would have helped Hanson's qualified immunity defense,\" and that \"PIC never reviewed DBE's complaint against Dewey Beach, Hanson and the individual defendants or their respective motions to dismiss\" [Page 13](/source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0013.md). This is the same case (Delaware Superior Court, 2012 WL 3860732) in which the qualified-immunity discussion and the footnote *Wong v. Allison*, 208 F.3d 224, 2000 WL 206572, FN3 (9th Cir. 2000) appear [Page 14](/source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0014.md).\n\nNote: the exact wording \"would overcome her conflicts of interest\" does not appear verbatim in the supplied pages; the closest matching proposition is the qualified-immunity analysis quoted above [Page 13](/source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0013.md).",
+    "retrieved_sources": [
+      "source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0013",
+      "source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0011"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.687,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0013",
+        "source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0014"
+      ],
+      "unsupported_citations": [
+        "source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0014"
+      ],
+      "unverified_values": [
+        {
+          "value": "165",
+          "claim": "The statement \"PIC also never determined if Hanson's qualified immunity defense would overcome her conflicts of interest\" is related to the case reported at **2012 WL 3860732 (Del.Super.)** — *Not Reported in A.3d* [Page 13](/source/evidenc"
+        },
+        {
+          "value": "0013.",
+          "claim": "The statement \"PIC also never determined if Hanson's qualified immunity defense would overcome her conflicts of interest\" is related to the case reported at **2012 WL 3860732 (Del.Super.)** — *Not Reported in A.3d* [Page 13](/source/evidenc"
+        },
+        {
+          "value": "165",
+          "claim": "The opinion's section on \"The Qualified Immunity Defense\" states that \"There is not substantial evidence in the record or legal analysis to support PIC's finding that the Clarifying Ordinance would have helped Hanson's qualified immunity de"
+        },
+        {
+          "value": "0013.",
+          "claim": "The opinion's section on \"The Qualified Immunity Defense\" states that \"There is not substantial evidence in the record or legal analysis to support PIC's finding that the Clarifying Ordinance would have helped Hanson's qualified immunity de"
+        },
+        {
+          "value": "208",
+          "claim": "The opinion's section on \"The Qualified Immunity Defense\" states that \"There is not substantial evidence in the record or legal analysis to support PIC's finding that the Clarifying Ordinance would have helped Hanson's qualified immunity de"
+        },
+        {
+          "value": "224,",
+          "claim": "The opinion's section on \"The Qualified Immunity Defense\" states that \"There is not substantial evidence in the record or legal analysis to support PIC's finding that the Clarifying Ordinance would have helped Hanson's qualified immunity de"
+        },
+        {
+          "value": "2000",
+          "claim": "The opinion's section on \"The Qualified Immunity Defense\" states that \"There is not substantial evidence in the record or legal analysis to support PIC's finding that the Clarifying Ordinance would have helped Hanson's qualified immunity de"
+        },
+        {
+          "value": "206572,",
+          "claim": "The opinion's section on \"The Qualified Immunity Defense\" states that \"There is not substantial evidence in the record or legal analysis to support PIC's finding that the Clarifying Ordinance would have helped Hanson's qualified immunity de"
+        },
+        {
+          "value": "2000",
+          "claim": "The opinion's section on \"The Qualified Immunity Defense\" states that \"There is not substantial evidence in the record or legal analysis to support PIC's finding that the Clarifying Ordinance would have helped Hanson's qualified immunity de"
+        },
+        {
+          "value": "165",
+          "claim": "The opinion's section on \"The Qualified Immunity Defense\" states that \"There is not substantial evidence in the record or legal analysis to support PIC's finding that the Clarifying Ordinance would have helped Hanson's qualified immunity de"
+        },
+        {
+          "value": "0014.",
+          "claim": "The opinion's section on \"The Qualified Immunity Defense\" states that \"There is not substantial evidence in the record or legal analysis to support PIC's finding that the Clarifying Ordinance would have helped Hanson's qualified immunity de"
+        },
+        {
+          "value": "165",
+          "claim": "Note: the exact wording \"would overcome her conflicts of interest\" does not appear verbatim in the supplied pages; the closest matching proposition is the qualified-immunity analysis quoted above [Page 13](/source/evidence/7c3f6204b3241f142"
+        },
+        {
+          "value": "0013.",
+          "claim": "Note: the exact wording \"would overcome her conflicts of interest\" does not appear verbatim in the supplied pages; the closest matching proposition is the qualified-immunity analysis quoted above [Page 13](/source/evidence/7c3f6204b3241f142"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "7c3f6204b3241f142f0f8eb8e1fefe7a.pdf",
+    "question": "The document represents which judges' opinions?",
+    "answer": "Scott Bradley.",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The document represents the opinion of Judge E. Scott Bradley (E. Scott Bradley, Judge) [Hanson v. Delaware State Public Integrity Commission](/entities/hanson-v.-delaware-state-public-integrity-commission.md).\n\nThe opinion is signed \"E. SCOTT BRADLEY, Judge\" and is a single-judge Superior Court decision in *Hanson v. Delaware State Public Integrity Commission*, C.A. No. 11A–06–001(ESB), decided Aug. 30, 2012 [Hanson v. Delaware State Public Integrity Commission](/entities/hanson-v.-delaware-state-public-integrity-commission.md). The deterministic source calculation likewise identifies the opinion author as E. Scott Bradley [source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0001].\n\nNote: the document is a court opinion, not a collection of judges' opinions; the only dissenting-opinion reference in the evidence concerns PIC members who disagree with PIC's decision, not this court ruling [Delaware State Public Integrity Commission](/entities/delaware-state-public-integrity-commission.md).",
+    "retrieved_sources": [
+      "source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0015",
+      "source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0001",
+      "entities/delaware-state-public-integrity-commission",
+      "source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0005",
+      "entities/hanson-v.-delaware-state-public-integrity-commission"
+    ],
+    "pages_searched": 5,
+    "query_seconds": 3.29,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "entities/delaware-state-public-integrity-commission",
+        "entities/hanson-v.-delaware-state-public-integrity-commission"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "165",
+          "claim": "The opinion is signed \"E. SCOTT BRADLEY, Judge\" and is a single-judge Superior Court decision in *Hanson v. Delaware State Public Integrity Commission*, C.A. No. 11A–06–001(ESB), decided Aug. 30, 2012 [Hanson v. Delaware State Public Integr"
+        },
+        {
+          "value": "0001",
+          "claim": "The opinion is signed \"E. SCOTT BRADLEY, Judge\" and is a single-judge Superior Court decision in *Hanson v. Delaware State Public Integrity Commission*, C.A. No. 11A–06–001(ESB), decided Aug. 30, 2012 [Hanson v. Delaware State Public Integr"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "7c3f6204b3241f142f0f8eb8e1fefe7a.pdf",
+    "question": "Who is the defendant of this case?",
+    "answer": "DELAWARE STATE PUBLIC INTEGRITY COMMISSION.",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[1]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The defendant in this case is the **Delaware State Public Integrity Commission** (PIC).\n\nThe case caption reads \"Re: Diane HANSON v. DELAWARE STATE PUBLIC INTEGRITY COMMISSION,\" C.A. No. 11A–06–001(ESB) [Page 1](/source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0001). It is Diane Hanson's appeal of PIC's finding that she violated the State Employees', Officers' and Officials' Code of Conduct when, as a Dewey Beach town commissioner, she voted in favor of an ordinance purportedly clarifying the height limit [Page 1](/source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0001). The court reversed PIC's decision, concluding it was not supported by substantial evidence and violated PIC's own rules of procedure [Page 1](/source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0001).",
+    "retrieved_sources": [
+      "source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0001",
+      "source/evidence/7c3f6204b3241f142f0f8eb8e1fefe7a-165a2975d2e0/pages/page-0002",
+      "concepts/noerr-pennington-doctrine",
+      "concepts/conflict-of-interest-under-the-code-of-conduct"
+    ],
+    "pages_searched": 4,
+    "query_seconds": 1.944,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "f1f5242528411b262be447e61e2eb10f.pdf",
+    "question": "What does a point mutation of the codon TTT or thymine-thymine define?",
+    "answer": "phenylalanine",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[7]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Academic paper",
+    "response": "A point mutation of the codon TTT (thymine–thymine–thymine) defines **phenylalanine** [source/evidence/f1f5242528411b262be447e61e2eb10f-624090ef4e4f/pages/page-0007].\n\nThis is given as the example of a **mis-sense mutation**: because the genetic code follows rigid rules, changing one base of the codon (TTT) that defines phenylalanine may turn it into another codon, such as TCT (thymine–cytosine–thymine), which defines serine — a different amino acid, hence the term mis-sense [source/evidence/f1f5242528411b262be447e61e2eb10f-624090ef4e4f/pages/page-0007].",
+    "retrieved_sources": [
+      "source/evidence/f1f5242528411b262be447e61e2eb10f-624090ef4e4f/pages/page-0007",
+      "source/evidence/f1f5242528411b262be447e61e2eb10f-624090ef4e4f/pages/page-0008"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.238,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "f1f5242528411b262be447e61e2eb10f.pdf",
+    "question": "What is the web link to this paper?",
+    "answer": "http://dx.doi.org/10.1016/j.ejmhg.2015.07.002",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[1]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Academic paper",
+    "response": "The web link to this paper is its DOI: **http://dx.doi.org/10.1016/j.ejmhg.2015.07.002** [DOI](/concepts/pathogenetics).\n\nThe paper is \"Pathogenetics. An introductory review\" by Mohammad Saad Zaghloul Salem, published in The Egyptian Journal of Medical Human Genetics (2016) 17, 1–23 [Pathogenetics](/concepts/pathogenetics). The article is open access under the CC BY-NC-ND license, whose link is http://creativecommons.org/licenses/by-nc-nd/4.0/ [license](http://creativecommons.org/licenses/by-nc-nd/4.0/). The journal's own site is listed as www.ejmhg.eg.net and it is also hosted on www.sciencedirect.com [source](/source/evidence/f1f5242528411b262be447e61e2eb10f-624090ef4e4f/pages/page-0001).",
+    "retrieved_sources": [
+      "source/evidence/f1f5242528411b262be447e61e2eb10f-624090ef4e4f/pages/page-0001",
+      "source/evidence/f1f5242528411b262be447e61e2eb10f-624090ef4e4f/pages/page-0016",
+      "concepts/pathogenetics",
+      "concepts/melatonin"
+    ],
+    "pages_searched": 4,
+    "query_seconds": 2.014,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "936c0e2c2e6c8e0c07c51bfaf7fd0a83.pdf",
+    "question": "Describe the significant changes of the Risk Management Plan since last year.",
+    "answer": "N/A",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[14]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The wiki does not contain sufficient information to answer this question. None of the provided documents describe a Risk Management Plan or any changes to one since last year.\n\nWhat the documents do contain:\n\n- The only risk-related statement is in the IPMS Exhibit 300, which says the life cycle cost estimate \"is risk adjusted to account for currently identified program risks and also takes into account the likelihood that additional risks will materialize throughout the project life cycle\" [936c0e2c2e6c8e0c07c51bfaf7fd0a83.pdf — Page 15](/source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0015.md). This is a general risk-adjustment statement, not a Risk Management Plan or a description of changes to one.\n- The investment is identified as \"high risk\" on the Q4 – FY 2007 agency high risk report (per OMB Memorandum M-05-23) [936c0e2c2e6c8e0c07c51bfaf7fd0a83.pdf — Page 2](/source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0002.md), but no Risk Management Plan changes are described.\n- The remaining pages cover the Technical Reference Model table [Page 14](/source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0014.md), the Service Component Reference Model table [Page 12](/source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0012.md), performance information [Page 2](/source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0002.md), and submission details dated 9/10/2007 [Page 1](/source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0001.md) — none of which address a Risk Management Plan.\n\nNo document in the supplied set provides the requested comparison, so the significant changes to the Risk Management Plan since last year cannot be determined from this evidence.",
+    "retrieved_sources": [
+      "source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0014",
+      "source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0002"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 3.349,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.6,
+      "cited_concepts": [
+        "source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0001",
+        "source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0002",
+        "source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0012",
+        "source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0014",
+        "source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0015"
+      ],
+      "unsupported_citations": [
+        "source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0001",
+        "source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0012",
+        "source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0015"
+      ],
+      "unverified_values": [
+        {
+          "value": "300,",
+          "claim": "- The only risk-related statement is in the IPMS Exhibit 300, which says the life cycle cost estimate \"is risk adjusted to account for currently identified program risks and also takes into account the likelihood that additional risks will "
+        },
+        {
+          "value": "936",
+          "claim": "- The only risk-related statement is in the IPMS Exhibit 300, which says the life cycle cost estimate \"is risk adjusted to account for currently identified program risks and also takes into account the likelihood that additional risks will "
+        },
+        {
+          "value": "15",
+          "claim": "- The only risk-related statement is in the IPMS Exhibit 300, which says the life cycle cost estimate \"is risk adjusted to account for currently identified program risks and also takes into account the likelihood that additional risks will "
+        },
+        {
+          "value": "936",
+          "claim": "- The only risk-related statement is in the IPMS Exhibit 300, which says the life cycle cost estimate \"is risk adjusted to account for currently identified program risks and also takes into account the likelihood that additional risks will "
+        },
+        {
+          "value": "64569",
+          "claim": "- The only risk-related statement is in the IPMS Exhibit 300, which says the life cycle cost estimate \"is risk adjusted to account for currently identified program risks and also takes into account the likelihood that additional risks will "
+        },
+        {
+          "value": "0015.",
+          "claim": "- The only risk-related statement is in the IPMS Exhibit 300, which says the life cycle cost estimate \"is risk adjusted to account for currently identified program risks and also takes into account the likelihood that additional risks will "
+        },
+        {
+          "value": "64569",
+          "claim": "- The investment is identified as \"high risk\" on the Q4 – FY 2007 agency high risk report (per OMB Memorandum M-05-23) [936c0e2c2e6c8e0c07c51bfaf7fd0a83.pdf — Page 2](/source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page"
+        },
+        {
+          "value": "0002.",
+          "claim": "- The investment is identified as \"high risk\" on the Q4 – FY 2007 agency high risk report (per OMB Memorandum M-05-23) [936c0e2c2e6c8e0c07c51bfaf7fd0a83.pdf — Page 2](/source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page"
+        },
+        {
+          "value": "64569",
+          "claim": "- The remaining pages cover the Technical Reference Model table [Page 14](/source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0014.md), the Service Component Reference Model table [Page 12](/source/evidence/936c0e2c2e6"
+        },
+        {
+          "value": "0014.",
+          "claim": "- The remaining pages cover the Technical Reference Model table [Page 14](/source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0014.md), the Service Component Reference Model table [Page 12](/source/evidence/936c0e2c2e6"
+        },
+        {
+          "value": "64569",
+          "claim": "- The remaining pages cover the Technical Reference Model table [Page 14](/source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0014.md), the Service Component Reference Model table [Page 12](/source/evidence/936c0e2c2e6"
+        },
+        {
+          "value": "0012.",
+          "claim": "- The remaining pages cover the Technical Reference Model table [Page 14](/source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0014.md), the Service Component Reference Model table [Page 12](/source/evidence/936c0e2c2e6"
+        },
+        {
+          "value": "64569",
+          "claim": "- The remaining pages cover the Technical Reference Model table [Page 14](/source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0014.md), the Service Component Reference Model table [Page 12](/source/evidence/936c0e2c2e6"
+        },
+        {
+          "value": "0002.",
+          "claim": "- The remaining pages cover the Technical Reference Model table [Page 14](/source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0014.md), the Service Component Reference Model table [Page 12](/source/evidence/936c0e2c2e6"
+        },
+        {
+          "value": "9/10/2007",
+          "claim": "- The remaining pages cover the Technical Reference Model table [Page 14](/source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0014.md), the Service Component Reference Model table [Page 12](/source/evidence/936c0e2c2e6"
+        },
+        {
+          "value": "64569",
+          "claim": "- The remaining pages cover the Technical Reference Model table [Page 14](/source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0014.md), the Service Component Reference Model table [Page 12](/source/evidence/936c0e2c2e6"
+        },
+        {
+          "value": "0001.",
+          "claim": "- The remaining pages cover the Technical Reference Model table [Page 14](/source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0014.md), the Service Component Reference Model table [Page 12](/source/evidence/936c0e2c2e6"
+        }
+      ],
+      "unsupported_claims": [
+        {
+          "claim": "- The only risk-related statement is in the IPMS Exhibit 300, which says the life cycle cost estimate \"is risk adjusted to account for currently identified program risks and also takes into account the likelihood that additional risks will ",
+          "citation_ids": [
+            "source/evidence/936c0e2c2e6c8e0c07c51bfaf7fd0a83-64569f30e824/pages/page-0015"
+          ],
+          "lexical_support": 0.0
+        }
+      ],
+      "claims_checked": 5
+    },
+    "error": null
+  },
+  {
+    "doc_id": "f8d3a162ab9507e021d83dd109118b60.pdf",
+    "question": "What is the title of case study given under unit-8 in table?",
+    "answer": "Discrimination in the Workplace Continues",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[7]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "Discrimination in the Workplace Continues\n\nUnder Unit 8 Key Assignments, the critical thinking case study listed is \"Critical Thinking Case Study- Discrimination in the Workplace Continues—submit on Google Docs\" [source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0007]. Its accompanying critical thinking questions ask why workplace diversity is important, the major sources of workplace discrimination with examples from the case, and steps companies take to prevent discrimination [source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0007].",
+    "retrieved_sources": [
+      "source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0015",
+      "source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0007"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.671,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "f8d3a162ab9507e021d83dd109118b60.pdf",
+    "question": "how many LEARNING OUTCOMES should be ANSWERed in UNIT 8? ",
+    "answer": "10",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[6, 7]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "10 learning outcomes should be answered in Unit 8.\n\nThe Unit 8 section is headed \"UNIT 8: Managing Human Resources and Labor Relations — SWBAT TO ANSWER THESE LEARNING OUTCOMES\" [Page 6](/source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0006). The list begins on Page 6 and continues onto Page 7, where the remaining bullet questions appear, ending with \"What trends and issues are affecting human resource management and labor relations?\" [Page 7](/source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0007). The deterministic source calculation confirms this count: learning_outcome_count = 10 (counted bullet questions under UNIT 8).\n\nNote: the Page 6 excerpt shows the Unit 8 heading with an empty first bullet, so the count of 10 relies on the deterministic calculation plus the continued bullets on Page 7.",
+    "retrieved_sources": [
+      "source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0006",
+      "source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0007"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.14,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "f8d3a162ab9507e021d83dd109118b60.pdf",
+    "question": "what's the topic of UNIT 14?",
+    "answer": "Using Financial Information and Accounting",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[10]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "UNIT 14: Using Financial Information and Accounting [source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0010](/concept/source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0010.md).\n\nThe unit's learning outcomes cover why financial reports and accounting information are important and who uses them, the differences between public and private accountants and how federal legislation has affected their work, the six steps in the accounting cycle, how the balance sheet describes an organization's financial condition, how the income statement reports profitability, why the statement of cash flows is important, how ratio analysis identifies financial strengths and weaknesses, and the major trends affecting the accounting industry today [source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0010](/concept/source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0010.md).",
+    "retrieved_sources": [
+      "source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0010",
+      "source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0014"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.737,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "concept/source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0010"
+      ],
+      "unsupported_citations": [
+        "concept/source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0010"
+      ],
+      "unverified_values": [
+        {
+          "value": "14:",
+          "claim": "UNIT 14: Using Financial Information and Accounting [source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0010](/concept/source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0010.md)."
+        },
+        {
+          "value": "900",
+          "claim": "UNIT 14: Using Financial Information and Accounting [source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0010](/concept/source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0010.md)."
+        },
+        {
+          "value": "0010",
+          "claim": "UNIT 14: Using Financial Information and Accounting [source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0010](/concept/source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0010.md)."
+        },
+        {
+          "value": "900",
+          "claim": "UNIT 14: Using Financial Information and Accounting [source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0010](/concept/source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0010.md)."
+        },
+        {
+          "value": "0010.",
+          "claim": "UNIT 14: Using Financial Information and Accounting [source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0010](/concept/source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0010.md)."
+        },
+        {
+          "value": "900",
+          "claim": "The unit's learning outcomes cover why financial reports and accounting information are important and who uses them, the differences between public and private accountants and how federal legislation has affected their work, the six steps i"
+        },
+        {
+          "value": "0010",
+          "claim": "The unit's learning outcomes cover why financial reports and accounting information are important and who uses them, the differences between public and private accountants and how federal legislation has affected their work, the six steps i"
+        },
+        {
+          "value": "900",
+          "claim": "The unit's learning outcomes cover why financial reports and accounting information are important and who uses them, the differences between public and private accountants and how federal legislation has affected their work, the six steps i"
+        },
+        {
+          "value": "0010.",
+          "claim": "The unit's learning outcomes cover why financial reports and accounting information are important and who uses them, the differences between public and private accountants and how federal legislation has affected their work, the six steps i"
+        }
+      ],
+      "unsupported_claims": [
+        {
+          "claim": "UNIT 14: Using Financial Information and Accounting [source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0010](/concept/source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0010.md).",
+          "citation_ids": [
+            "concept/source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0010"
+          ],
+          "lexical_support": 0.0
+        },
+        {
+          "claim": "The unit's learning outcomes cover why financial reports and accounting information are important and who uses them, the differences between public and private accountants and how federal legislation has affected their work, the six steps i",
+          "citation_ids": [
+            "concept/source/evidence/f8d3a162ab9507e021d83dd109118b60-900ed9ec027a/pages/page-0010"
+          ],
+          "lexical_support": 0.0
+        }
+      ],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "2312.09390v1.pdf",
+    "question": "For the paper by Long Ouyang published in 2022, how many times has it been cited? \n",
+    "answer": "6",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[1, 2, 5, 7, 32, 47]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Academic paper",
+    "response": "6 times.\n\nThe reference entry for Long Ouyang et al., \"Training language models to follow instructions with human feedback,\" Advances in Neural Information Processing Systems, 35: 27730–27744, 2022, lists citations on pages 1, 2, 5, 7, 32, and 47 — six in-document citation locations [source/evidence/2312.09390v1-393f1e6500b9/pages/page-0024](/source/evidence/2312.09390v1-393f1e6500b9/pages/page-0024).\n\nThe deterministic source calculation confirms this: `in_document_citation_count: 6 (Cited on pages: 1, 2, 5, 7, 32, 47)`.\n\nNote: this is the count of citation locations within the citing document (2312.09390v1.pdf), not a global citation count for the paper. The wiki does not contain a global citation tally.",
+    "retrieved_sources": [
+      "source/evidence/2312.09390v1-393f1e6500b9/pages/page-0024",
+      "source/evidence/2312.09390v1-393f1e6500b9/pages/page-0027"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.633,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 4
+    },
+    "error": null
+  },
+  {
+    "doc_id": "mi_phone.pdf",
+    "question": "How many steps are needed for editing an SMS?",
+    "answer": "4",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[22]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Guidebook",
+    "response": "4 steps are needed for editing an SMS.\n\nThe procedure is enumerated in the Mi Phone User Guide (page 22) as:\n1. Tap \"Compose\" button\n2. Add a recipient — either type a contact's phone number directly, or type any letters/phone numbers of a contact, select the result from the speed search bar and press \"Add contacts\"\n3. Tap \"Text message\" to type text\n4. Tap \"Send\" button\n\n[Mi Phone Messaging](/concepts/mi-phone-messaging)\n\nNote on scope: the source labels these four actions as the editing-SMS procedure; the \"Send\" action is included as step 4 in the source's own numbering, so it counts. Related behaviour, not steps: attaching a picture, video or PPT switches the message to MMS directly, and supported attachments include emoticon, contacts' information, mass name and everyday expressions [Mi Phone Messaging](/concepts/mi-phone-messaging).",
+    "retrieved_sources": [
+      "source/evidence/mi_phone-477658e0bd2e/pages/page-0003",
+      "source/evidence/mi_phone-477658e0bd2e/pages/page-0001",
+      "concepts/mi-phone-messaging"
+    ],
+    "pages_searched": 3,
+    "query_seconds": 4.67,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 8
+    },
+    "error": null
+  },
+  {
+    "doc_id": "stereo_headset.pdf",
+    "question": "What if the USB AC adaptor supplies an output less than 1.5 A for the headset?",
+    "answer": "the charging time will increase, and the music playback time after 10 minutes of charging will decrease.",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[19]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Guidebook",
+    "response": "If the USB AC adaptor supplies an output current of less than 1.5 A, the charging time will increase, and the music playback time after 10 minutes of charging will decrease ([Charging the Headset](/entities/charging-the-headset), [stereo_headset.pdf — Page 19](/source/evidence/stereo_headset-e769cc2b8320/pages/page-0019)).\n\nThe headset requires a commercially available USB AC adaptor capable of supplying an output current of 1.5 A or more ([Charging the Headset](/entities/charging-the-headset)). A too-long charging time is also listed as a symptom to check for this same adaptor requirement ([stereo_headset.pdf — Page 131](/source/evidence/stereo_headset-e769cc2b8320/pages/page-0131)).",
+    "retrieved_sources": [
+      "source/evidence/stereo_headset-e769cc2b8320/pages/page-0019",
+      "source/evidence/stereo_headset-e769cc2b8320/pages/page-0131",
+      "entities/charging-the-headset"
+    ],
+    "pages_searched": 3,
+    "query_seconds": 2.176,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "NYU_graduate.pdf",
+    "question": "How many steps are needed to apply for housing and themed engagement communities?",
+    "answer": "3",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[25]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Brochure",
+    "response": "3 steps.\n\n1. Log in to NYUHome and apply online under Housing Forms; apply and submit the $1,000 reservation payment before May 1, 2022 [NYU Housing Application Process](/entities/nyu-housing-application-process.md).\n2. Apply for your preferred themed engagement communities in the housing application [NYU Housing Application Process](/entities/nyu-housing-application-process.md).\n3. Receive your themed engagement community placement information by mid-July [NYU Housing Application Process](/entities/nyu-housing-application-process.md).\n\nThe source labels these as a three-step procedure for securing first-year housing and themed engagement community placement [NYU Housing Application Process](/entities/nyu-housing-application-process.md). Related conditions: students indicate up to four preferences, and applying for a Themed Engagement Community makes it the first choice and dictates the housing assignment [NYU Housing Application Process](/entities/nyu-housing-application-process.md).",
+    "retrieved_sources": [
+      "source/evidence/nyu_graduate-96affc1364ba/pages/page-0026",
+      "source/evidence/nyu_graduate-96affc1364ba/pages/page-0002",
+      "entities/nyu-housing-application-process"
+    ],
+    "pages_searched": 3,
+    "query_seconds": 3.401,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.8,
+      "cited_concepts": [
+        "entities/nyu-housing-application-process"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "1.",
+          "claim": "1. Log in to NYUHome and apply online under Housing Forms; apply and submit the $1,000 reservation payment before May 1, 2022 [NYU Housing Application Process](/entities/nyu-housing-application-process.md)."
+        },
+        {
+          "value": "3.",
+          "claim": "3. Receive your themed engagement community placement information by mid-July [NYU Housing Application Process](/entities/nyu-housing-application-process.md)."
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 5
+    },
+    "error": null
+  },
+  {
+    "doc_id": "NYU_graduate.pdf",
+    "question": "Where is Office of Residential Life & Housing Services?",
+    "answer": "726 Broadway, 7th Floor New York, NY 10003",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[28]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Brochure",
+    "response": "The Office of Residential Life & Housing Services is located at 726 Broadway, 7th Floor, New York, NY 10003 [NYU Office of Residential Life & Housing Services](/entities/nyu-office-of-residential-life-housing-services), as listed in the source document [NYU_graduate.pdf — Page 30](/source/evidence/nyu_graduate-96affc1364ba/pages/page-0028).\n\nThe same listing gives the office phone as 212.998.4600 and its website as www.nyu.edu/living-on [NYU Office of Residential Life & Housing Services](/entities/nyu-office-of-residential-life-housing-services).",
+    "retrieved_sources": [
+      "source/evidence/nyu_graduate-96affc1364ba/pages/page-0028",
+      "source/evidence/nyu_graduate-96affc1364ba/pages/page-0023",
+      "entities/nyu-office-of-residential-life-housing-services"
+    ],
+    "pages_searched": 3,
+    "query_seconds": 1.953,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "NYU_graduate.pdf",
+    "question": "How large student community center can be which residents have access? Give me a number of its square.",
+    "answer": "8300",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[18]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Brochure",
+    "response": "8,300 square feet.\n\nClark Residence Hall's student community center, located on the building's main floor, is 8,300 square feet and includes a common kitchen, library, and screening room; residents of Clark have access to it [Othmer & Clark Halls](/entities/othmer-clark-halls.md), [NYU_graduate.pdf — Page 20](/source/evidence/nyu_graduate-96affc1364ba/pages/page-0020).",
+    "retrieved_sources": [
+      "source/evidence/nyu_graduate-96affc1364ba/pages/page-0020",
+      "source/evidence/nyu_graduate-96affc1364ba/pages/page-0011",
+      "entities/lipton-hall",
+      "entities/othmer-clark-halls"
+    ],
+    "pages_searched": 4,
+    "query_seconds": 1.968,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.5,
+      "cited_concepts": [
+        "entities/othmer-clark-halls"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "96",
+          "claim": "Clark Residence Hall's student community center, located on the building's main floor, is 8,300 square feet and includes a common kitchen, library, and screening room; residents of Clark have access to it [Othmer & Clark Halls](/entities/ot"
+        },
+        {
+          "value": "0020",
+          "claim": "Clark Residence Hall's student community center, located on the building's main floor, is 8,300 square feet and includes a common kitchen, library, and screening room; residents of Clark have access to it [Othmer & Clark Halls](/entities/ot"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "a4f3ced0696009fec3179f493e4f28c4.pdf",
+    "question": "What company is a plaintiff?",
+    "answer": "LIBERTARIAN PARTY OF GEORGIA, INC",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[1]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The plaintiff company is the Libertarian Party of Georgia, Inc., a Georgia nonprofit corporation [source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a3af75/pages/page-0001].\n\nIt appears in the case caption as a \"Plaintiff-Appellee-Cross Appellant\" alongside individual plaintiffs Martin Cowen, Allen Buckley, Aaron Gilmer, and John Monds [source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a3af75/pages/page-0001]. The suit was brought against the Georgia Secretary of State [source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a3af75/pages/page-0002].",
+    "retrieved_sources": [
+      "source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a3af75/pages/page-0001",
+      "source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a3af75/pages/page-0002"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.731,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "a4f3ced0696009fec3179f493e4f28c4.pdf",
+    "question": "WHAT IS USCA CASE NUMBER?",
+    "answer": "21-13199",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[1]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The USCA case number is **21-13199** (No. 21-13199) [Cowen v. Secretary of State of Georgia (11th Cir. 2022)](/entities/cowen-v.-secretary-of-state-of-georgia-11th-cir.-2022.md).\n\nIt appears in the caption of the Eleventh Circuit opinion as \"USCA11 Case: 21-13199,\" filed 01/05/2022 [source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a3af75/pages/page-0005](/source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a3af75/pages/page-0005.md). The related district court docket number is D.C. Docket No. 1:17-cv-04660-LMM (N.D. Ga.) [Cowen v. Secretary of State of Georgia (11th Cir. 2022)](/entities/cowen-v.-secretary-of-state-of-georgia-11th-cir.-2022.md).",
+    "retrieved_sources": [
+      "source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a3af75/pages/page-0005",
+      "source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a3af75/pages/page-0003",
+      "entities/georgia-ballot-access-system",
+      "entities/cowen-v.-secretary-of-state-of-georgia-11th-cir.-2022"
+    ],
+    "pages_searched": 4,
+    "query_seconds": 2.1,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "entities/cowen-v.-secretary-of-state-of-georgia-11th-cir.-2022",
+        "source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a3af75/pages/page-0005"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "2022.",
+          "claim": "The USCA case number is **21-13199** (No. 21-13199) [Cowen v. Secretary of State of Georgia (11th Cir. 2022)](/entities/cowen-v.-secretary-of-state-of-georgia-11th-cir.-2022.md)."
+        },
+        {
+          "value": "21-13199,",
+          "claim": "It appears in the caption of the Eleventh Circuit opinion as \"USCA11 Case: 21-13199,\" filed 01/05/2022 [source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a3af75/pages/page-0005](/source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a"
+        },
+        {
+          "value": "98",
+          "claim": "It appears in the caption of the Eleventh Circuit opinion as \"USCA11 Case: 21-13199,\" filed 01/05/2022 [source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a3af75/pages/page-0005](/source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a"
+        },
+        {
+          "value": "0005",
+          "claim": "It appears in the caption of the Eleventh Circuit opinion as \"USCA11 Case: 21-13199,\" filed 01/05/2022 [source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a3af75/pages/page-0005](/source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a"
+        },
+        {
+          "value": "98",
+          "claim": "It appears in the caption of the Eleventh Circuit opinion as \"USCA11 Case: 21-13199,\" filed 01/05/2022 [source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a3af75/pages/page-0005](/source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a"
+        },
+        {
+          "value": "0005.",
+          "claim": "It appears in the caption of the Eleventh Circuit opinion as \"USCA11 Case: 21-13199,\" filed 01/05/2022 [source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a3af75/pages/page-0005](/source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a"
+        },
+        {
+          "value": "2022.",
+          "claim": "It appears in the caption of the Eleventh Circuit opinion as \"USCA11 Case: 21-13199,\" filed 01/05/2022 [source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a3af75/pages/page-0005](/source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "a4f3ced0696009fec3179f493e4f28c4.pdf",
+    "question": "What is the date of the document? Format your answer as YYYY-MM-DD.",
+    "answer": "2022-01-05",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[1]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "2022-01-05\n\nThe document is dated January 5, 2022, as shown in the case caption \"Date Filed: 01/05/2022\" that appears on each page of the opinion [a4f3ced0696009fec3179f493e4f28c4.pdf — Page 11](/source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a3af75/pages/page-0011), [Page 16](/source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a3af75/pages/page-0016).",
+    "retrieved_sources": [
+      "source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a3af75/pages/page-0011",
+      "source/evidence/a4f3ced0696009fec3179f493e4f28c4-98f897a3af75/pages/page-0016"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.514,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "2312.04350v3.pdf",
+    "question": "What rung is the second ladder of causation refer to?",
+    "answer": "intervention",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[3]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Academic paper",
+    "response": "Rung 2 (\"doing\") — the intervention rung.\n\nThe Ladder of Causation consists of three rungs, and the second is Rung 2 (\"doing\"), which formalizes actively intervening in the world, e.g. \"If I take an aspirin now, will my headache subside?\" [Ladder of Causation](/ladder-of-causation.md). Interventions are formalized using the do-operator and Causal Bayesian Networks, e.g. P(Y = y | do(X = x)) [Ladder of Causation](/ladder-of-causation.md).\n\nIn the CLADDER question-generation scheme, Rung 2 is labeled \"Intervention\" and covers query types such as ATE and valid adjustment set, with interventional data of the form E[...|do(...)] [source/evidence/2312.04350v3-2d2016f1be96/pages/page-0004]. The Causal Inference Engine corresponds to do-calculus specifically for Rung 2 queries, while encompassing all three rungs in its general sense [Causal Inference Engine](/causal-inference-engine.md).",
+    "retrieved_sources": [
+      "source/evidence/2312.04350v3-2d2016f1be96/pages/page-0004",
+      "source/evidence/2312.04350v3-2d2016f1be96/pages/page-0003",
+      "concepts/causal-inference-engine",
+      "concepts/identification-in-causal-inference",
+      "concepts/corr2cause"
+    ],
+    "pages_searched": 5,
+    "query_seconds": 2.14,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.6667,
+      "cited_concepts": [
+        "causal-inference-engine",
+        "ladder-of-causation"
+      ],
+      "unsupported_citations": [
+        "causal-inference-engine",
+        "ladder-of-causation"
+      ],
+      "unverified_values": [
+        {
+          "value": "2",
+          "claim": "The Ladder of Causation consists of three rungs, and the second is Rung 2 (\"doing\"), which formalizes actively intervening in the world, e.g. \"If I take an aspirin now, will my headache subside?\" [Ladder of Causation](/ladder-of-causation.m"
+        },
+        {
+          "value": "2",
+          "claim": "In the CLADDER question-generation scheme, Rung 2 is labeled \"Intervention\" and covers query types such as ATE and valid adjustment set, with interventional data of the form E[...|do(...)] [source/evidence/2312.04350v3-2d2016f1be96/pages/pa"
+        },
+        {
+          "value": "2312.04350",
+          "claim": "In the CLADDER question-generation scheme, Rung 2 is labeled \"Intervention\" and covers query types such as ATE and valid adjustment set, with interventional data of the form E[...|do(...)] [source/evidence/2312.04350v3-2d2016f1be96/pages/pa"
+        },
+        {
+          "value": "2",
+          "claim": "In the CLADDER question-generation scheme, Rung 2 is labeled \"Intervention\" and covers query types such as ATE and valid adjustment set, with interventional data of the form E[...|do(...)] [source/evidence/2312.04350v3-2d2016f1be96/pages/pa"
+        },
+        {
+          "value": "0004",
+          "claim": "In the CLADDER question-generation scheme, Rung 2 is labeled \"Intervention\" and covers query types such as ATE and valid adjustment set, with interventional data of the form E[...|do(...)] [source/evidence/2312.04350v3-2d2016f1be96/pages/pa"
+        },
+        {
+          "value": "2",
+          "claim": "In the CLADDER question-generation scheme, Rung 2 is labeled \"Intervention\" and covers query types such as ATE and valid adjustment set, with interventional data of the form E[...|do(...)] [source/evidence/2312.04350v3-2d2016f1be96/pages/pa"
+        }
+      ],
+      "unsupported_claims": [
+        {
+          "claim": "The Ladder of Causation consists of three rungs, and the second is Rung 2 (\"doing\"), which formalizes actively intervening in the world, e.g. \"If I take an aspirin now, will my headache subside?\" [Ladder of Causation](/ladder-of-causation.m",
+          "citation_ids": [
+            "ladder-of-causation"
+          ],
+          "lexical_support": 0.0
+        },
+        {
+          "claim": "In the CLADDER question-generation scheme, Rung 2 is labeled \"Intervention\" and covers query types such as ATE and valid adjustment set, with interventional data of the form E[...|do(...)] [source/evidence/2312.04350v3-2d2016f1be96/pages/pa",
+          "citation_ids": [
+            "causal-inference-engine"
+          ],
+          "lexical_support": 0.0
+        }
+      ],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "SAO-StudentSupport_Guidebook-Content.pdf",
+    "question": "Excepted for the public holidays, when is the counter closed on Tuesday according to the provided operating hours?",
+    "answer": "5:00pm",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[7]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Guidebook",
+    "response": "5.00pm. According to the One Stop @ SAC counter operating hours, Monday to Thursday is 8.30am – 5.00pm, and Tuesday falls within that range, so the counter closes at 5.00pm on Tuesday (excepting public holidays, when it is closed) [SAO-StudentSupport_Guidebook-Content.pdf — Page 7](/source/evidence/sao-studentsupport_guidebook-content-f666e7e1acbc/pages/page-0007.md). The deterministic source calculation confirms this: weekday_closing_time = 5.00pm, since Tuesday is within the Monday-to-Thursday hours range.",
+    "retrieved_sources": [
+      "source/evidence/sao-studentsupport_guidebook-content-f666e7e1acbc/pages/page-0007",
+      "source/evidence/sao-studentsupport_guidebook-content-f666e7e1acbc/pages/page-0019"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.838,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "source/evidence/sao-studentsupport_guidebook-content-f666e7e1acbc/pages/page-0007"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "0007.",
+          "claim": "5.00pm. According to the One Stop @ SAC counter operating hours, Monday to Thursday is 8.30am – 5.00pm, and Tuesday falls within that range, so the counter closes at 5.00pm on Tuesday (excepting public holidays, when it is closed) [SAO-Stud"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 1
+    },
+    "error": null
+  },
+  {
+    "doc_id": "ACTIVISIONBLIZZARD_2019_10K.pdf",
+    "question": "what value stock does Activsion Blizzard repurchase in FY2019? Answer in USD billion\n",
+    "answer": "0",
+    "answer_format": "Float",
+    "task_type": "lookup",
+    "evidence_pages": "[29]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "Activision Blizzard repurchased **$0 billion** of stock in FY2019 — no shares were repurchased under either program.\n\nThe Board authorized a repurchase program on January 31, 2019 for up to $1.5 billion of common stock (February 14, 2019 until the earlier of February 13, 2021 and Board discontinuation), but as of December 31, 2019 the company had not repurchased any shares under it [Capital Transactions (Activision Blizzard 2019)](/concepts/capital-transactions-activision-blizzard-2019). The prior program, authorized February 2, 2017 for up to $1 billion (February 13, 2017 through February 12, 2019), also had no shares repurchased [Activision Blizzard Share Repurchase Programs](/concepts/activision-blizzard-share-repurchase-programs).\n\nSo the comparison is between authorized amounts ($1.5 billion in 2019, $1 billion in 2017) and actual repurchases (zero in both cases) — the FY2019 repurchase value is $0 billion [Activision Blizzard Common Stock, Dividends, and Share Repurchase Programs](/entities/activision-blizzard-common-stock-dividends-and-share-repurchase-programs).",
+    "retrieved_sources": [
+      "source/evidence/activisionblizzard_2019_10k-2c6aa5d6e4c2/pages/page-0120",
+      "source/evidence/activisionblizzard_2019_10k-2c6aa5d6e4c2/pages/page-0029",
+      "concepts/activision-blizzard-share-repurchase-programs",
+      "entities/activision-blizzard-common-stock-dividends-and-share-repurchase-programs",
+      "concepts/capital-transactions-activision-blizzard-2019"
+    ],
+    "pages_searched": 5,
+    "query_seconds": 3.97,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "COSTCO_2021_10K.pdf",
+    "question": "How much shares did COSTCO repurchase in FY2021?",
+    "answer": "1358000",
+    "answer_format": "Float",
+    "task_type": "lookup",
+    "evidence_pages": "[29]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "COSTCO repurchased **1,358,000 shares** of common stock in FY2021, at an average price of $364.39 per share, for a total cost of approximately $495 million [COSTCO_2021_10K.pdf — Page 29](/source/evidence/costco_2021_10k-95ef5209fc4a/pages/page-0029).\n\nThe same figure appears in the equity note, which reports 1,358 shares repurchased (in thousands) at an average price of $364.39, totaling $495 (in millions) [COSTCO_2021_10K.pdf — Page 55](/source/evidence/costco_2021_10k-95ef5209fc4a/pages/page-0055). For comparison, 643,000 shares were repurchased in 2020 and 1,097,000 in 2019.",
+    "retrieved_sources": [
+      "source/evidence/costco_2021_10k-95ef5209fc4a/pages/page-0055",
+      "source/evidence/costco_2021_10k-95ef5209fc4a/pages/page-0029"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.668,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "COSTCO_2021_10K.pdf",
+    "question": "How much did COSTCO spend on repurchasing of common stock in FY2021?Answer in millions.\n",
+    "answer": "495.00",
+    "answer_format": "Float",
+    "task_type": "lookup",
+    "evidence_pages": "[29]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "$495 million\n\nCostco repurchased 1,358,000 shares of common stock in fiscal 2021 at an average price of $364.39, totaling approximately $495 million ([COSTCO_2021_10K.pdf — Page 29](/source/evidence/costco_2021_10k-95ef5209fc4a/pages/page-0029); [Costco Stock Repurchase and Dividends](/concepts/costco-stock-repurchase-and-dividends)).\n\nNote that the 10-K states these amounts may differ from the \"repurchases of common stock\" line in the consolidated statements of cash flows due to changes in unsettled stock repurchases at fiscal year-end ([COSTCO_2021_10K.pdf — Page 55](/source/evidence/costco_2021_10k-95ef5209fc4a/pages/page-0055)).",
+    "retrieved_sources": [
+      "source/evidence/costco_2021_10k-95ef5209fc4a/pages/page-0055",
+      "source/evidence/costco_2021_10k-95ef5209fc4a/pages/page-0029",
+      "concepts/costco-stock-repurchase-and-dividends",
+      "concepts/covid-19-impact-on-costco",
+      "concepts/costco-property-and-equipment"
+    ],
+    "pages_searched": 5,
+    "query_seconds": 2.163,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "COSTCO_2021_10K.pdf",
+    "question": "Costco's FY2021 10-K states that its financial and operational performance is highly dependent on operations that comprised 86% of net sales and 81% of operating income in 2021. Which operations are these?",
+    "answer": "the financial performance of our U.S. and Canadian operations.",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[9]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "The operations are Costco's U.S. and Canadian operations.\n\nThe FY2021 10-K states: \"Our financial and operational performance is highly dependent on our U.S. and Canadian operations, which comprised 86% and 81% of net sales and operating income in 2021, respectively\" ([COSTCO_2021_10K.pdf — Page 9](/source/evidence/costco_2021_10k-95ef5209fc4a/pages/page-0009.md)). The same passage adds that within the U.S., Costco is highly dependent on its California operations, which comprised 28% of U.S. net sales in 2021 ([COSTCO_2021_10K.pdf — Page 9](/source/evidence/costco_2021_10k-95ef5209fc4a/pages/page-0009.md)).",
+    "retrieved_sources": [
+      "source/evidence/costco_2021_10k-95ef5209fc4a/pages/page-0009",
+      "source/evidence/costco_2021_10k-95ef5209fc4a/pages/page-0064"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.759,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.5,
+      "cited_concepts": [
+        "source/evidence/costco_2021_10k-95ef5209fc4a/pages/page-0009"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "10-",
+          "claim": "The FY2021 10-K states: \"Our financial and operational performance is highly dependent on our U.S. and Canadian operations, which comprised 86% and 81% of net sales and operating income in 2021, respectively\" ([COSTCO_2021_10K.pdf — Page 9]"
+        },
+        {
+          "value": "95",
+          "claim": "The FY2021 10-K states: \"Our financial and operational performance is highly dependent on our U.S. and Canadian operations, which comprised 86% and 81% of net sales and operating income in 2021, respectively\" ([COSTCO_2021_10K.pdf — Page 9]"
+        },
+        {
+          "value": "0009.",
+          "claim": "The FY2021 10-K states: \"Our financial and operational performance is highly dependent on our U.S. and Canadian operations, which comprised 86% and 81% of net sales and operating income in 2021, respectively\" ([COSTCO_2021_10K.pdf — Page 9]"
+        },
+        {
+          "value": "95",
+          "claim": "The FY2021 10-K states: \"Our financial and operational performance is highly dependent on our U.S. and Canadian operations, which comprised 86% and 81% of net sales and operating income in 2021, respectively\" ([COSTCO_2021_10K.pdf — Page 9]"
+        },
+        {
+          "value": "0009.",
+          "claim": "The FY2021 10-K states: \"Our financial and operational performance is highly dependent on our U.S. and Canadian operations, which comprised 86% and 81% of net sales and operating income in 2021, respectively\" ([COSTCO_2021_10K.pdf — Page 9]"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "NETFLIX_2015_10K.pdf",
+    "question": "what is advertsing expense of Neflix in FY 2015? Answer in millions",
+    "answer": "714.3",
+    "answer_format": "Float",
+    "task_type": "lookup",
+    "evidence_pages": "[47]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "$714.3 million\n\nNetflix's advertising expenses were $714.3 million for the year ended December 31, 2015 [NETFLIX_2015_10K.pdf — Page 47](/source/evidence/netflix_2015_10k-ce566e6649e0/pages/page-0047.md). The same disclosure gives the prior-year comparatives: $533.1 million for 2014 and $404.0 million for 2013.\n\nScope note: this figure is the \"Advertising expenses\" line within the Marketing policy note, which states that marketing expenses consist primarily of advertising expenses and also include payments made to affiliates and consumer electronics partners; advertising expenses themselves include promotional activities such as digital and television advertising, and are expensed as incurred [NETFLIX_2015_10K.pdf — Page 47](/source/evidence/netflix_2015_10k-ce566e6649e0/pages/page-0047.md).",
+    "retrieved_sources": [
+      "source/evidence/netflix_2015_10k-ce566e6649e0/pages/page-0047",
+      "source/evidence/netflix_2015_10k-ce566e6649e0/pages/page-0060",
+      "concepts/netflix-free-cash-flow",
+      "entities/domestic-dvd-segment",
+      "entities/international-streaming-segment"
+    ],
+    "pages_searched": 5,
+    "query_seconds": 2.478,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.6667,
+      "cited_concepts": [
+        "source/evidence/netflix_2015_10k-ce566e6649e0/pages/page-0047"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "0047.",
+          "claim": "Netflix's advertising expenses were $714.3 million for the year ended December 31, 2015 [NETFLIX_2015_10K.pdf — Page 47](/source/evidence/netflix_2015_10k-ce566e6649e0/pages/page-0047.md). The same disclosure gives the prior-year comparativ"
+        },
+        {
+          "value": "2013.",
+          "claim": "Netflix's advertising expenses were $714.3 million for the year ended December 31, 2015 [NETFLIX_2015_10K.pdf — Page 47](/source/evidence/netflix_2015_10k-ce566e6649e0/pages/page-0047.md). The same disclosure gives the prior-year comparativ"
+        },
+        {
+          "value": "0047.",
+          "claim": "Scope note: this figure is the \"Advertising expenses\" line within the Marketing policy note, which states that marketing expenses consist primarily of advertising expenses and also include payments made to affiliates and consumer electronic"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "NETFLIX_2015_10K.pdf",
+    "question": "what method did netflix use to pay the dividend to shareholders in FY2015.",
+    "answer": "seven-for-one stock split",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[55]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "Netflix paid the FY2015 dividend in the form of a **stock dividend** — specifically, a seven-for-one stock split effected as a stock dividend.\n\nThe Board of Directors declared the seven-for-one stock split in the form of a stock dividend on June 23, 2015, paid on July 14, 2015 to all shareholders of record as of July 2, 2015 [Netflix Seven-for-One Stock Split](/entities/netflix-seven-for-one-stock-split.md). Outstanding share and per-share amounts for all periods presented were retroactively adjusted to reflect the split [Netflix Seven-for-One Stock Split](/entities/netflix-seven-for-one-stock-split.md).\n\nNote: the wiki documents describe this stock dividend (the stock split); they do not indicate any cash dividend paid to shareholders in FY2015.",
+    "retrieved_sources": [
+      "source/evidence/netflix_2015_10k-ce566e6649e0/pages/page-0018",
+      "source/evidence/netflix_2015_10k-ce566e6649e0/pages/page-0047",
+      "entities/netflix-seven-for-one-stock-split",
+      "concepts/netflix-streaming-content-accounting",
+      "concepts/netflix-fy2015-risk-factors"
+    ],
+    "pages_searched": 5,
+    "query_seconds": 2.127,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.3333,
+      "cited_concepts": [
+        "entities/netflix-seven-for-one-stock-split"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "NETFLIX_2015_10K.pdf",
+    "question": "what is operating leases occurred in FY 2015 for Netfilx?Answer in million.",
+    "answer": "34.7",
+    "answer_format": "Float",
+    "task_type": "lookup",
+    "evidence_pages": "[54]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "$34.7 million\n\nRent expense associated with operating leases was $34.7 million for the year ended December 31, 2015 [NETFLIX_2015_10K.pdf — Page 54](/source/evidence/netflix_2015_10k-ce566e6649e0/pages/page-0054.md). This is the operating-lease expense recognized in FY 2015, confirmed by the deterministic source calculation (operating_lease_rent_expense_millions: 34.7) [NETFLIX_2015_10K.pdf — Page 53](/source/evidence/netflix_2015_10k-ce566e6649e0/pages/page-0053.md).\n\nNote the distinction: the $34.7 million is the FY 2015 rent expense, not the future minimum lease commitment. Separately, future minimum lease payments include $428.7 million as of December 31, 2015 related to non-cancelable operating leases for the expanded Los Gatos headquarters and new Los Angeles office space, plus other commitments of $79.9 million for facilities under non-cancelable operating leases [NETFLIX_2015_10K.pdf — Page 29](/source/evidence/netflix_2015_10k-ce566e6649e0/pages/page-0029.md).",
+    "retrieved_sources": [
+      "source/evidence/netflix_2015_10k-ce566e6649e0/pages/page-0053",
+      "source/evidence/netflix_2015_10k-ce566e6649e0/pages/page-0029"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 5.356,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.6667,
+      "cited_concepts": [
+        "source/evidence/netflix_2015_10k-ce566e6649e0/pages/page-0029",
+        "source/evidence/netflix_2015_10k-ce566e6649e0/pages/page-0053",
+        "source/evidence/netflix_2015_10k-ce566e6649e0/pages/page-0054"
+      ],
+      "unsupported_citations": [
+        "source/evidence/netflix_2015_10k-ce566e6649e0/pages/page-0054"
+      ],
+      "unverified_values": [
+        {
+          "value": "34.7",
+          "claim": "Rent expense associated with operating leases was $34.7 million for the year ended December 31, 2015 [NETFLIX_2015_10K.pdf — Page 54](/source/evidence/netflix_2015_10k-ce566e6649e0/pages/page-0054.md). This is the operating-lease expense re"
+        },
+        {
+          "value": "0054.",
+          "claim": "Rent expense associated with operating leases was $34.7 million for the year ended December 31, 2015 [NETFLIX_2015_10K.pdf — Page 54](/source/evidence/netflix_2015_10k-ce566e6649e0/pages/page-0054.md). This is the operating-lease expense re"
+        },
+        {
+          "value": "34.7",
+          "claim": "Rent expense associated with operating leases was $34.7 million for the year ended December 31, 2015 [NETFLIX_2015_10K.pdf — Page 54](/source/evidence/netflix_2015_10k-ce566e6649e0/pages/page-0054.md). This is the operating-lease expense re"
+        },
+        {
+          "value": "0053.",
+          "claim": "Rent expense associated with operating leases was $34.7 million for the year ended December 31, 2015 [NETFLIX_2015_10K.pdf — Page 54](/source/evidence/netflix_2015_10k-ce566e6649e0/pages/page-0054.md). This is the operating-lease expense re"
+        },
+        {
+          "value": "34.7",
+          "claim": "Note the distinction: the $34.7 million is the FY 2015 rent expense, not the future minimum lease commitment. Separately, future minimum lease payments include $428.7 million as of December 31, 2015 related to non-cancelable operating lease"
+        },
+        {
+          "value": "0029.",
+          "claim": "Note the distinction: the $34.7 million is the FY 2015 rent expense, not the future minimum lease commitment. Separately, future minimum lease payments include $428.7 million as of December 31, 2015 related to non-cancelable operating lease"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "AMAZON_2017_10K.pdf",
+    "question": "How do Amazon recognize lease costs?",
+    "answer": "straight-line basis without regard to deferred payment terms",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[47]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "Amazon recognizes lease costs on a straight-line basis, without regard to deferred payment terms such as rent holidays that defer the commencement date of required payments [AMAZON_2017_10K.pdf — Page 47](/source/evidence/amazon_2017_10k-30e00f91b035/pages/page-0047.md).\n\nRelated points from the same disclosure: leases are categorized at inception as either operating or capital leases; incentives received are treated as a reduction of costs over the term of the agreement; and leasehold improvements are capitalized at cost and amortized over the lesser of their expected useful life or the non-cancellable term of the lease [AMAZON_2017_10K.pdf — Page 47](/source/evidence/amazon_2017_10k-30e00f91b035/pages/page-0047.md).",
+    "retrieved_sources": [
+      "source/evidence/amazon_2017_10k-30e00f91b035/pages/page-0047",
+      "source/evidence/amazon_2017_10k-30e00f91b035/pages/page-0049",
+      "concepts/amazon-business-overview-and-financial-focus-2017-form-10-k",
+      "concepts/amazon-property-and-equipment-note-3",
+      "concepts/amazon-2017-free-cash-flow-measures"
+    ],
+    "pages_searched": 5,
+    "query_seconds": 2.444,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "source/evidence/amazon_2017_10k-30e00f91b035/pages/page-0047"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "30",
+          "claim": "Amazon recognizes lease costs on a straight-line basis, without regard to deferred payment terms such as rent holidays that defer the commencement date of required payments [AMAZON_2017_10K.pdf — Page 47](/source/evidence/amazon_2017_10k-30"
+        },
+        {
+          "value": "0047.",
+          "claim": "Amazon recognizes lease costs on a straight-line basis, without regard to deferred payment terms such as rent holidays that defer the commencement date of required payments [AMAZON_2017_10K.pdf — Page 47](/source/evidence/amazon_2017_10k-30"
+        },
+        {
+          "value": "30",
+          "claim": "Related points from the same disclosure: leases are categorized at inception as either operating or capital leases; incentives received are treated as a reduction of costs over the term of the agreement; and leasehold improvements are capit"
+        },
+        {
+          "value": "0047.",
+          "claim": "Related points from the same disclosure: leases are categorized at inception as either operating or capital leases; incentives received are treated as a reduction of costs over the term of the agreement; and leasehold improvements are capit"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "AMAZON_2017_10K.pdf",
+    "question": "what amount is liabilities for unredeemed gift cards in FY2017 for Amazon? Answer in billion.",
+    "answer": "3.0",
+    "answer_format": "Float",
+    "task_type": "lookup",
+    "evidence_pages": "[48]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "$3.0 billion\n\nAmazon's liabilities for unredeemed gift cards were $2.4 billion as of December 31, 2016 and $3.0 billion as of December 31, 2017 [AMAZON_2017_10K.pdf — Page 48](/source/evidence/amazon_2017_10k-30e00f91b035/pages/page-0048). The deterministic extraction from the source confirms the FY2017 (December 31, 2017) figure as 3.0 billion [AMAZON_2017_10K.pdf — Page 49](/source/evidence/amazon_2017_10k-30e00f91b035/pages/page-0049).",
+    "retrieved_sources": [
+      "source/evidence/amazon_2017_10k-30e00f91b035/pages/page-0048",
+      "source/evidence/amazon_2017_10k-30e00f91b035/pages/page-0049"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.915,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "AMAZON_2017_10K.pdf",
+    "question": "what is depreciation expense on property and equipment in 2017 for Amazon? Answer in billion",
+    "answer": "8.8",
+    "answer_format": "Float",
+    "task_type": "lookup",
+    "evidence_pages": "[52]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "$8.8 billion.\n\nAmazon's depreciation expense on property and equipment for 2017 was $8.8 billion, which includes amortization of property and equipment acquired under capital leases of $5.4 billion [Note 3](/concepts/amazon-property-and-equipment-note-3). The same figure appears in the source evidence, which states depreciation expense on property and equipment was $4.9 billion, $6.4 billion, and $8.8 billion for 2015, 2016, and 2017 respectively [AMAZON_2017_10K.pdf — Page 52](/source/evidence/amazon_2017_10k-30e00f91b035/pages/page-0052).\n\nNote that this $8.8 billion figure is the total depreciation expense on property and equipment; the segment table on Page 71 reports a consolidated total depreciation expense of $4,949M (2015) and $6,362M (2016), with the 2017 consolidated value cut off in the excerpt [AMAZON_2017_10K.pdf — Page 71](/source/evidence/amazon_2017_10k-30e00f91b035/pages/page-0071).",
+    "retrieved_sources": [
+      "source/evidence/amazon_2017_10k-30e00f91b035/pages/page-0052",
+      "source/evidence/amazon_2017_10k-30e00f91b035/pages/page-0071",
+      "concepts/amazon-property-and-equipment-note-3"
+    ],
+    "pages_searched": 3,
+    "query_seconds": 3.659,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "ADOBE_2015_10K.pdf",
+    "question": "what channel  is the majority of ADBE product sold by in FY2015?",
+    "answer": "a software subscription model",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[13]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "A software subscription model.\n\nThe deterministic source calculation for the majority product sales channel states: \"a software subscription model (sell the majority of our products through a software subscription model where)\" [ADOBE_2015_10K.pdf — Page 36](/source/evidence/adobe_2015_10k-e4bb6ece2e56/pages/page-0036), [ADOBE_2015_10K.pdf — Page 65](/source/evidence/adobe_2015_10k-e4bb6ece2e56/pages/page-0065). This is consistent with the company's description that it offers many products via a Software-as-a-Service (\"SaaS\") model or a managed services model (hosted/cloud-based), as well as through term subscriptions [ADOBE_2015_10K.pdf — Page 64](/source/evidence/adobe_2015_10k-e4bb6ece2e56/pages/page-0064).\n\nNote: the provided excerpts do not contain a channel-by-channel revenue breakdown quantifying the majority; the answer rests on the stated subscription-model language.",
+    "retrieved_sources": [
+      "source/evidence/adobe_2015_10k-e4bb6ece2e56/pages/page-0036",
+      "source/evidence/adobe_2015_10k-e4bb6ece2e56/pages/page-0065"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 3.67,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "BESTBUY_2023_10K.pdf",
+    "question": "how does Best Buy record Merchandise inventories?",
+    "answer": "the lower of cost or net realizable value",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[45]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "Best Buy records merchandise inventories at the **lower of cost or net realizable value**, using the **weighted-average method** to determine cost [Merchandise Inventories](/source/evidence/bestbuy_2023_10k-97ad2ab06a49/pages/page-0045.md).\n\nCost includes in-bound freight to move inventory into distribution centers and certain vendor allowances. Costs of storing and transporting merchandise to retail stores are expensed as incurred within Cost of sales [Merchandise Inventories](/source/evidence/bestbuy_2023_10k-97ad2ab06a49/pages/page-0045.md).\n\nValuation also reflects markdown adjustments for the excess of cost over expected net recovery (including any rights to return inventory to vendors for a refund), which establish a new cost basis; subsequent changes in facts or circumstances do not reverse previously recorded markdowns or increase the new cost basis. It further reflects adjustments for physical inventory losses such as theft, with physical inventory maintained through a combination of full location counts (typically once per year) and more regular cycle counts [Merchandise Inventories](/source/evidence/bestbuy_2023_10k-97ad2ab06a49/pages/page-0045.md). No adjustment is recorded for inventory expected to be returned to vendors for full credit [Inventory Markdown](/source/evidence/bestbuy_2023_10k-97ad2ab06a49/pages/page-0032.md).\n\nThe carrying amount was $5,140 million as of January 28, 2023 ($5,965 million as of January 29, 2022) [Best Buy Fiscal 2023 Consolidated Balance Sheets](/concepts/best-buy-fiscal-2023-consolidated-balance-sheets.md).",
+    "retrieved_sources": [
+      "source/evidence/bestbuy_2023_10k-97ad2ab06a49/pages/page-0045",
+      "source/evidence/bestbuy_2023_10k-97ad2ab06a49/pages/page-0032",
+      "concepts/best-buy-cost-of-sales-and-sg-a-expense-classification",
+      "concepts/best-buy-fiscal-2023-consolidated-balance-sheets",
+      "concepts/best-buy-fiscal-2023-critical-accounting-estimates"
+    ],
+    "pages_searched": 5,
+    "query_seconds": 3.557,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "concepts/best-buy-fiscal-2023-consolidated-balance-sheets",
+        "source/evidence/bestbuy_2023_10k-97ad2ab06a49/pages/page-0032",
+        "source/evidence/bestbuy_2023_10k-97ad2ab06a49/pages/page-0045"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "97",
+          "claim": "Best Buy records merchandise inventories at the **lower of cost or net realizable value**, using the **weighted-average method** to determine cost [Merchandise Inventories](/source/evidence/bestbuy_2023_10k-97ad2ab06a49/pages/page-0045.md)."
+        },
+        {
+          "value": "0045.",
+          "claim": "Best Buy records merchandise inventories at the **lower of cost or net realizable value**, using the **weighted-average method** to determine cost [Merchandise Inventories](/source/evidence/bestbuy_2023_10k-97ad2ab06a49/pages/page-0045.md)."
+        },
+        {
+          "value": "97",
+          "claim": "Cost includes in-bound freight to move inventory into distribution centers and certain vendor allowances. Costs of storing and transporting merchandise to retail stores are expensed as incurred within Cost of sales [Merchandise Inventories]"
+        },
+        {
+          "value": "0045.",
+          "claim": "Cost includes in-bound freight to move inventory into distribution centers and certain vendor allowances. Costs of storing and transporting merchandise to retail stores are expensed as incurred within Cost of sales [Merchandise Inventories]"
+        },
+        {
+          "value": "97",
+          "claim": "Valuation also reflects markdown adjustments for the excess of cost over expected net recovery (including any rights to return inventory to vendors for a refund), which establish a new cost basis; subsequent changes in facts or circumstance"
+        },
+        {
+          "value": "0045.",
+          "claim": "Valuation also reflects markdown adjustments for the excess of cost over expected net recovery (including any rights to return inventory to vendors for a refund), which establish a new cost basis; subsequent changes in facts or circumstance"
+        },
+        {
+          "value": "97",
+          "claim": "Valuation also reflects markdown adjustments for the excess of cost over expected net recovery (including any rights to return inventory to vendors for a refund), which establish a new cost basis; subsequent changes in facts or circumstance"
+        },
+        {
+          "value": "0032.",
+          "claim": "Valuation also reflects markdown adjustments for the excess of cost over expected net recovery (including any rights to return inventory to vendors for a refund), which establish a new cost basis; subsequent changes in facts or circumstance"
+        },
+        {
+          "value": "2023-",
+          "claim": "The carrying amount was $5,140 million as of January 28, 2023 ($5,965 million as of January 29, 2022) [Best Buy Fiscal 2023 Consolidated Balance Sheets](/concepts/best-buy-fiscal-2023-consolidated-balance-sheets.md)."
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 4
+    },
+    "error": null
+  },
+  {
+    "doc_id": "BESTBUY_2023_10K.pdf",
+    "question": "what goodwill does Best Buy have for for the fiscal year ending January 28, 2023?",
+    "answer": "1383",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[39]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "$2,058 million (gross carrying amount) as of January 28, 2023.\n\nBest Buy's goodwill balances by reportable segment as of January 28, 2023 were: Domestic $1,450 million and International $608 million, for a total gross carrying amount of $2,058 million, with cumulative impairment of $(675) million [Goodwill and Intangible Assets](/source/evidence/bestbuy_2023_10k-97ad2ab06a49/pages/page-0053.md). No impairment charges were recorded for the periods presented [Goodwill and Intangible Assets](/source/evidence/bestbuy_2023_10k-97ad2ab06a49/pages/page-0053.md).\n\nAt the reporting-unit level, the carrying values were $492 million for Best Buy Domestic and $891 million for Best Buy Health as of January 28, 2023 [Best Buy Fiscal 2023 Critical Accounting Estimates](/concepts/best-buy-fiscal-2023-critical-accounting-estimates.md).",
+    "retrieved_sources": [
+      "source/evidence/bestbuy_2023_10k-97ad2ab06a49/pages/page-0044",
+      "source/evidence/bestbuy_2023_10k-97ad2ab06a49/pages/page-0051",
+      "concepts/best-buy-summary-of-significant-accounting-policies",
+      "concepts/best-buy-fiscal-2023-critical-accounting-estimates",
+      "source/evidence/bestbuy_2023_10k-97ad2ab06a49/pages/page-0032"
+    ],
+    "pages_searched": 5,
+    "query_seconds": 10.965,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.6667,
+      "cited_concepts": [
+        "concepts/best-buy-fiscal-2023-critical-accounting-estimates",
+        "source/evidence/bestbuy_2023_10k-97ad2ab06a49/pages/page-0053"
+      ],
+      "unsupported_citations": [
+        "source/evidence/bestbuy_2023_10k-97ad2ab06a49/pages/page-0053"
+      ],
+      "unverified_values": [
+        {
+          "value": "28,",
+          "claim": "Best Buy's goodwill balances by reportable segment as of January 28, 2023 were: Domestic $1,450 million and International $608 million, for a total gross carrying amount of $2,058 million, with cumulative impairment of $(675) million [Goodw"
+        },
+        {
+          "value": "2023",
+          "claim": "Best Buy's goodwill balances by reportable segment as of January 28, 2023 were: Domestic $1,450 million and International $608 million, for a total gross carrying amount of $2,058 million, with cumulative impairment of $(675) million [Goodw"
+        },
+        {
+          "value": "1,450",
+          "claim": "Best Buy's goodwill balances by reportable segment as of January 28, 2023 were: Domestic $1,450 million and International $608 million, for a total gross carrying amount of $2,058 million, with cumulative impairment of $(675) million [Goodw"
+        },
+        {
+          "value": "608",
+          "claim": "Best Buy's goodwill balances by reportable segment as of January 28, 2023 were: Domestic $1,450 million and International $608 million, for a total gross carrying amount of $2,058 million, with cumulative impairment of $(675) million [Goodw"
+        },
+        {
+          "value": "2,058",
+          "claim": "Best Buy's goodwill balances by reportable segment as of January 28, 2023 were: Domestic $1,450 million and International $608 million, for a total gross carrying amount of $2,058 million, with cumulative impairment of $(675) million [Goodw"
+        },
+        {
+          "value": "675",
+          "claim": "Best Buy's goodwill balances by reportable segment as of January 28, 2023 were: Domestic $1,450 million and International $608 million, for a total gross carrying amount of $2,058 million, with cumulative impairment of $(675) million [Goodw"
+        },
+        {
+          "value": "97",
+          "claim": "Best Buy's goodwill balances by reportable segment as of January 28, 2023 were: Domestic $1,450 million and International $608 million, for a total gross carrying amount of $2,058 million, with cumulative impairment of $(675) million [Goodw"
+        },
+        {
+          "value": "0053.",
+          "claim": "Best Buy's goodwill balances by reportable segment as of January 28, 2023 were: Domestic $1,450 million and International $608 million, for a total gross carrying amount of $2,058 million, with cumulative impairment of $(675) million [Goodw"
+        },
+        {
+          "value": "97",
+          "claim": "Best Buy's goodwill balances by reportable segment as of January 28, 2023 were: Domestic $1,450 million and International $608 million, for a total gross carrying amount of $2,058 million, with cumulative impairment of $(675) million [Goodw"
+        },
+        {
+          "value": "0053.",
+          "claim": "Best Buy's goodwill balances by reportable segment as of January 28, 2023 were: Domestic $1,450 million and International $608 million, for a total gross carrying amount of $2,058 million, with cumulative impairment of $(675) million [Goodw"
+        },
+        {
+          "value": "2023-",
+          "claim": "At the reporting-unit level, the carrying values were $492 million for Best Buy Domestic and $891 million for Best Buy Health as of January 28, 2023 [Best Buy Fiscal 2023 Critical Accounting Estimates](/concepts/best-buy-fiscal-2023-critica"
+        }
+      ],
+      "unsupported_claims": [
+        {
+          "claim": "Best Buy's goodwill balances by reportable segment as of January 28, 2023 were: Domestic $1,450 million and International $608 million, for a total gross carrying amount of $2,058 million, with cumulative impairment of $(675) million [Goodw",
+          "citation_ids": [
+            "source/evidence/bestbuy_2023_10k-97ad2ab06a49/pages/page-0053"
+          ],
+          "lexical_support": 0.0
+        }
+      ],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "BESTBUY_2023_10K.pdf",
+    "question": "what proportion does Best Buy have female employees in new, salaried field positions  for the fiscal year ending January 28, 2023?",
+    "answer": "25%",
+    "answer_format": "Float",
+    "task_type": "lookup",
+    "evidence_pages": "[7]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "25%\n\nIn fiscal 2023 (the fiscal year ending January 28, 2023), Best Buy filled 25% of new, salaried field positions with female employees, compared to its goal to fill one of three positions [BESTBUY_2023_10K.pdf — Page 7](/source/evidence/bestbuy_2023_10k-97ad2ab06a49/pages/page-0007.md).",
+    "retrieved_sources": [
+      "source/evidence/bestbuy_2023_10k-97ad2ab06a49/pages/page-0007",
+      "source/evidence/bestbuy_2023_10k-97ad2ab06a49/pages/page-0032"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.983,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.5,
+      "cited_concepts": [
+        "source/evidence/bestbuy_2023_10k-97ad2ab06a49/pages/page-0007"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "28,",
+          "claim": "In fiscal 2023 (the fiscal year ending January 28, 2023), Best Buy filled 25% of new, salaried field positions with female employees, compared to its goal to fill one of three positions [BESTBUY_2023_10K.pdf — Page 7](/source/evidence/bestb"
+        },
+        {
+          "value": "97",
+          "claim": "In fiscal 2023 (the fiscal year ending January 28, 2023), Best Buy filled 25% of new, salaried field positions with female employees, compared to its goal to fill one of three positions [BESTBUY_2023_10K.pdf — Page 7](/source/evidence/bestb"
+        },
+        {
+          "value": "0007.",
+          "claim": "In fiscal 2023 (the fiscal year ending January 28, 2023), Best Buy filled 25% of new, salaried field positions with female employees, compared to its goal to fill one of three positions [BESTBUY_2023_10K.pdf — Page 7](/source/evidence/bestb"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  }
+]

@@ -19,15 +19,82 @@ def test_plan_query_detects_ledger_intent():
     assert "metadata" in plan["preferred_streams"]
 
 
-def test_plan_query_filters_superseded_pages_for_current_intent():
+def test_plan_query_defers_lifecycle_decision_for_current_intent():
     plan = query.plan_query("目前最新的 API 限额是多少")
 
     assert plan["intent"] == "temporal_current"
-    assert query._intent_excluded_statuses(plan) == {
-        "superseded",
-        "obsolete",
-        "archived",
-    }
+    assert query._intent_excluded_statuses(plan) == set()
+
+
+def test_plan_query_routes_exact_fields_to_lossless_evidence():
+    plan = query.plan_query("What is Ada Lovelace's email on page 2?")
+
+    assert plan["intent"] == "structural_lookup"
+    assert plan["page_numbers"] == [2]
+    assert plan["field_types"] == ["email"]
+    assert plan["raw_evidence_preferred"] is True
+    assert plan["preferred_streams"][0] == "raw"
+
+
+def test_plan_query_keeps_unit_number_separate_from_page_number():
+    plan = query.plan_query("What is the topic of UNIT 14?")
+
+    assert plan["page_numbers"] == []
+    assert plan["structural_terms"] == ["unit 14"]
+
+
+def test_recognition_method_query_does_not_force_money_field():
+    plan = query.plan_query("How do Amazon recognize lease costs?")
+
+    assert "money" not in plan["field_types"]
+
+
+def test_exact_lookup_reserves_matching_raw_evidence(monkeypatch):
+    candidates = [
+        {"id": "concept", "stream": "bm25", "score": 1.0, "text": "Laurent Nahmiash"},
+        {
+            "id": "wrong-raw-page",
+            "stream": "raw",
+            "score": 0.9,
+            "page_number": 13,
+            "matched_fields": {},
+            "text": "Laurent Nahmiash",
+        },
+        {
+            "id": "exact-email",
+            "stream": "raw",
+            "score": 0.8,
+            "page_number": 14,
+            "matched_fields": {"email": ["lnahmiash@infavocats.com"]},
+            "text": "Laurent Nahmiash lnahmiash@infavocats.com",
+        },
+    ]
+    monkeypatch.setattr(query, "read_page_content", lambda path: "")
+
+    selected = query._coverage_diverse_results(
+        "what is the email id of the mtre laurent nahmiash?",
+        candidates,
+        2,
+    )
+
+    assert selected[0]["id"] == "exact-email"
+
+
+def test_preselection_retains_top_raw_fallback_candidates():
+    concepts = [{"id": f"concept-{index}", "path": f"/c/{index}"} for index in range(5)]
+    raw = [
+        {
+            "id": f"raw-{rank}",
+            "path": f"/raw/{rank}",
+            "stream": "raw",
+            "stream_ranks": {"raw": rank},
+        }
+        for rank in (3, 1, 2, 4)
+    ]
+
+    kept = query._retain_top_raw_candidates(concepts, concepts + raw)
+
+    assert [item["id"] for item in kept[-2:]] == ["raw-1", "raw-2"]
 
 
 def test_rewrite_query_adds_hyphen_variant():
@@ -47,7 +114,14 @@ def test_default_search_streams_are_wiki_native(monkeypatch):
         lambda: {"search_streams": "", "llm_query_expansion": False},
     )
 
-    assert query.enabled_search_streams() == {"metadata", "bm25", "graph", "ledger"}
+    assert query.enabled_search_streams() == {
+        "raw",
+        "claim",
+        "metadata",
+        "bm25",
+        "graph",
+        "ledger",
+    }
 
 
 def test_enabling_embeddings_adds_vector_stream(monkeypatch):
@@ -218,13 +292,19 @@ def test_rerank_prefers_bm25_with_entity_match():
     query_entities = {"entity-b": 1.0}  # query explicitly mentions entity-b
     results = [
         {
-            "id": "entity-a", "score": 0.1, "stream": "bm25", "text": "",
+            "id": "entity-a",
+            "score": 0.1,
+            "stream": "bm25",
+            "text": "",
             "stream_ranks": {"bm25": 1},
             "stream_scores": {"bm25": 15},
             "type": "concept",
         },
         {
-            "id": "entity-b", "score": 0.1, "stream": "bm25", "text": "",
+            "id": "entity-b",
+            "score": 0.1,
+            "stream": "bm25",
+            "text": "",
             "stream_ranks": {"bm25": 2},
             "stream_scores": {"bm25": 8},  # lower BM25, but query explicitly names it
             "type": "concept",
@@ -245,14 +325,18 @@ def test_rerank_graph_boost_edges_out_bm25_only(monkeypatch):
     results = [
         {
             "id": "lexical",
-            "score": 0.5, "stream": "bm25", "text": "",
+            "score": 0.5,
+            "stream": "bm25",
+            "text": "",
             "type": "concept",
             "stream_ranks": {"bm25": 1},
             "stream_scores": {"bm25": 25},  # strong BM25
         },
         {
             "id": "graph-linked",
-            "score": 0.3, "stream": "graph", "text": "",
+            "score": 0.3,
+            "stream": "graph",
+            "text": "",
             "type": "concept",
             "stream_ranks": {"graph": 1, "bm25": 5},
             "stream_scores": {"bm25": 3, "graph": 0.8},
@@ -315,9 +399,7 @@ def test_lexical_candidates_refills_after_scope_filter(tmp_path):
     def fake_search(_variant, fetch_limit):
         return candidates[:fetch_limit]
 
-    results = query._lexical_candidates(
-        fake_search, ["query"], 2, 2, {"public"}, set()
-    )
+    results = query._lexical_candidates(fake_search, ["query"], 2, 2, {"public"}, set())
 
     assert [item["file"] for item in results] == ["2", "3"]
 
@@ -339,8 +421,7 @@ def test_search_wiki_debug_returns_trace(monkeypatch):
 def test_query_wiki_agent_mode_does_not_call_configured_llm(monkeypatch, tmp_path):
     page = tmp_path / "concept.md"
     page.write_text(
-        "---\ntype: Concept\ntitle: Concept\n---\n"
-        "# Concept\n\n## Key Details\n- value: 42\n",
+        "---\ntype: Concept\ntitle: Concept\n---\n# Concept\n\n## Key Details\n- value: 42\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(
@@ -399,8 +480,7 @@ def test_query_returns_referenced_images_with_search_result(monkeypatch, tmp_pat
     image.write_bytes(b"image")
     page = tmp_path / "concept.md"
     page.write_text(
-        "# 密度\n\n## 来源图片\n\n"
-        "![密度测量装置](assets/density-apparatus.png)\n",
+        "# 密度\n\n## 来源图片\n\n![密度测量装置](assets/density-apparatus.png)\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(
@@ -447,7 +527,8 @@ def test_query_wiki_llm_mode_calls_configured_llm(monkeypatch, tmp_path):
 
 def test_select_evidence_sections_prefers_query_and_key_facts():
     content = (
-        "# Policy\n\n## Background\n" + "background " * 500
+        "# Policy\n\n## Background\n"
+        + "background " * 500
         + "\n## Key Facts\nApproval threshold is 10000.\n"
         + "\n## Region\nApplicable in APAC.\n"
     )

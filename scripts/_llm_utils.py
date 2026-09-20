@@ -9,7 +9,6 @@ import sys
 import time
 
 import requests
-
 from config import get_api_url, get_llm_config
 
 
@@ -56,9 +55,7 @@ def call_llm(
             "stream": False,
             "options": {
                 "temperature": (
-                    temperature
-                    if temperature is not None
-                    else llm_config.get("temperature", 0.3)
+                    temperature if temperature is not None else llm_config.get("temperature", 0.3)
                 ),
                 "num_ctx": llm_config.get("num_ctx", 32768),
             },
@@ -69,14 +66,10 @@ def call_llm(
         payload = {
             "model": llm_config.get("model", ""),
             "temperature": (
-                temperature
-                if temperature is not None
-                else llm_config.get("temperature", 0.3)
+                temperature if temperature is not None else llm_config.get("temperature", 0.3)
             ),
             "max_tokens": (
-                max_tokens
-                if max_tokens is not None
-                else llm_config.get("max_tokens", 32000)
+                max_tokens if max_tokens is not None else llm_config.get("max_tokens", 32000)
             ),
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -99,14 +92,10 @@ def call_llm(
         payload = {
             "model": llm_config.get("model", "deepseek-v4-flash"),
             "temperature": (
-                temperature
-                if temperature is not None
-                else llm_config.get("temperature", 0.3)
+                temperature if temperature is not None else llm_config.get("temperature", 0.3)
             ),
             "max_tokens": (
-                max_tokens
-                if max_tokens is not None
-                else llm_config.get("max_tokens", 32000)
+                max_tokens if max_tokens is not None else llm_config.get("max_tokens", 32000)
             ),
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -123,9 +112,7 @@ def call_llm(
     # ── retry loop ───────────────────────────────────────────────────
     for attempt in range(max_retries):
         try:
-            resp = requests.post(
-                api_url, json=payload, headers=headers, timeout=timeout
-            )
+            resp = requests.post(api_url, json=payload, headers=headers, timeout=timeout)
 
             # Rate limit — retry with exponential backoff
             if resp.status_code == 429:
@@ -138,9 +125,7 @@ def call_llm(
                     )
                     time.sleep(wait)
                     continue
-                raise RuntimeError(
-                    f"LLM API rate limited after {max_retries} attempts"
-                )
+                raise RuntimeError(f"LLM API rate limited after {max_retries} attempts")
 
             # Auth errors — do NOT retry (will never succeed)
             if resp.status_code in (401, 403):
@@ -153,15 +138,11 @@ def call_llm(
             try:
                 data = resp.json()
             except json.JSONDecodeError as e:
-                raise RuntimeError(
-                    f"LLM API returned invalid JSON: {e}"
-                ) from e
+                raise RuntimeError(f"LLM API returned invalid JSON: {e}") from e
 
             # Parse provider-specific response
             if provider == "ollama":
-                return (
-                    data.get("message", {}).get("content", "") or ""
-                ).strip()
+                return (data.get("message", {}).get("content", "") or "").strip()
             else:
                 msg = data["choices"][0]["message"]
                 return (msg.get("content") or "").strip()
@@ -179,14 +160,10 @@ def call_llm(
                 )
                 time.sleep(wait)
             else:
-                raise RuntimeError(
-                    f"LLM API call failed after {max_retries} attempts: {e}"
-                ) from e
+                raise RuntimeError(f"LLM API call failed after {max_retries} attempts: {e}") from e
 
         except (KeyError, IndexError) as e:
-            raise RuntimeError(
-                f"Unexpected LLM API response structure: {e}"
-            ) from e
+            raise RuntimeError(f"Unexpected LLM API response structure: {e}") from e
 
     # Should never reach here, but makes type checkers happy
     raise RuntimeError(f"LLM API call failed after {max_retries} attempts")
@@ -198,44 +175,44 @@ def call_llm(
 _MODEL_CONTEXT_FALLBACK = 131072  # 128K — safe default for most modern models
 _MODEL_CONTEXT_MAP: dict[str, int] = {
     # DeepSeek family
-    "deepseek-v4": 131072,       # 128K
-    "deepseek-v3": 65536,        # 64K
-    "deepseek-r1": 131072,       # 128K
-    "deepseek-chat": 65536,      # 64K
-    "deepseek-coder": 65536,     # 64K
-    "deepseek-v2": 131072,       # 128K
+    "deepseek-v4": 131072,  # 128K
+    "deepseek-v3": 65536,  # 64K
+    "deepseek-r1": 131072,  # 128K
+    "deepseek-chat": 65536,  # 64K
+    "deepseek-coder": 65536,  # 64K
+    "deepseek-v2": 131072,  # 128K
     # OpenAI family
-    "gpt-4o": 131072,            # 128K
-    "gpt-4-turbo": 131072,       # 128K
-    "gpt-4": 8192,               # 8K (older)
-    "gpt-4-32k": 32768,          # 32K
-    "gpt-3.5-turbo": 16384,      # 16K
+    "gpt-4o": 131072,  # 128K
+    "gpt-4-turbo": 131072,  # 128K
+    "gpt-4": 8192,  # 8K (older)
+    "gpt-4-32k": 32768,  # 32K
+    "gpt-3.5-turbo": 16384,  # 16K
     "gpt-3.5-turbo-16k": 16384,  # 16K
-    "o1": 200000,                # 200K
-    "o3": 200000,                # 200K
+    "o1": 200000,  # 200K
+    "o3": 200000,  # 200K
     # Anthropic family
-    "claude": 200000,            # 200K (Sonnet/Opus/Haiku 4+)
+    "claude": 200000,  # 200K (Sonnet/Opus/Haiku 4+)
     # Meta family
-    "llama3.2": 131072,          # 128K
-    "llama3.1": 131072,          # 128K
-    "llama3": 8192,              # 8K
-    "llama2": 4096,              # 4K
+    "llama3.2": 131072,  # 128K
+    "llama3.1": 131072,  # 128K
+    "llama3": 8192,  # 8K
+    "llama2": 4096,  # 4K
     # Qwen family
-    "qwen3": 131072,             # 128K
-    "qwen2.5": 131072,           # 128K
-    "qwen2": 32768,              # 32K
-    "qwen": 32768,               # 32K
+    "qwen3": 131072,  # 128K
+    "qwen2.5": 131072,  # 128K
+    "qwen2": 32768,  # 32K
+    "qwen": 32768,  # 32K
     # Mistral family
-    "mistral-large": 131072,     # 128K
-    "mistral-small": 32768,      # 32K
-    "mistral": 32768,            # 32K
-    "mixtral": 32768,            # 32K
+    "mistral-large": 131072,  # 128K
+    "mistral-small": 32768,  # 32K
+    "mistral": 32768,  # 32K
+    "mixtral": 32768,  # 32K
     # Google family
-    "gemini-2": 1048576,         # 1M
-    "gemini-1.5": 1048576,       # 1M
-    "gemini": 32768,             # 32K
+    "gemini-2": 1048576,  # 1M
+    "gemini-1.5": 1048576,  # 1M
+    "gemini": 32768,  # 32K
     # Yi family
-    "yi": 200000,                # 200K
+    "yi": 200000,  # 200K
 }
 
 # Prompt overhead estimate: system prompt + user prompt template + response headroom
@@ -260,9 +237,7 @@ def get_model_max_context() -> int:
         return int(llm_config["max_context"])
 
     # Match by model family prefix (most specific first)
-    for prefix, ctx in sorted(
-        _MODEL_CONTEXT_MAP.items(), key=lambda x: -len(x[0])
-    ):
+    for prefix, ctx in sorted(_MODEL_CONTEXT_MAP.items(), key=lambda x: -len(x[0])):
         if model_name.startswith(prefix) or prefix in model_name:
             return ctx
 
@@ -315,7 +290,8 @@ def llm_fuse_pages(
     is_zh = cn_chars > 50
 
     if is_zh:
-        system_prompt = """你是 Wiki 页面融合引擎。你的任务是将两个关于同一主题的 Wiki 页面合并成一个连贯的页面。
+        system_prompt = """你是 Wiki 页面融合引擎。
+你的任务是将两个关于同一主题的 Wiki 页面合并成一个连贯的页面。
 
 ## 融合规则（严格遵守！）
 1. **去重合并**：如果两页用不同措辞描述同一件事，保留更精确/更详细的版本，删除冗余
@@ -338,14 +314,18 @@ def llm_fuse_pages(
 
 只输出融合后的页面正文（无 YAML frontmatter，无额外解释）。"""
     else:
-        system_prompt = """You are a wiki page fusion engine. Your job is to merge two wiki pages about the same topic into a single coherent page.
+        system_prompt = """You are a wiki page fusion engine.
+Merge two wiki pages about the same topic into a single coherent page.
 
 ## Fusion Rules (follow strictly!)
-1. **Deduplicate**: If both pages say the same thing with different wording, keep the more precise/detailed version and remove redundancy
-2. **Preserve unique facts**: If one page has specific facts, data, or details the other lacks, keep them
+1. **Deduplicate**: If both pages say the same thing with different wording,
+   keep the more precise/detailed version and remove redundancy
+2. **Preserve unique facts**: If one page has specific facts, data, or details
+   the other lacks, keep them
 3. **No duplicate headings**: Only one ## Overview, one ## Key Details, one ## Relationships, etc.
 4. **Merge at section level**: Fuse content under shared headings, don't create duplicate sections
-5. **Preserve structure**: Maintain standard page structure (title → key facts → overview → details → relationships → source)
+5. **Preserve structure**: Maintain standard page structure
+   (title → key facts → overview → details → relationships → source)
 6. **Add fusion marker**: Add a single `<!-- fused from [[duplicate-page-id]] -->` comment
 7. **Output ONLY the fused body**: No YAML frontmatter, no explanation
 8. **The result should be SHORTER than the sum of both pages** — dedup is the primary goal

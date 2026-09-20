@@ -9,6 +9,7 @@
 | `query.py` | 235 | **Search wiki → answer questions** | `search.bm25_search` |
 | `query_multihop.py` | — | Subgoal coverage, typed linked traversal, path scoring, diverse top-k | Injected official search callback |
 | `query_language.py` | — | Model-free bilingual alias and glossary expansion | `query.py` |
+| `raw_evidence.py` | — | Lossless source/page evidence, exact-field extraction, coverage verification | `compile_v2.py`, `query.py` |
 | `lint.py` | 277 | **Health check → auto-heal** | None |
 
 ### Support Scripts
@@ -23,6 +24,7 @@
 | Script | Lines | Purpose | Dependencies |
 |--------|-------|---------|--------------|
 | `url2markdown.py` | 280 | URL → markdown conversion | None |
+| `benchmark_pageindex.py` | — | PageIndex-compatible 34-PDF/62-question benchmark | `compile_v2.py`, `query.py` |
 | `ocr.py` | shim | Backward-compatible wrapper for `wiki ocr` | `ocr.cli` |
 | `epub.py` | — | EPUB spine → Markdown with persistent image extraction | BeautifulSoup, markdownify |
 | `_deepseek_ocr.py` | 358 | DeepSeek OCR backend | None |
@@ -70,6 +72,13 @@ python3 scripts/consolidate.py
 
 # Crystallize session
 python3 scripts/crystallize.py session.md --topic "Research"
+
+# PageIndex OSS protocol: same PDFs, questions, and judge-compatible schema
+python3 scripts/benchmark_pageindex.py run /path/to/PageIndex-OSS-Benchmark
+
+# Reuse compiled wikis after retrieval changes; backfills lossless evidence
+python3 scripts/benchmark_pageindex.py rerun-queries \
+  /path/to/PageIndex-OSS-Benchmark predictions.json
 ```
 
 ### CLI Wrapper

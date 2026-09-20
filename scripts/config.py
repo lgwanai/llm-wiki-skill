@@ -17,6 +17,7 @@ Usage:
 
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -72,7 +73,7 @@ DEFAULT_CONFIG = {
         "default_format": "markdown",
         "max_results": 5,
         "parallel_search": True,
-        "search_streams": "metadata,bm25,graph,ledger",
+        "search_streams": "raw,claim,metadata,bm25,graph,ledger",
         "llm_query_expansion": False,
         "cross_language_expansion": True,
         "multi_hop_enabled": True,
@@ -368,7 +369,7 @@ def get_query_config() -> dict:
             "llm_synthesis": True,
             "default_format": "markdown",
             "max_results": 5,
-            "search_streams": "metadata,bm25,graph,ledger",
+            "search_streams": "raw,claim,metadata,bm25,graph,ledger",
             "llm_query_expansion": False,
         },
     )
@@ -390,6 +391,19 @@ def get_ocr_config() -> dict:
     OCR is intentionally configured independently from a Wiki project so
     ``ocr use MODEL`` affects direct CLI runs and Wiki compilation equally.
     """
+    project_root = str(Path(__file__).resolve().parent.parent)
+    script_dir = str(Path(__file__).resolve().parent)
+    for import_path in (project_root, script_dir):
+        while import_path in sys.path:
+            sys.path.remove(import_path)
+    sys.path.insert(0, project_root)
+    sys.path.insert(1, script_dir)
+    loaded_ocr = sys.modules.get("ocr")
+    if loaded_ocr is not None and not hasattr(loaded_ocr, "__path__"):
+        loaded_file = str(getattr(loaded_ocr, "__file__", ""))
+        if loaded_file.endswith("/scripts/ocr.py"):
+            sys.modules.pop("ocr", None)
+
     from ocr.config import get_model_config
 
     return get_model_config()
@@ -582,7 +596,7 @@ def validate_config(config: dict) -> list[str]:
     for key in config:
         if key not in known_keys:
             issues.append(
-                f"unknown top-level key '{key}' — valid keys: " f"{', '.join(sorted(known_keys))}"
+                f"unknown top-level key '{key}' — valid keys: {', '.join(sorted(known_keys))}"
             )
 
     return issues
@@ -591,7 +605,17 @@ def validate_config(config: dict) -> list[str]:
 # ── Schema validation helpers ─────────────────────────────────────────
 
 _VALID_PROVIDERS = ("deepseek", "openai", "ollama", "custom")
-_VALID_SEARCH_STREAMS = {"metadata", "bm25", "graph", "ledger", "chunk", "vector", "chunk_vector"}
+_VALID_SEARCH_STREAMS = {
+    "raw",
+    "claim",
+    "metadata",
+    "bm25",
+    "graph",
+    "ledger",
+    "chunk",
+    "vector",
+    "chunk_vector",
+}
 
 
 class _SchemaValidator:

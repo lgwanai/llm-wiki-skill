@@ -32,12 +32,12 @@ def _get_edges_file() -> str:
 def _load_json(path: str) -> dict | list:
     path_str = str(path)
     if not os.path.exists(path_str):
-        return {} if 'entities' in path_str else {'edges': []}
+        return {} if "entities" in path_str else {"edges": []}
     try:
-        with open(path_str, encoding='utf-8') as f:
+        with open(path_str, encoding="utf-8") as f:
             return json.load(f)
     except (json.JSONDecodeError, OSError):
-        return {} if 'entities' in path else {'edges': []}
+        return {} if "entities" in path else {"edges": []}
 
 
 def _load_json_safe(path, default):
@@ -46,7 +46,7 @@ def _load_json_safe(path, default):
     if not os.path.exists(path_str):
         return default
     try:
-        with open(path_str, encoding='utf-8') as f:
+        with open(path_str, encoding="utf-8") as f:
             return json.load(f)
     except (json.JSONDecodeError, OSError):
         return default
@@ -58,7 +58,7 @@ def _now() -> str:
 
 def _days_since(iso_str: str) -> int:
     try:
-        dt = datetime.fromisoformat(iso_str.replace('Z', '+00:00'))
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
         return max(0, (datetime.now(timezone.utc) - dt).days)
     except (ValueError, TypeError):
         return 999
@@ -68,7 +68,7 @@ def find_orphans() -> list[dict]:
     """Find entity pages with no incoming edges in the graph."""
     entities_data = _load_json(_get_entities_file())
     edges_data = _load_json(_get_edges_file())
-    all_edges = edges_data.get('edges', []) if isinstance(edges_data, dict) else []
+    all_edges = edges_data.get("edges", []) if isinstance(edges_data, dict) else []
 
     if not isinstance(entities_data, dict):
         return []
@@ -76,17 +76,19 @@ def find_orphans() -> list[dict]:
     incoming: set = set()
     outgoing: set = set()
     for edge in all_edges:
-        incoming.add(edge.get('target', ''))
-        outgoing.add(edge.get('source', ''))
+        incoming.add(edge.get("target", ""))
+        outgoing.add(edge.get("source", ""))
 
     orphans = []
     for eid in entities_data:
         if eid not in incoming and eid not in outgoing:
-            orphans.append({
-                'entity_id': eid,
-                'name': entities_data[eid].get('name', eid),
-                'type': entities_data[eid].get('type', 'unknown'),
-            })
+            orphans.append(
+                {
+                    "entity_id": eid,
+                    "name": entities_data[eid].get("name", eid),
+                    "type": entities_data[eid].get("type", "unknown"),
+                }
+            )
     return orphans
 
 
@@ -96,28 +98,36 @@ def find_stale_claims() -> list[dict]:
     if not isinstance(entities_data, dict):
         return []
 
-    decay_s = {'architecture': 260, 'project': 130, 'bug': 20, 'meeting': 10,
-               'pattern': 87, 'preference': 527}
+    decay_s = {
+        "architecture": 260,
+        "project": 130,
+        "bug": 20,
+        "meeting": 10,
+        "pattern": 87,
+        "preference": 527,
+    }
 
     stale = []
     for eid, entity in entities_data.items():
-        last = entity.get('last_confirmed', '')
+        last = entity.get("last_confirmed", "")
         if not last:
             continue
         days = _days_since(last)
-        etype = entity.get('type', 'project')
+        etype = entity.get("type", "project")
         s = decay_s.get(etype, 130)
         retention = math.exp(-days / s) if s > 0 else 1.0
         if retention < 0.5:
-            stale.append({
-                'entity_id': eid,
-                'name': entity.get('name', eid),
-                'last_confirmed': last,
-                'days_since': days,
-                'retention': round(retention, 3),
-                'status': 'archived' if retention < 0.15 else 'stale',
-            })
-    stale.sort(key=lambda x: x['retention'])
+            stale.append(
+                {
+                    "entity_id": eid,
+                    "name": entity.get("name", eid),
+                    "last_confirmed": last,
+                    "days_since": days,
+                    "retention": round(retention, 3),
+                    "status": "archived" if retention < 0.15 else "stale",
+                }
+            )
+    stale.sort(key=lambda x: x["retention"])
     return stale
 
 
@@ -153,29 +163,66 @@ def find_broken_links() -> list[dict]:
 
 
 def find_contradictions() -> list[dict]:
-    """Detect contradictory claims — two entities with same name but different confidence."""
+    """Detect scoped claim conflicts, retaining the legacy confidence signal."""
+    from knowledge_claims import claims_conflict, extract_claims
+    from okf import concept_id, iter_concepts, read_markdown
+
+    claim_groups: dict[tuple[str, str], list[tuple[str, dict]]] = {}
+    pages_dir = _get_pages_dir()
+    for path in iter_concepts(pages_dir):
+        metadata, body, error = read_markdown(path)
+        if error:
+            continue
+        page_id = concept_id(path, pages_dir)
+        for claim in extract_claims(metadata, body, page_id):
+            key = (
+                re.sub(r"\W+", "", str(claim.get("subject", "")).casefold()),
+                re.sub(r"\W+", "", str(claim.get("predicate", "")).casefold()),
+            )
+            if all(key):
+                claim_groups.setdefault(key, []).append((page_id, claim))
+
+    contradictions: list[dict] = []
+    for entries in claim_groups.values():
+        for left_index, (left_page, left_claim) in enumerate(entries):
+            for right_page, right_claim in entries[left_index + 1 :]:
+                if left_page == right_page or not claims_conflict(left_claim, right_claim):
+                    continue
+                contradictions.append(
+                    {
+                        "type": "claim_conflict",
+                        "entities": [left_page, right_page],
+                        "subject": left_claim.get("subject", ""),
+                        "predicate": left_claim.get("predicate", ""),
+                        "values": [left_claim.get("value", ""), right_claim.get("value", "")],
+                        "suggestion": "review authority, scope, and effective intervals",
+                    }
+                )
+
     entities_data = _load_json(_get_entities_file())
     if not isinstance(entities_data, dict):
-        return []
+        return contradictions
 
     by_name: dict[str, list] = {}
     for eid, entity in entities_data.items():
-        name = entity.get('name', '').lower()
+        name = entity.get("name", "").lower()
         if name:
             by_name.setdefault(name, []).append((eid, entity))
 
-    contradictions = []
     for name, entries in by_name.items():
         if len(entries) < 2:
             continue
-        confidences = [e[1].get('confidence', 0.5) for e in entries]
+        confidences = [e[1].get("confidence", 0.5) for e in entries]
         if max(confidences) - min(confidences) > 0.3:
-            contradictions.append({
-                'name': name,
-                'entities': [e[0] for e in entries],
-                'confidence_range': [min(confidences), max(confidences)],
-                'suggestion': 'consider merging or superseding the lower-confidence entity',
-            })
+            contradictions.append(
+                {
+                    "type": "confidence_mismatch",
+                    "name": name,
+                    "entities": [e[0] for e in entries],
+                    "confidence_range": [min(confidences), max(confidences)],
+                    "suggestion": "consider merging or superseding the lower-confidence entity",
+                }
+            )
     return contradictions
 
 
@@ -188,18 +235,18 @@ def rescore_content() -> list[dict]:
     scored = []
     for eid, entity in entities_data.items():
         dimensions = {
-            'structure': 0.5 if entity.get('attributes') else 0.3,
-            'completeness': 0.5 if entity.get('confidence', 0) > 0.5 else 0.3,
-            'source_citation': 0.5 if entity.get('sources') else 0.2,
-            'consistency': 0.7,
-            'freshness': 0.5,
-            'readability': 0.6,
+            "structure": 0.5 if entity.get("attributes") else 0.3,
+            "completeness": 0.5 if entity.get("confidence", 0) > 0.5 else 0.3,
+            "source_citation": 0.5 if entity.get("sources") else 0.2,
+            "consistency": 0.7,
+            "freshness": 0.5,
+            "readability": 0.6,
         }
         quality = sum(dimensions.values()) / len(dimensions)
-        entity['quality_score'] = round(quality, 2)
-        entity['quality_dimensions'] = {k: round(v, 2) for k, v in dimensions.items()}
-        entity['last_scored'] = _now()
-        scored.append({'entity_id': eid, 'quality_score': round(quality, 2)})
+        entity["quality_score"] = round(quality, 2)
+        entity["quality_dimensions"] = {k: round(v, 2) for k, v in dimensions.items()}
+        entity["last_scored"] = _now()
+        scored.append({"entity_id": eid, "quality_score": round(quality, 2)})
 
     _save_json(_get_entities_file(), entities_data)
     return scored
@@ -210,17 +257,17 @@ def auto_heal(issues: dict) -> list[dict]:
     healed = []
     entities_data = _load_json(_get_entities_file())
 
-    for orphan in issues.get('orphans', []):
-        eid = orphan.get('entity_id', '')
+    for orphan in issues.get("orphans", []):
+        eid = orphan.get("entity_id", "")
         if eid in entities_data:
-            entities_data[eid]['status'] = 'orphan'
-            healed.append({'type': 'orphan_tagged', 'entity': eid})
+            entities_data[eid]["status"] = "orphan"
+            healed.append({"type": "orphan_tagged", "entity": eid})
 
-    for stale in issues.get('stale', []):
-        eid = stale.get('entity_id', '')
-        if eid in entities_data and stale.get('status') == 'stale':
-            entities_data[eid]['status'] = 'stale'
-            healed.append({'type': 'stale_marked', 'entity': eid})
+    for stale in issues.get("stale", []):
+        eid = stale.get("entity_id", "")
+        if eid in entities_data and stale.get("status") == "stale":
+            entities_data[eid]["status"] = "stale"
+            healed.append({"type": "stale_marked", "entity": eid})
 
     _save_json(_get_entities_file(), entities_data)
     return healed
@@ -232,57 +279,66 @@ def generate_report(issues: dict, healed: list[dict]) -> str:
     healed_count = len(healed)
     needs_attention = total - healed_count
 
-    lines = ['# Wiki Health Report', '', f'**Date:** {_now()}', '',
-             '## Summary', '',
-             f'- Issues found: **{total}**', f'- Auto-healed: **{healed_count}**',
-             f'- Needs attention: **{needs_attention}**', '']
+    lines = [
+        "# Wiki Health Report",
+        "",
+        f"**Date:** {_now()}",
+        "",
+        "## Summary",
+        "",
+        f"- Issues found: **{total}**",
+        f"- Auto-healed: **{healed_count}**",
+        f"- Needs attention: **{needs_attention}**",
+        "",
+    ]
 
     if healed:
-        lines.append('## Auto-Healed')
+        lines.append("## Auto-Healed")
         for item in healed:
-            lines.append(f'- ✅ {item["type"].replace("_", " ")}: `{item.get("entity", "")}`')
-        lines.append('')
+            lines.append(f"- ✅ {item['type'].replace('_', ' ')}: `{item.get('entity', '')}`")
+        lines.append("")
 
     for section_name, items in issues.items():
         if not items:
             continue
-        remaining = [i for i in items if not any(
-            h.get('entity') == i.get('entity_id', '') for h in healed)]
+        remaining = [
+            i for i in items if not any(h.get("entity") == i.get("entity_id", "") for h in healed)
+        ]
         if not remaining:
             continue
-        lines.append(f'## {section_name.replace("_", " ").title()} ({len(remaining)})')
+        lines.append(f"## {section_name.replace('_', ' ').title()} ({len(remaining)})")
         for item in remaining[:10]:
-            name = item.get('name', item.get('entity_id', item.get('file', '')))
-            extra = ''
-            if 'retention' in item:
-                extra = f' (retention: {item["retention"]})'
-            if 'target' in item:
-                extra = f' → `{item["target"]}`'
-            lines.append(f'- 🔴 **{name}**{extra}')
+            name = item.get("name", item.get("entity_id", item.get("file", "")))
+            extra = ""
+            if "retention" in item:
+                extra = f" (retention: {item['retention']})"
+            if "target" in item:
+                extra = f" → `{item['target']}`"
+            lines.append(f"- 🔴 **{name}**{extra}")
         if len(remaining) > 10:
-            lines.append(f'- ... and {len(remaining) - 10} more')
-        lines.append('')
+            lines.append(f"- ... and {len(remaining) - 10} more")
+        lines.append("")
 
-    return '\n'.join(lines)
+    return "\n".join(lines)
 
 
 def _save_json(path: str, data) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, 'w', encoding='utf-8') as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False, default=str)
 
 
 def _main() -> None:
-    parser = argparse.ArgumentParser(description='llm-wiki Quality Linter')
-    parser.add_argument('--auto-heal', action='store_true', help='Auto-resolve fixable issues')
-    parser.add_argument('--report-file', help='Write report to file instead of stdout')
+    parser = argparse.ArgumentParser(description="llm-wiki Quality Linter")
+    parser.add_argument("--auto-heal", action="store_true", help="Auto-resolve fixable issues")
+    parser.add_argument("--report-file", help="Write report to file instead of stdout")
     args = parser.parse_args()
 
     issues = {
-        'orphans': find_orphans(),
-        'stale': find_stale_claims(),
-        'broken_links': find_broken_links(),
-        'contradictions': find_contradictions(),
+        "orphans": find_orphans(),
+        "stale": find_stale_claims(),
+        "broken_links": find_broken_links(),
+        "contradictions": find_contradictions(),
     }
     rescore_content()
 
@@ -291,9 +347,9 @@ def _main() -> None:
     report = generate_report(issues, healed)
 
     if args.report_file:
-        with open(args.report_file, 'w', encoding='utf-8') as f:
+        with open(args.report_file, "w", encoding="utf-8") as f:
             f.write(report)
-        print(f'Report written to {args.report_file}')
+        print(f"Report written to {args.report_file}")
     else:
         print(report)
 

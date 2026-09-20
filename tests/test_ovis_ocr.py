@@ -23,9 +23,7 @@ def _runtime(tmp_path: Path) -> tuple[Path, Path, Path]:
     return project, python, model
 
 
-def _fake_ocr_run(
-    command: list[str], **_kwargs: object
-) -> subprocess.CompletedProcess[str]:
+def _fake_ocr_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
     output_dir = Path(command[command.index("--output-dir") + 1])
     source = Path(command[2])
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -40,32 +38,24 @@ def _fake_ocr_run(
     return subprocess.CompletedProcess(command, 0, stdout="Done", stderr="")
 
 
-def test_ovis_pdf_normalizes_pages_crops_and_sidecar(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_ovis_pdf_normalizes_pages_crops_and_sidecar(tmp_path: Path, monkeypatch) -> None:
     project, python, model = _runtime(tmp_path)
     source = tmp_path / "paper.pdf"
     source.write_bytes(b"%PDF")
     output = tmp_path / "output"
     monkeypatch.setattr(ovis_ocr.subprocess, "run", _fake_ocr_run)
 
-    markdown = OvisOCR2(project, python, model).ocr_pdf(
-        str(source), output, max_pages=1
-    )
+    markdown = OvisOCR2(project, python, model).ocr_pdf(str(source), output, max_pages=1)
 
     content = markdown.read_text(encoding="utf-8")
     assert "## Page 1" in content
     assert "$x^2+y^2=1$" in content
     assert "![坐标图](markdown/images/bbox_1_2_3_4.jpg)" in content
-    sidecar = json.loads(
-        (output / "paper_content_list.json").read_text(encoding="utf-8")
-    )
+    sidecar = json.loads((output / "paper_content_list.json").read_text(encoding="utf-8"))
     assert sidecar == [{"page_idx": 0}]
 
 
-def test_ovis_image_keeps_crop_assets_with_absolute_links(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_ovis_image_keeps_crop_assets_with_absolute_links(tmp_path: Path, monkeypatch) -> None:
     project, python, model = _runtime(tmp_path)
     source = tmp_path / "scan.png"
     source.write_bytes(b"image")
@@ -124,9 +114,7 @@ def test_ovis_rejects_non_positive_page_limit(tmp_path: Path) -> None:
     source.write_bytes(b"%PDF")
 
     try:
-        OvisOCR2(project, python, model).ocr_pdf(
-            str(source), tmp_path / "out", max_pages=0
-        )
+        OvisOCR2(project, python, model).ocr_pdf(str(source), tmp_path / "out", max_pages=0)
     except ValueError as exc:
         assert "at least 1" in str(exc)
     else:
@@ -144,15 +132,11 @@ def test_ovis_converts_office_documents_before_ocr(tmp_path: Path, monkeypatch) 
         lambda name: "/usr/local/bin/soffice" if name == "soffice" else None,
     )
 
-    def fake_run(
-        command: list[str], **kwargs: object
-    ) -> subprocess.CompletedProcess[str]:
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         if command[0] == "/usr/local/bin/soffice":
             output_dir = Path(command[command.index("--outdir") + 1])
             (output_dir / "slides.pdf").write_bytes(b"%PDF")
-            return subprocess.CompletedProcess(
-                command, 0, stdout="converted", stderr=""
-            )
+            return subprocess.CompletedProcess(command, 0, stdout="converted", stderr="")
         return _fake_ocr_run(command, **kwargs)
 
     monkeypatch.setattr(ovis_ocr.subprocess, "run", fake_run)

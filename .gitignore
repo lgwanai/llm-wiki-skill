@@ -40,6 +40,7 @@ wiki_config.yaml
 
 # Wiki artifacts (generated, not committed)
 .wiki/
+.benchmarks/
 evals/beir/
 evals/beir_wiki/
 

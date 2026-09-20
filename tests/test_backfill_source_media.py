@@ -19,13 +19,20 @@ def test_backfill_restores_images_to_legacy_compiled_pages(tmp_path):
     image.write_bytes(b"weather")
     source.write_text("# 天气\n\n![](images/weather.png)\n", encoding="utf-8")
     source.with_name("geography_content_list_v2.json").write_text(
-        json.dumps([[{
-            "type": "image",
-            "content": {
-                "image_source": {"path": "images/weather.png"},
-                "image_caption": [{"type": "text", "content": "天气符号"}],
-            },
-        }]], ensure_ascii=False),
+        json.dumps(
+            [
+                [
+                    {
+                        "type": "image",
+                        "content": {
+                            "image_source": {"path": "images/weather.png"},
+                            "image_caption": [{"type": "text", "content": "天气符号"}],
+                        },
+                    }
+                ]
+            ],
+            ensure_ascii=False,
+        ),
         encoding="utf-8",
     )
 

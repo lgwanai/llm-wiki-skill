@@ -37,6 +37,7 @@ ROLLBACK_THRESHOLD = -0.15
 
 # ── data types ────────────────────────────────────────────────────────────────
 
+
 @dataclass(frozen=True)
 class QualityReport:
     """Result of a before/after search quality comparison."""
@@ -61,6 +62,7 @@ class QualityReport:
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
+
 def _page_density(body: str) -> int:
     """Count non-whitespace characters (moved from dream.py)."""
     return len(re.sub(r"\s+", "", body))
@@ -77,6 +79,7 @@ def _read_page_parts(path: Path) -> tuple[dict, str] | None:
         return None
     try:
         import yaml
+
         fm = yaml.safe_load(match.group(1)) or {}
         return (fm if isinstance(fm, dict) else {}, match.group(2))
     except Exception:
@@ -102,6 +105,7 @@ def _find_rank(results: list[dict], page_id: str) -> int:
 
 
 # ── quality assessment ───────────────────────────────────────────────────────
+
 
 def _compute_rank_score(
     test_queries: list[str],
@@ -135,9 +139,7 @@ def _compute_rank_score(
             query_changes[pid] = (old_rank, new_rank)
 
         if query_changes:
-            rank_changes[query] = {
-                k: {"old": v[0], "new": v[1]} for k, v in query_changes.items()
-            }
+            rank_changes[query] = {k: {"old": v[0], "new": v[1]} for k, v in query_changes.items()}
         per_query_rank_scores[query] = (
             round(sum(query_deltas) / len(query_deltas), 3) if query_deltas else 0.0
         )
@@ -198,8 +200,7 @@ def _make_recommendation(overall: float) -> tuple[str, str]:
         return "keep", f"Quality stable or improved (score: {overall:+.2f})."
     elif overall >= ROLLBACK_THRESHOLD:
         return "warn", (
-            f"Minor quality degradation (score: {overall:+.2f}). "
-            f"Changes kept; review recommended."
+            f"Minor quality degradation (score: {overall:+.2f}). Changes kept; review recommended."
         )
     return "rollback", (
         f"Significant quality degradation (score: {overall:+.2f}). "
@@ -216,16 +217,21 @@ def assess_quality(
     """Compare before/after search results and produce a QualityReport."""
     if not test_queries:
         return QualityReport(
-            overall_score=0, recommendation="keep",
+            overall_score=0,
+            recommendation="keep",
             summary="No test queries — skipping quality assessment.",
         )
 
     rank_score, rank_changes, per_query_scores = _compute_rank_score(
-        test_queries, baseline_results, current_results,
+        test_queries,
+        baseline_results,
+        current_results,
     )
     density_score, density_changes = _compute_density_score(modified_paths)
     coverage_score = _compute_coverage_score(
-        test_queries, baseline_results, current_results,
+        test_queries,
+        baseline_results,
+        current_results,
     )
 
     overall = (
@@ -247,6 +253,7 @@ def assess_quality(
 
 # ── search baseline ───────────────────────────────────────────────────────────
 
+
 def run_search_baseline(queries: list[str], wiki_dir: Path) -> dict[str, list[dict]]:
     """Run wiki search for each query and return raw results.
 
@@ -258,10 +265,11 @@ def run_search_baseline(queries: list[str], wiki_dir: Path) -> dict[str, list[di
     try:
         from search import (
             bm25_search,
-            metadata_search,
             graph_search,
+            metadata_search,
             reciprocal_rank_fusion,
         )
+
         pages_dir = str(wiki_dir / "pages")
         graph_dir = str(wiki_dir / "graph")
 
@@ -281,6 +289,7 @@ def run_search_baseline(queries: list[str], wiki_dir: Path) -> dict[str, list[di
     except ImportError:
         try:
             from query import query_wiki
+
             for query in queries:
                 try:
                     result = query_wiki(query, synthesis=False, mode="agent")
@@ -290,8 +299,7 @@ def run_search_baseline(queries: list[str], wiki_dir: Path) -> dict[str, list[di
                     results[query] = []
         except Exception:
             print(
-                "  [dream/quality] cannot import search modules; "
-                "quality assessment disabled",
+                "  [dream/quality] cannot import search modules; quality assessment disabled",
                 file=sys.stderr,
             )
 
@@ -312,9 +320,7 @@ def collect_test_queries(phase: int, wiki_dir: Path) -> list[str]:
 
     queries: dict[str, int] = {}
     for offset in range(7):
-        day = (datetime.now(timezone.utc) - timedelta(days=offset)).strftime(
-            "%Y%m%d"
-        )
+        day = (datetime.now(timezone.utc) - timedelta(days=offset)).strftime("%Y%m%d")
         log_path = audit_dir / f"query-log-{day}.jsonl"
         if not log_path.is_file():
             continue

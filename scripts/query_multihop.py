@@ -93,6 +93,14 @@ _RELATION_MARKERS = (
     "example",
     "related",
 )
+_RELATION_TYPE_MARKERS = {
+    "depends_on": ("依赖", "前置", "先修", "depends", "requires", "prerequisite"),
+    "supersedes": ("替代", "取代", "废止", "supersedes", "replaces"),
+    "contradicts": ("冲突", "矛盾", "不一致", "contradicts", "conflicts"),
+    "caused_by": ("导致", "原因", "caused", "because"),
+    "implemented_by": ("实现", "落地", "implemented by"),
+    "part_of": ("属于", "组成", "包含于", "part of"),
+}
 
 
 def _normalize(text: str) -> str:
@@ -242,6 +250,41 @@ def retrieval_evidence_status(
                 "satisfied": best_score >= threshold,
             }
         )
+    try:
+        try:
+            from query_understanding import understand_query
+        except ImportError:
+            from .query_understanding import understand_query
+
+        plan = understand_query(query)
+    except (ImportError, TypeError, ValueError):
+        plan = {}
+    combined_content = "\n".join(_page_evidence_text(page, read_content) for page in pages)
+    normalized_combined = _normalize(combined_content)
+    for field, label in (("jurisdictions", "jurisdiction"), ("audiences", "audience")):
+        for requested in plan.get(field, []):
+            score = 1.0 if _normalize(str(requested)) in normalized_combined else 0.0
+            support.append(
+                {
+                    "id": len(support),
+                    "subgoal": f"{label}: {requested}",
+                    "score": score,
+                    "supported_by": "structured qualifier" if score else "",
+                    "satisfied": bool(score),
+                }
+            )
+    for relation_type in plan.get("relation_types", []):
+        markers = _RELATION_TYPE_MARKERS.get(relation_type, (relation_type,))
+        matched = any(marker.casefold() in combined_content.casefold() for marker in markers)
+        support.append(
+            {
+                "id": len(support),
+                "subgoal": f"relationship: {relation_type}",
+                "score": 1.0 if matched else 0.0,
+                "supported_by": "typed relationship" if matched else "",
+                "satisfied": matched,
+            }
+        )
     missing = [item["subgoal"] for item in support if not item["satisfied"]]
     coverage = sum(1 for item in support if item["satisfied"]) / len(support) if support else 1.0
     return {
@@ -259,6 +302,7 @@ def _linked_followup_candidates(
     read_content: ReadFunction,
     goals: list[str],
     limit: int,
+    relation_types: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     for page in pages:
@@ -293,6 +337,16 @@ def _linked_followup_candidates(
                 relation_bonus = (
                     0.18 if any(marker in line.casefold() for marker in _RELATION_MARKERS) else 0.0
                 )
+                matched_relation_types = [
+                    relation_type
+                    for relation_type in relation_types or []
+                    if any(
+                        marker.casefold() in line.casefold()
+                        for marker in _RELATION_TYPE_MARKERS.get(relation_type, (relation_type,))
+                    )
+                ]
+                if matched_relation_types:
+                    relation_bonus += 0.30
                 candidates.append(
                     {
                         "query": query_text,
@@ -300,6 +354,7 @@ def _linked_followup_candidates(
                         "parent": str(page.get("id", "")),
                         "parent_score": float(page.get("retrieval_path_score", 1.0)),
                         "relevance": round(relevance + relation_bonus, 4),
+                        "relation_types": matched_relation_types,
                     }
                 )
 
@@ -356,6 +411,42 @@ def coverage_diverse_rank(
     selected: list[dict[str, Any]] = []
     covered: set[int] = set()
     remaining = annotated[:]
+    try:
+        try:
+            from query_understanding import understand_query
+        except ImportError:
+            from .query_understanding import understand_query
+
+        plan = understand_query(query)
+    except (ImportError, TypeError, ValueError):
+        plan = {}
+    raw_candidates = [
+        item for item in remaining if "raw" in set(str(item.get("stream", "")).split(","))
+    ]
+    raw_candidates.sort(
+        key=lambda item: (
+            not bool(item.get("answer_hints")),
+            int(item.get("stream_ranks", {}).get("raw", 10_000)),
+            -float(item.get("stream_scores", {}).get("raw", item.get("score", 0)) or 0),
+        )
+    )
+    ordered_raw: list[dict[str, Any]] = []
+    requested_fields = set(plan.get("field_types", []))
+    requested_pages = set(plan.get("page_numbers", []))
+    for item in raw_candidates:
+        matched_fields = set(item.get("matched_fields", {}))
+        page_number = item.get("page_number")
+        field_match = not requested_fields or bool(requested_fields & matched_fields)
+        page_match = not requested_pages or page_number in requested_pages
+        if field_match and page_match:
+            ordered_raw.append(item)
+    ordered_raw.extend(item for item in raw_candidates if item not in ordered_raw)
+    for reserved_raw in ordered_raw[: min(2, limit)]:
+        reserved_raw["coverage_gain"] = sorted(set(reserved_raw["evidence_goals"]) - covered)
+        covered.update(reserved_raw["evidence_goals"])
+        reserved_raw.pop("_base_rank_score", None)
+        selected.append(reserved_raw)
+        remaining.remove(reserved_raw)
     strongest_score = max(
         (
             float(
@@ -423,6 +514,15 @@ def run_multi_hop(
     """Search until answer subgoals are covered or no useful frontier remains."""
     max_hops = max(1, min(int(max_hops), 5))
     goals = atomic_subgoals(query)
+    try:
+        try:
+            from query_understanding import understand_query
+        except ImportError:
+            from .query_understanding import understand_query
+
+        query_plan = understand_query(query)
+    except (ImportError, TypeError, ValueError):
+        query_plan = {}
     frontier = [
         {"query": subquery, "parent_score": 1.0, "parent": ""}
         for subquery in decompose_query(query)
@@ -443,12 +543,15 @@ def run_multi_hop(
             attempted.add(key)
             hop_queries.append(subquery)
             batch = search(subquery, max(limit, 5))
-            raw_scores = [float(item.get("score", 0) or 0) for item in batch]
+            # Use final single-hop relevance, not the pre-rerank fusion score.
+            raw_scores = [
+                float(item.get("rerank_score", item.get("score", 0)) or 0) for item in batch
+            ]
             high = max(raw_scores, default=1.0)
             low = min(raw_scores, default=0.0)
             for rank, result in enumerate(batch, 1):
                 item = dict(result)
-                raw_score = float(item.get("score", 0) or 0)
+                raw_score = float(item.get("rerank_score", item.get("score", 0)) or 0)
                 raw_normalized = (raw_score - low) / (high - low) if high > low else 1.0 / rank
                 rank_score = 1.0 / (1.0 + 0.20 * (rank - 1))
                 search_score = 0.65 * rank_score + 0.35 * raw_normalized
@@ -508,6 +611,7 @@ def run_multi_hop(
             read_content,
             goals=evidence["missing_subgoals"],
             limit=max(limit, 5),
+            relation_types=query_plan.get("relation_types", []),
         )
         frontier = [
             {
@@ -534,6 +638,7 @@ def run_multi_hop(
     trace = {
         "strategy": "multi_hop",
         "query": query,
+        "query_plan": query_plan,
         "max_hops": max_hops,
         "hops": hop_trace,
         "attempted_queries": sorted(attempted),

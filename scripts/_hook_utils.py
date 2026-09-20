@@ -6,7 +6,6 @@ All functions are pure Python — no shell commands, no Unix assumptions.
 
 from __future__ import annotations
 
-import json
 import os
 import platform
 import subprocess

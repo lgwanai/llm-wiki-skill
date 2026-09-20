@@ -49,22 +49,21 @@ class IssueCategory(str, Enum):
 
 _ISSUE_PATTERNS: list[tuple[str, IssueCategory]] = [
     # Specific patterns first — order matters
-    (r"OCR.*遗漏|OCR.*不全|OCR.*错误|PPT.*遗漏|PPT.*不全|PPT.*漏|"
-     r"扫描.*不全|扫描.*遗漏|解析.*遗漏|解析.*不全|OCR.*漏",
-     IssueCategory.OCR_MISSED),
-    (r"未编译|没编译|没有编译|没入库|没导入|没收录|未收录|未入库|未导入",
-     IssueCategory.UNCOMPILED),
-    (r"搜不到|检索不到|查不到|搜索不到|排名.*低|检索.*差|找不到.*页面",
-     IssueCategory.SEARCH_QUALITY),
-    (r"矛盾|冲突|不一致|互相.*不同|两.*说法|矛盾.*信息",
-     IssueCategory.CONTRADICTION),
-    (r"过时|过期|旧.*信息|老.*数据|不再适用|已变更|更新了",
-     IssueCategory.OUTDATED),
-    (r"错误|不对|不正确|搞错了|弄错了|识别错|识别错误|写错了|有误",
-     IssueCategory.INCORRECT_INFO),
+    (
+        r"OCR.*遗漏|OCR.*不全|OCR.*错误|PPT.*遗漏|PPT.*不全|PPT.*漏|"
+        r"扫描.*不全|扫描.*遗漏|解析.*遗漏|解析.*不全|OCR.*漏",
+        IssueCategory.OCR_MISSED,
+    ),
+    (r"未编译|没编译|没有编译|没入库|没导入|没收录|未收录|未入库|未导入", IssueCategory.UNCOMPILED),
+    (
+        r"搜不到|检索不到|查不到|搜索不到|排名.*低|检索.*差|找不到.*页面",
+        IssueCategory.SEARCH_QUALITY,
+    ),
+    (r"矛盾|冲突|不一致|互相.*不同|两.*说法|矛盾.*信息", IssueCategory.CONTRADICTION),
+    (r"过时|过期|旧.*信息|老.*数据|不再适用|已变更|更新了", IssueCategory.OUTDATED),
+    (r"错误|不对|不正确|搞错了|弄错了|识别错|识别错误|写错了|有误", IssueCategory.INCORRECT_INFO),
     # General patterns last
-    (r"遗漏|缺少|缺失|不全|找不到|没找到|漏了|缺了",
-     IssueCategory.MISSING_INFO),
+    (r"遗漏|缺少|缺失|不全|找不到|没找到|漏了|缺了", IssueCategory.MISSING_INFO),
 ]
 
 
@@ -128,8 +127,7 @@ def _issue_counter() -> int:
         issues = json.loads(issues_path.read_text(encoding="utf-8"))
         today_prefix = datetime.now(timezone.utc).strftime("iss-%Y%m%d-")
         count = sum(
-            1 for i in issues
-            if isinstance(i, dict) and i.get("id", "").startswith(today_prefix)
+            1 for i in issues if isinstance(i, dict) and i.get("id", "").startswith(today_prefix)
         )
         return count + 1
     except (json.JSONDecodeError, OSError):
@@ -144,6 +142,7 @@ def _search_wiki_pages(query: str, wiki_dir: Path) -> list[dict]:
     """Search wiki for pages matching a query."""
     try:
         from search import bm25_search, metadata_search, reciprocal_rank_fusion
+
         pages_dir = str(wiki_dir / "pages")
         bm25 = bm25_search(query, pages_dir, limit=5)
         meta = metadata_search(query, pages_dir, limit=5)
@@ -187,33 +186,34 @@ def diagnose(
         wiki_dir = get_wiki_dir()
     category = classify_feedback(feedback)
     issue = DoctorIssue(
-        category=category, description=feedback, target_page=target_page,
+        category=category,
+        description=feedback,
+        target_page=target_page,
     )
     results = _search_wiki_pages(feedback, wiki_dir)
     if results:
-        issue.affected_pages = [
-            r.get("id", r.get("path", "?")) for r in results[:5]
-        ]
+        issue.affected_pages = [r.get("id", r.get("path", "?")) for r in results[:5]]
 
     strategies = {
-        IssueCategory.MISSING_INFO: ("search_sources_and_recompile",
-                                     "Information appears to be missing. "
-                                     "Will search source files for missing content."),
-        IssueCategory.INCORRECT_INFO: ("compare_source_and_correct",
-                                       "Information may be incorrect. "
-                                       "Will compare with source files and correct."),
-        IssueCategory.UNCOMPILED: ("locate_and_compile",
-                                   "Source file appears to be uncompiled."),
-        IssueCategory.OCR_MISSED: ("re_ocr_and_recompile",
-                                   "OCR may have missed content. "
-                                   "Will attempt to re-OCR and recompile."),
-        IssueCategory.SEARCH_QUALITY: ("update_metadata_for_search",
-                                       "Search quality issue. "
-                                       "Will update page metadata to improve retrieval."),
-        IssueCategory.CONTRADICTION: ("mark_contradiction",
-                                      "Contradictory information detected."),
-        IssueCategory.OUTDATED: ("mark_stale",
-                                 "Information may be outdated."),
+        IssueCategory.MISSING_INFO: (
+            "search_sources_and_recompile",
+            "Information appears to be missing. Will search source files for missing content.",
+        ),
+        IssueCategory.INCORRECT_INFO: (
+            "compare_source_and_correct",
+            "Information may be incorrect. Will compare with source files and correct.",
+        ),
+        IssueCategory.UNCOMPILED: ("locate_and_compile", "Source file appears to be uncompiled."),
+        IssueCategory.OCR_MISSED: (
+            "re_ocr_and_recompile",
+            "OCR may have missed content. Will attempt to re-OCR and recompile.",
+        ),
+        IssueCategory.SEARCH_QUALITY: (
+            "update_metadata_for_search",
+            "Search quality issue. Will update page metadata to improve retrieval.",
+        ),
+        IssueCategory.CONTRADICTION: ("mark_contradiction", "Contradictory information detected."),
+        IssueCategory.OUTDATED: ("mark_stale", "Information may be outdated."),
     }
 
     strategy, diagnosis = strategies.get(
@@ -282,11 +282,14 @@ def _repair_missing_info(issue: DoctorIssue, wiki_dir: Path) -> None:
         try:
             result = subprocess.run(
                 [sys.executable, "-m", "scripts.compile_v2", src, "--force"],
-                capture_output=True, text=True, timeout=120,
+                capture_output=True,
+                text=True,
+                timeout=120,
             )
             if result.returncode != 0:
-                print(f"  [doctor] compile failed for {src}: {result.stderr[:200]}",
-                      file=sys.stderr)
+                print(
+                    f"  [doctor] compile failed for {src}: {result.stderr[:200]}", file=sys.stderr
+                )
         except subprocess.TimeoutExpired:
             print(f"  [doctor] compile timed out for {src}", file=sys.stderr)
         except Exception as exc:
@@ -320,15 +323,14 @@ def _repair_uncompiled(issue: DoctorIssue, wiki_dir: Path) -> None:
         try:
             subprocess.run(
                 [sys.executable, "-m", "scripts.compile_v2", str(source_file)],
-                capture_output=True, timeout=120,
+                capture_output=True,
+                timeout=120,
             )
             issue.repair_result = f"Compiled: {source_file.name}"
         except (subprocess.TimeoutExpired, Exception) as exc:
             issue.repair_result = f"Compile failed: {exc}"
     else:
-        issue.repair_result = (
-            "Could not locate source file. Please specify with --recompile."
-        )
+        issue.repair_result = "Could not locate source file. Please specify with --recompile."
 
 
 def _repair_ocr_missed(issue: DoctorIssue, wiki_dir: Path) -> None:
@@ -344,12 +346,16 @@ def _repair_ocr_missed(issue: DoctorIssue, wiki_dir: Path) -> None:
     try:
         result = subprocess.run(
             [sys.executable, "-m", "scripts._ocr_cli", str(source_file)],
-            capture_output=True, text=True, timeout=300,
+            capture_output=True,
+            text=True,
+            timeout=300,
         )
         ocr_ok = result.returncode == 0
         if not ocr_ok:
-            print(f"  [doctor] OCR failed for {source_file.name}: "
-                  f"{result.stderr[:200]}", file=sys.stderr)
+            print(
+                f"  [doctor] OCR failed for {source_file.name}: {result.stderr[:200]}",
+                file=sys.stderr,
+            )
     except subprocess.TimeoutExpired:
         print(f"  [doctor] OCR timed out for {source_file.name}", file=sys.stderr)
     except Exception as exc:
@@ -357,20 +363,19 @@ def _repair_ocr_missed(issue: DoctorIssue, wiki_dir: Path) -> None:
 
     if not ocr_ok:
         issue.repair_result = (
-            f"OCR failed for {source_file.name}. "
-            "Check OCR configuration and retry."
+            f"OCR failed for {source_file.name}. Check OCR configuration and retry."
         )
         return
 
     try:
         result = subprocess.run(
             [sys.executable, "-m", "scripts.compile_v2", str(source_file), "--force"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True,
+            text=True,
+            timeout=120,
         )
         if result.returncode != 0:
-            issue.repair_result = (
-                f"OCR succeeded but compile failed: {result.stderr[:200]}"
-            )
+            issue.repair_result = f"OCR succeeded but compile failed: {result.stderr[:200]}"
         else:
             issue.repair_result = f"Re-OCR'd and recompiled: {source_file.name}"
     except subprocess.TimeoutExpired:
@@ -408,7 +413,7 @@ def _repair_search_quality(issue: DoctorIssue, wiki_dir: Path) -> None:
             fm["doctor_touched"] = _now()
 
             new_yaml = yaml.safe_dump(fm, allow_unicode=True, sort_keys=False).strip()
-            body = content[match.end():].lstrip()
+            body = content[match.end() :].lstrip()
             path.write_text(f"---\n{new_yaml}\n---\n\n{body}", encoding="utf-8")
             modified += 1
         except (OSError, Exception):
@@ -421,10 +426,7 @@ def _repair_mark_status(issue: DoctorIssue, wiki_dir: Path) -> None:
     """Mark affected pages with appropriate status."""
     import yaml
 
-    new_status = (
-        "stale" if issue.category == IssueCategory.OUTDATED
-        else "needs_review"
-    )
+    new_status = "stale" if issue.category == IssueCategory.OUTDATED else "needs_review"
     modified = 0
 
     for page_id in issue.affected_pages[:5]:
@@ -446,7 +448,7 @@ def _repair_mark_status(issue: DoctorIssue, wiki_dir: Path) -> None:
                 fm["contradiction_note"] = issue.description
 
             new_yaml = yaml.safe_dump(fm, allow_unicode=True, sort_keys=False).strip()
-            body = content[match.end():].lstrip()
+            body = content[match.end() :].lstrip()
             path.write_text(f"---\n{new_yaml}\n---\n\n{body}", encoding="utf-8")
             modified += 1
         except (OSError, Exception):
@@ -483,19 +485,14 @@ def verify(issue: DoctorIssue, wiki_dir: Path | None = None) -> bool:
 
 
 def _find_page_path(page_id: str, pages_dir: Path) -> Path | None:
-    """Locate a page file by its ID."""
-    for subdir_name in ("concepts", "entities", "models", "techniques",
-                         "frameworks", "benchmarks", "papers", "decisions",
-                         "sessions", "patterns"):
-        subdir = pages_dir / subdir_name
-        if not subdir.is_dir():
-            continue
-        for f in subdir.iterdir():
-            if f.suffix != ".md":
-                continue
-            if f.stem == page_id or f.name == f"{page_id}.md":
-                return f
-    return None
+    """Resolve native OKF IDs, with unambiguous legacy stems as a fallback."""
+    from okf import find_concept
+
+    root = pages_dir.resolve()
+    candidate = find_concept(root, page_id)
+    if candidate is None or not candidate.resolve().is_relative_to(root):
+        return None
+    return candidate
 
 
 def _mark_page_for_review(page_id: str, note: str, wiki_dir: Path) -> None:
@@ -517,7 +514,7 @@ def _mark_page_for_review(page_id: str, note: str, wiki_dir: Path) -> None:
         fm["review_note"] = note[:200]
         fm["doctor_touched"] = _now()
         new_yaml = yaml.safe_dump(fm, allow_unicode=True, sort_keys=False).strip()
-        body = content[match.end():].lstrip()
+        body = content[match.end() :].lstrip()
         path.write_text(f"---\n{new_yaml}\n---\n\n{body}", encoding="utf-8")
     except (OSError, Exception):
         pass
@@ -525,9 +522,36 @@ def _mark_page_for_review(page_id: str, note: str, wiki_dir: Path) -> None:
 
 def _extract_search_terms(text: str) -> list[str]:
     """Extract meaningful search terms from feedback text."""
-    stop = {"了", "的", "是", "在", "和", "也", "都", "就", "有", "不",
-            "a", "an", "the", "is", "are", "was", "were", "be", "been",
-            "of", "in", "to", "for", "with", "on", "at", "by", "from"}
+    stop = {
+        "了",
+        "的",
+        "是",
+        "在",
+        "和",
+        "也",
+        "都",
+        "就",
+        "有",
+        "不",
+        "a",
+        "an",
+        "the",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "of",
+        "in",
+        "to",
+        "for",
+        "with",
+        "on",
+        "at",
+        "by",
+        "from",
+    }
     terms = re.findall(r"[一-鿿a-zA-Z0-9_+-]{2,}", text.lower())
     return [t for t in terms if t not in stop][:10]
 
@@ -603,7 +627,7 @@ def check_page(page_id: str, wiki_dir: Path | None = None) -> dict:
             "density": density,
             "status": fm.get("status", "unknown"),
             "confidence": fm.get("confidence", 0),
-            "has_keywords": bool(fm.get("keywords")),
+            "has_keywords": bool(fm.get("tags") or fm.get("keywords")),
             "has_aliases": bool(fm.get("aliases")),
             "has_questions": bool(fm.get("questions")),
             "needs_review": fm.get("needs_review", False),
@@ -615,15 +639,19 @@ def check_page(page_id: str, wiki_dir: Path | None = None) -> dict:
 
 # ── main entry ────────────────────────────────────────────────────────────────
 
+
 def _handle_recompile(src_path: str) -> dict:
     import subprocess
+
     src = Path(src_path)
     if not src.is_file():
         return {"success": False, "message": f"Source not found: {src_path}"}
     try:
         r = subprocess.run(
             [sys.executable, "-m", "scripts.compile_v2", str(src), "--force"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True,
+            text=True,
+            timeout=120,
         )
         if r.returncode != 0:
             return {"success": False, "message": f"Compile failed: {r.stderr[:200]}"}
@@ -636,23 +664,27 @@ def _handle_recompile(src_path: str) -> dict:
 
 def _handle_re_ocr(doc_path: str) -> dict:
     import subprocess
+
     src = Path(doc_path)
     if not src.is_file():
         return {"success": False, "message": f"Document not found: {doc_path}"}
     try:
         ocr = subprocess.run(
             [sys.executable, "-m", "scripts._ocr_cli", str(src)],
-            capture_output=True, text=True, timeout=300,
+            capture_output=True,
+            text=True,
+            timeout=300,
         )
         if ocr.returncode != 0:
             return {"success": False, "message": f"OCR failed: {ocr.stderr[:200]}"}
         cmp = subprocess.run(
             [sys.executable, "-m", "scripts.compile_v2", str(src), "--force"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True,
+            text=True,
+            timeout=120,
         )
         if cmp.returncode != 0:
-            return {"success": False,
-                    "message": f"OCR ok but compile failed: {cmp.stderr[:200]}"}
+            return {"success": False, "message": f"OCR ok but compile failed: {cmp.stderr[:200]}"}
         return {"success": True, "message": f"Re-OCR'd and recompiled: {src.name}"}
     except subprocess.TimeoutExpired:
         return {"success": False, "message": f"Re-OCR timed out for {src.name}"}
@@ -673,9 +705,11 @@ def _handle_feedback(
             issue.category = IssueCategory(issue_category)
         except ValueError:
             valid = [c.value for c in IssueCategory if c != IssueCategory.OTHER]
-            print(f"  [doctor] WARNING: invalid issue category '{issue_category}'. "
-                  f"Valid: {valid}. Using auto-detected: {issue.category.value}",
-                  file=sys.stderr)
+            print(
+                f"  [doctor] WARNING: invalid issue category '{issue_category}'. "
+                f"Valid: {valid}. Using auto-detected: {issue.category.value}",
+                file=sys.stderr,
+            )
 
     issue = repair(issue, wiki_dir)
     verified = verify(issue, wiki_dir)
@@ -696,10 +730,7 @@ def _handle_feedback(
             "status": issue.status,
             "verified": verified,
         },
-        "message": (
-            f"[{issue.category.value}] {issue.repair_result} "
-            f"(verified: {verified})"
-        ),
+        "message": (f"[{issue.category.value}] {issue.repair_result} (verified: {verified})"),
     }
 
 
@@ -718,14 +749,18 @@ def run_doctor(
 
     if list_issues_flag:
         issues = list_issues(wiki_dir)
-        return {"success": True, "issues": issues,
-                "message": f"{len(issues)} outstanding issue(s)."}
+        return {
+            "success": True,
+            "issues": issues,
+            "message": f"{len(issues)} outstanding issue(s).",
+        }
 
     if resolve_id:
         ok = resolve_issue(resolve_id, wiki_dir)
-        return {"success": ok,
-                "message": f"Issue {resolve_id} resolved." if ok
-                else f"Issue {resolve_id} not found."}
+        return {
+            "success": ok,
+            "message": f"Issue {resolve_id} resolved." if ok else f"Issue {resolve_id} not found.",
+        }
 
     if check_page_id:
         result = check_page(check_page_id, wiki_dir)
@@ -750,25 +785,42 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Doctor — diagnose and repair wiki issues from user feedback",
     )
-    parser.add_argument("feedback", nargs="?", default="",
-                        help="Natural language description of the issue")
-    parser.add_argument("--target", dest="target_page", default=None,
-                        help="Target page ID to check/fix")
-    parser.add_argument("--issue", dest="issue_category", default=None,
-                        choices=["missing_info", "incorrect_info", "uncompiled",
-                                  "ocr_missed", "search_quality", "contradiction",
-                                  "outdated"],
-                        help="Explicit issue category")
-    parser.add_argument("--recompile", dest="recompile_path", default=None,
-                        help="Recompile a specific source file")
-    parser.add_argument("--re-ocr", dest="re_ocr_path", default=None,
-                        help="Re-OCR a specific document")
-    parser.add_argument("--list", dest="list_issues", action="store_true",
-                        help="List outstanding issues")
-    parser.add_argument("--check", dest="check_page", default=None,
-                        help="Run diagnostic check on a page")
-    parser.add_argument("--resolve", dest="resolve_id", default=None,
-                        help="Mark an issue as resolved")
+    parser.add_argument(
+        "feedback", nargs="?", default="", help="Natural language description of the issue"
+    )
+    parser.add_argument(
+        "--target", dest="target_page", default=None, help="Target page ID to check/fix"
+    )
+    parser.add_argument(
+        "--issue",
+        dest="issue_category",
+        default=None,
+        choices=[
+            "missing_info",
+            "incorrect_info",
+            "uncompiled",
+            "ocr_missed",
+            "search_quality",
+            "contradiction",
+            "outdated",
+        ],
+        help="Explicit issue category",
+    )
+    parser.add_argument(
+        "--recompile", dest="recompile_path", default=None, help="Recompile a specific source file"
+    )
+    parser.add_argument(
+        "--re-ocr", dest="re_ocr_path", default=None, help="Re-OCR a specific document"
+    )
+    parser.add_argument(
+        "--list", dest="list_issues", action="store_true", help="List outstanding issues"
+    )
+    parser.add_argument(
+        "--check", dest="check_page", default=None, help="Run diagnostic check on a page"
+    )
+    parser.add_argument(
+        "--resolve", dest="resolve_id", default=None, help="Mark an issue as resolved"
+    )
 
     args = parser.parse_args()
     result = run_doctor(

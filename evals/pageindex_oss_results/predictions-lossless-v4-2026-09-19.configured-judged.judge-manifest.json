@@ -1,0 +1,14 @@
+{
+  "generated_at": "2026-09-19T02:34:55.800105+00:00",
+  "judge": {
+    "provider": "deepseek",
+    "model": "deepseek-v4-flash",
+    "temperature": 0.3,
+    "max_context": null,
+    "pdf_ingest": "native-text-layer-no-ocr"
+  },
+  "prompt_source": "https://github.com/VectifyAI/MMLongBench-Doc-V2@3aba3c6831a432ee882f763435f9ebe92ab75ed9:eval/judge.py:PROMPT",
+  "prompt_sha256": "39f874c18b057f9ae8f68fa4faf6ede3b38f06d0b49964030c29d8a1788f6372",
+  "official_model_match": false,
+  "comparability": "Directional only: official prompt text is reused, but the configured model and structured-output transport differ from the official luna/high judge."
+}

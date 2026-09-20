@@ -14,13 +14,17 @@ class TestFindOrphans:
         try:
             entity = Path(".wiki") / "pages" / "entities" / "lonely-page.md"
             entity.parent.mkdir(parents=True, exist_ok=True)
-            entity.write_text("---\nid: lonely-page\ntype: project\nname: Lonely\n---\n\n# Lonely\n")
+            entity.write_text(
+                "---\nid: lonely-page\ntype: project\nname: Lonely\n---\n\n# Lonely\n"
+            )
 
             graph_dir = Path(".wiki") / "graph"
             graph_dir.mkdir(parents=True, exist_ok=True)
-            (graph_dir / "entities.json").write_text(json.dumps({
-                "lonely-page": {"id": "lonely-page", "type": "project", "name": "Lonely"}
-            }))
+            (graph_dir / "entities.json").write_text(
+                json.dumps(
+                    {"lonely-page": {"id": "lonely-page", "type": "project", "name": "Lonely"}}
+                )
+            )
             (graph_dir / "edges.json").write_text(json.dumps({"edges": []}))
 
             orphans = lint.find_orphans()
@@ -43,9 +47,9 @@ class TestFindBrokenLinks:
 
             graph_dir = Path(".wiki") / "graph"
             graph_dir.mkdir(parents=True, exist_ok=True)
-            (graph_dir / "entities.json").write_text(json.dumps({
-                "test": {"id": "test", "type": "project", "name": "Test"}
-            }))
+            (graph_dir / "entities.json").write_text(
+                json.dumps({"test": {"id": "test", "type": "project", "name": "Test"}})
+            )
             (graph_dir / "edges.json").write_text(json.dumps({"edges": []}))
 
             broken = lint.find_broken_links()
@@ -62,12 +66,18 @@ class TestFindStaleClaims:
         try:
             graph_dir = Path(".wiki") / "graph"
             graph_dir.mkdir(parents=True, exist_ok=True)
-            (graph_dir / "entities.json").write_text(json.dumps({
-                "old-project": {
-                    "id": "old-project", "type": "project", "name": "Old Project",
-                    "last_confirmed": "2020-01-01T00:00:00Z"
-                }
-            }))
+            (graph_dir / "entities.json").write_text(
+                json.dumps(
+                    {
+                        "old-project": {
+                            "id": "old-project",
+                            "type": "project",
+                            "name": "Old Project",
+                            "last_confirmed": "2020-01-01T00:00:00Z",
+                        }
+                    }
+                )
+            )
             (graph_dir / "edges.json").write_text(json.dumps({"edges": []}))
 
             stale = lint.find_stale_claims()
@@ -84,10 +94,24 @@ class TestFindContradictions:
         try:
             graph_dir = Path(".wiki") / "graph"
             graph_dir.mkdir(parents=True, exist_ok=True)
-            (graph_dir / "entities.json").write_text(json.dumps({
-                "redis-cache-1": {"id": "redis-cache-1", "type": "library", "name": "Redis", "confidence": 0.9},
-                "redis-cache-2": {"id": "redis-cache-2", "type": "library", "name": "Redis", "confidence": 0.3},
-            }))
+            (graph_dir / "entities.json").write_text(
+                json.dumps(
+                    {
+                        "redis-cache-1": {
+                            "id": "redis-cache-1",
+                            "type": "library",
+                            "name": "Redis",
+                            "confidence": 0.9,
+                        },
+                        "redis-cache-2": {
+                            "id": "redis-cache-2",
+                            "type": "library",
+                            "name": "Redis",
+                            "confidence": 0.3,
+                        },
+                    }
+                )
+            )
             (graph_dir / "edges.json").write_text(json.dumps({"edges": []}))
 
             contradictions = lint.find_contradictions()

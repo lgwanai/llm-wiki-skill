@@ -2,7 +2,7 @@
 
 A single `index.md` file works up to ~100-200 pages. Beyond that, the index becomes
 too long for the LLM to read in one pass, and you need real search. The best approach
-combines three search streams with reciprocal rank fusion.
+combines lossless source evidence and compiled-knowledge search streams with reciprocal rank fusion.
 
 ## When to Implement
 
@@ -10,7 +10,17 @@ combines three search streams with reciprocal rank fusion.
 - **Level 3+**: Add keyword search (grep over wiki pages) as a bridge
 - **Level 5**: Full hybrid search with embeddings and graph traversal
 
-## Three Search Streams
+## Core Search Streams
+
+### 0. Lossless Source Evidence
+
+Compile-time concept selection is intentionally semantic, so it must not be the only retrieval
+surface. Store a complete post-secret-redaction source copy and independently searchable
+page/slide/section records. Preserve exact fields, tables, footnotes, headings, and locators.
+
+Use this stream for every query, with strong boosts when the question asks for a page, cover,
+unit, email, URL, phone/fax, date, percentage, amount, code, or class name. For an exact or
+structural lookup, reserve the best matching evidence record before coverage-diversity pruning.
 
 ### 1. BM25 / Keyword Search
 
@@ -54,7 +64,7 @@ relationship queries
 
 ## Reciprocal Rank Fusion (RRF)
 
-Combine results from all three streams using RRF:
+Combine results from all enabled streams using weighted RRF:
 
 ```
 RRF_score(d) = Σ (1 / (k + rank_i(d)))
@@ -68,7 +78,7 @@ Where:
 
 ### Fusion Algorithm
 
-1. Run all three searches independently
+1. Run raw evidence, claims, metadata, BM25, graph, and ledger search independently
 2. For each document, compute RRF score
 3. Sort by descending RRF score
 4. Deduplicate (same page found by multiple streams)

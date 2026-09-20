@@ -7,6 +7,23 @@ confidence: 0.0
 sources: []
 created_at: [YYYY-MM-DD]          # compile creation date — set automatically by compile
 published_at: ""                 # source content's own publication date (YYYY-MM-DD); omit if none
+# For time-sensitive rules only; dates are applicability, never publication/compile time:
+# effective_from: YYYY-MM-DD      # inclusive
+# effective_until: YYYY-MM-DD     # exclusive
+# supersedes: [/entities/old-rule.md]
+# superseded_by: [/entities/new-rule.md]
+# jurisdiction: [region or legal scope]
+# audience: [people or systems this applies to]
+# document_status: [official|approved|draft|meeting-note]
+# source_authority: 0.0          # only when source authority is known; never guess
+# claims:                        # atomic, source-grounded facts (OKF extension)
+#   - subject: [who/what]
+#     predicate: [property/rule]
+#     value: [exact source value]
+#     modality: [fact|must|must_not|may|should|entitlement|definition|procedure]
+#     conditions: []
+#     exceptions: []
+#     source: {section: "...", page: 1}
 last_confirmed: [YYYY-MM-DD]
 reinforcements: 0
 contradictions: []
@@ -21,6 +38,12 @@ owner: [agent-id or username]
 ## Overview
 
 [A concise description of what this entity is and why it matters. 2-4 sentences.]
+
+## Key Facts
+
+| Attribute | Value |
+|---|---|
+| [queryable fact] | [exact source value, including units and footnotes] |
 
 ## Details
 

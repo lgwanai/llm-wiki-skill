@@ -1,4 +1,5 @@
 """Tests for benchmark.py and search.py."""
+
 from __future__ import annotations
 
 import sys
@@ -81,12 +82,14 @@ def test_ragas_lite_metrics(monkeypatch):
         "read_page_content",
         lambda path: "Budget threshold is 10000.",
     )
-    cases = [{
-        "query": "budget threshold",
-        "expected_pages": ["page-a"],
-        "reference_answer": "Budget threshold is 10000.",
-        "must_contain": ["10000"],
-    }]
+    cases = [
+        {
+            "query": "budget threshold",
+            "expected_pages": ["page-a"],
+            "reference_answer": "Budget threshold is 10000.",
+            "must_contain": ["10000"],
+        }
+    ]
 
     result = benchmark.run_ragas_lite_benchmark(cases, k=1)
 
@@ -97,13 +100,15 @@ def test_ragas_lite_metrics(monkeypatch):
 
 
 def test_rrf_preserves_stream_ranks_and_scores():
-    fused = search.reciprocal_rank_fusion([
-        [{"file": "doc-a", "score": 10, "stream": "bm25"}],
+    fused = search.reciprocal_rank_fusion(
         [
-            {"file": "doc-b", "score": 0.9, "stream": "graph"},
-            {"file": "doc-a", "score": 0.8, "stream": "graph"},
-        ],
-    ])
+            [{"file": "doc-a", "score": 10, "stream": "bm25"}],
+            [
+                {"file": "doc-b", "score": 0.9, "stream": "graph"},
+                {"file": "doc-a", "score": 0.8, "stream": "graph"},
+            ],
+        ]
+    )
 
     doc_a = next(item for item in fused if item["file"] == "doc-a")
     assert doc_a["stream_ranks"]["bm25"] == 1

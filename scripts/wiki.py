@@ -30,6 +30,7 @@ Environment Variables:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import subprocess
 import sys
@@ -123,11 +124,17 @@ def cmd_query(
     mode: str | None = None,
     multi_hop: bool | None = None,
     max_hops: int | None = None,
+    conversation_input: str | None = None,
 ) -> dict:
     # Direct import for speed — avoids subprocess overhead (~0.3s)
     try:
         import query as qm
 
+        options = {}
+        if conversation_input is not None:
+            from query_conversation import validate_history
+
+            options["conversation"] = validate_history(json.loads(conversation_input))
         result = qm.query_wiki(
             question,
             file_back=file_back,
@@ -137,22 +144,13 @@ def cmd_query(
             mode=mode,
             multi_hop=multi_hop,
             max_hops=max_hops,
+            **options,
         )
         answer = result.get("answer", "")
-        if debug_search:
-            answer += "\n\n--- SEARCH DEBUG ---\n"
-            formatter = getattr(qm, "_format_debug_table", None)
-            if formatter:
-                answer += formatter(result.get("debug_search", {}))
-            else:
-                answer += json.dumps(
-                    result.get("debug_search", {}),
-                    indent=2,
-                    ensure_ascii=False,
-                    default=str,
-                )
-        return {"success": True, "answer": answer}
-    except Exception:
+        return {**result, "success": True, "answer": answer}
+    except Exception as exc:
+        if conversation_input is not None:
+            return {"success": False, "error": str(exc)}
         # Fallback to subprocess on import failure
         args = [question]
         if file_back:
@@ -461,7 +459,17 @@ Environment:
 
     query_parser = subparsers.add_parser("query", help="Query wiki")
     query_parser.add_argument("question", help="Question to answer")
+    query_parser.add_argument(
+        "--conversation-stdin",
+        action="store_true",
+        help="Read up to 6 conversation pairs as JSON from stdin",
+    )
     query_parser.add_argument("--file-back", action="store_true", help="File answer to wiki")
+    query_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print structured query result (independent of answer format)",
+    )
     query_parser.add_argument(
         "--format",
         choices=["markdown", "table", "timeline", "slides", "json", "graph"],
@@ -778,16 +786,18 @@ Environment:
             cancel_active_dream("query started")
         except Exception:
             pass
-        result = cmd_query(
-            args.question,
-            file_back=args.file_back,
-            fmt=args.format,
-            synthesis=not args.no_synthesis,
-            debug_search=args.debug_search,
-            mode=args.mode,
-            multi_hop=False if args.single_hop else None,
-            max_hops=args.max_hops,
-        )
+        with contextlib.redirect_stdout(sys.stderr) if args.json else contextlib.nullcontext():
+            result = cmd_query(
+                args.question,
+                file_back=args.file_back,
+                fmt=args.format,
+                synthesis=not args.no_synthesis,
+                debug_search=args.debug_search,
+                mode=args.mode,
+                multi_hop=False if args.single_hop else None,
+                max_hops=args.max_hops,
+                conversation_input=sys.stdin.read(100001) if args.conversation_stdin else None,
+            )
         if result.get("success"):
             try:
                 from dream import log_query
@@ -795,9 +805,21 @@ Environment:
                 log_query(result, synthesis=not args.no_synthesis)
             except Exception:
                 pass
-            print(result["answer"])
+            if args.json:
+                print(json.dumps(result, ensure_ascii=False, default=str))
+            else:
+                print(result["answer"])
+                if args.debug_search:
+                    from query import _format_debug_table
+
+                    print("\n--- SEARCH DEBUG ---\n")
+                    print(_format_debug_table(result.get("debug_search", {})))
         else:
-            print(f"Error: {result.get('error', 'Unknown error')}")
+            if args.json:
+                print(json.dumps(result, ensure_ascii=False, default=str))
+            else:
+                print(f"Error: {result.get('error', 'Unknown error')}")
+            sys.exit(1)
 
     elif args.command == "search":
         search_args = (

@@ -32,6 +32,8 @@ Wiki:   Source → [编译] → Wiki 持久化 → 查询时直接使用已有�
 ```
 Raw Sources (.wiki/source/) — immutable, Agent reads never modifies
     ↓
+Lossless Evidence (.wiki/source/evidence/) — source/page locators, exact fields, tables, footnotes
+    ↓
 Wiki (.wiki/pages/) — LLM maintains: entity pages, concept pages, index, log
     ↓
 Schema (schema.md + wiki_config.yaml) — single source of truth for types & rules
@@ -106,6 +108,7 @@ python scripts/compile_v2.py docs/                 # recursively compile support
 python scripts/compile_v2.py docs/ --depth 1       # only direct files + one directory level
 python scripts/compile_v2.py exam.png              # PaddleOCR-VL-1.6 → vision fallback → Agent native
 python scripts/compile_v2.py handbook.pdf          # every page rendered; OCR/vision/Agent fallback
+python scripts/compile_v2.py handbook.doc           # legacy Word → PDF, or cached DOCX fast fallback
 python scripts/compile_v2.py handbook.docx         # Word pages rendered through PDF, with page provenance
 python scripts/compile_v2.py slides.pptx           # every slide rendered; never first-slide-only
 python scripts/compile_v2.py textbook.epub          # spine-ordered Markdown + extracted image links
@@ -168,6 +171,26 @@ python scripts/compile_todo.py fail "<run-dir>/todolist.json" chunk-0001 \
   --error "reason"
 ```
 
+**Operational constraints (verified by field use, fail-closed):**
+
+- Ordered execution is enforced: `start` refuses a task while any earlier task is not
+  `completed`/`failed`/`blocked`. Chunks therefore **cannot be compiled in parallel**;
+  attempting parallel sub-agents will produce pages but rejected task-state updates.
+- `complete --output` accepts **exactly one** Concept ID. Never pass a comma-joined list:
+  the whole string is treated as a single path and the final `verify` fails with
+  "compiled output is missing". For a task that legitimately produces several pages,
+  either split the work into several tasks or normalize the manifest `outputs` entries
+  (split on commas, resolve each to a real `pages`-relative path) before `verify`.
+- A page's frontmatter `id` must equal its OKF Concept ID, i.e. the `pages`-relative path
+  including the type directory (`concepts/foo`, `entities/bar`). A bare stem makes
+  `search.py --doctor` report `orphan_graph_entities` because graph ids and path-derived
+  Concept IDs no longer match.
+- Text-layer PDFs: when `PyMuPDF.get_text()` covers essentially every page, extract
+  per-page text into a `## Page N` Markdown intermediate and compile that instead of
+  running page-by-page OCR. OCR (PaddleOCR-VL-1.6 on CPU) runs on the order of ~1 minute
+  per page and a few hundred pages becomes impractical, especially when several jobs
+  share one `mlx-vlm-server`.
+
 Pages compiled before deterministic Agent media finalization can be repaired
 without regenerating their text. Preview first, then apply the citation-driven
 migration (it only uses page/EPUB locators already present in each page):
@@ -185,7 +208,12 @@ pages are published only after every task passes the todo verification. Director
 compilation is forced to run sequentially for deterministic coverage.
 
 **What happens:**
-- Source sanitized (API keys, tokens, passwords, emails stripped)
+- API keys, tokens, private keys, and passwords are removed before either compile or evidence
+  persistence. Public contact fields remain only in the local lossless evidence layer so explicit
+  email/phone lookup still works; stricter model compile input continues to redact email addresses.
+- Every readable source gets an exact post-secret-redaction copy plus page/slide/section records,
+  a heading outline, tables, footnotes, extracted exact fields, SHA-256 checks, and a fail-closed
+  `coverage_complete` manifest under `.wiki/source/evidence/`.
 - Directories are expanded recursively by default; `.wiki` and `.git` are skipped
 - Every source/chunk is entered into a persistent ordered todo manifest; no displayed
   preview or file-list limit can remove an item from the authoritative inventory
@@ -195,6 +223,12 @@ compilation is forced to run sequentially for deterministic coverage.
   Concept IDs and retain matching source checksums before the run can report success
 - PDF/DOC/DOCX/PPT/PPTX are treated as paginated documents:
   - Render every page/slide to images first
+  - Legacy binary `.doc` uses LibreOffice for page-faithful PDF rendering. If that
+    path fails, convert a read-only copy to `.docx` with LibreOffice or macOS
+    `textutil`, cache it by source hash under `.wiki/source/converted_documents/`,
+    then extract compile-ready Markdown. When rendering succeeds, retain every page
+    image for visual verification but prefer native DOCX structure over slower/noisier
+    OCR. Never send raw `.doc` to MarkItDown.
   - If OCR is installed/configured, OCR each page image in order
   - If page rendering fails for a PDF, run the configured backend
     (PaddleOCR-VL-1.6 by default) against the complete PDF before trying MarkItDown
@@ -218,6 +252,9 @@ compilation is forced to run sequentially for deterministic coverage.
   source type (`doc`, `article`, `code`, `conversation`) is only a storage hint
 - Legal/regulatory sources preserve article numbering and operative language, and organize
   applicability, exceptions, procedure, consequences, effective dates, and cross-references
+- Time-sensitive rules store `effective_from` (inclusive) and `effective_until` (exclusive)
+  separately from publication/compile timestamps. Replacements remain separate concepts linked
+  by `supersedes` / `superseded_by`; a future replacement never invalidates the current rule early
 - Sales/marketing policies preserve region, audience, product/channel, time window, thresholds,
   stacking/exclusions, approval, settlement, and expiry conditions as applicability matrices
 - Academic sources preserve definitions, formulas, symbols, assumptions, derivations, evidence,
@@ -247,8 +284,9 @@ compilation is forced to run sequentially for deterministic coverage.
 
 ### `/wiki-query <question>` — Search & Answer
 
-Wiki-native search (metadata + page BM25F + compiled graph + complete DuckDB ledger), then the
-current Agent synthesizes from already-compiled pages with citations. No
+Dual-channel search combines compiled OKF knowledge (claims + metadata + page BM25F + graph +
+complete DuckDB ledger) with lossless source evidence, then the current Agent synthesizes with
+citations. No
 configured model/API key is required by default. Referenced images are resolved from each
 retrieved page, included in synthesis context, and exposed in `images` and
 `source_details[].images` in query results.
@@ -298,18 +336,39 @@ Search index cached to disk (`.wiki/graph/.bm25_index.json`), auto-invalidated o
 
 Default retrieval quality features:
 
+- Compile materializes atomic `claims` from explicit model output, Key Facts,
+  ordinary table rows, bold key/value fields, and bound footnotes. Claims preserve
+  modality, conditions, exceptions, audience, jurisdiction, effective interval,
+  source location, and source authority without replacing the canonical OKF page.
+- Query planning produces structured intent, time, jurisdiction, audience, numeric
+  constraints, requested relationship types, page/section locators, exact field types, output
+  format, and required evidence slots.
+- Raw evidence retrieval searches the complete source by page/slide/EPUB section and boosts
+  requested locators plus email, URL, phone/fax, date, percentage, and money fields. Exact and
+  structural lookups reserve a matching raw record before diversity pruning, so the system cannot
+  abstain merely because compile-time concept selection omitted a fact.
+- Claim-level retrieval runs before page expansion. It ranks scope matches and known
+  authoritative sources while retaining mismatched and unknown evidence for comparison.
 - Metadata search indexes OKF `title`, `description`, `tags`, `type`, and Concept ID.
 - Page BM25F weights Concept ID, title, tags, description, key facts, headings, and body.
 - Candidate streams over-fetch before scope/status filters and use intent-aware weighted RRF.
 - Ledger search runs in DuckDB across all declared fields and rows; graph/ledger/vector can run concurrently.
 - Graph search anchors natural-language questions to compiled entities and relationships.
 - Query planning prioritizes ledger/graph/page streams by intent.
+- Current/as-of queries retrieve a wider candidate set, classify concepts as `active`, `scheduled`,
+  `expired`, or `undated` at the requested instant, and rank rather than blindly filter them.
+  The active rule answers the question; scheduled replacements remain available for an upcoming
+  change notice, while explicit historical dates reconstruct the rule applicable on that date.
+- Applicability uses only `effective_from` / `effective_until` and linked replacements. `timestamp`,
+  `generated.at`, publication dates, lifecycle labels, and `stale_after` never substitute for an
+  effective date; missing applicability is reported as unknown rather than guessed.
 - Query rewriting adds only lightweight lexical variants by default.
 - Cross-language rewriting is local and model-free: it mines bilingual OKF aliases/keywords and
   `.wiki/query_lexicon.yaml`, then applies a bounded operations/education fallback glossary.
 - Multi-hop retrieval decomposes compound questions into answer subgoals, follows relevance-ranked
-  concept links for up to three hops, normalizes scores across hops, and stops when evidence is
-  complete or no useful frontier remains. Agent tasks receive explicit missing-evidence warnings.
+  and relation-typed concept links for up to three hops, checks structured scope evidence, normalizes
+  scores across hops, and stops when evidence is complete or no useful frontier remains. Agent tasks
+  receive explicit missing-evidence warnings.
 - Heading-bounded virtual sections contribute BM25 signals without splitting canonical OKF pages;
   coverage-aware top-k selection retains distinct comparison sides instead of redundant pages.
 - Education graph search recognizes typed `tests`, `depends_on`, `has_example`,
@@ -317,7 +376,9 @@ Default retrieval quality features:
 - `python scripts/search.py --doctor` reports page, metadata, graph, and optional embedding health.
 - `python scripts/search.py --eval <cases.jsonl>` measures Recall@K and MRR from jsonl eval cases.
 - `python scripts/benchmark.py <cases.jsonl> --method retrieval` additionally reports complete
-  subgoal coverage, topic drift, retrieval hop depth, forbidden leakage, and P50/P95 latency.
+  subgoal coverage, topic drift, retrieval hop depth, forbidden leakage, and P50/P95 latency. Every
+  result embeds a manifest containing the dataset hash, Git revision, safe query configuration,
+  scenario counts, method, and top-k so incompatible runs are not silently compared.
 - Embedded Zvec vector search and FlagEmbedding reranking are opt-in layers,
   not the default product path.
 

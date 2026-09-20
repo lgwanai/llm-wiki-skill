@@ -49,10 +49,10 @@ class Experience:
     create new instances."""
 
     category: str  # "merge" | "enrich" | "rollback" | "quality"
-    phase: int     # 3 or 4
-    context: str   # 1-2 sentences on what was attempted
-    outcome: str   # "success" | "rollback" | "warning"
-    lesson: str    # actionable lesson
+    phase: int  # 3 or 4
+    context: str  # 1-2 sentences on what was attempted
+    outcome: str  # "success" | "rollback" | "warning"
+    lesson: str  # actionable lesson
 
     date: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     hash_id: str = ""
@@ -68,7 +68,7 @@ class Experience:
         normalized = normalized.strip(".!?,;:，。！？；：")
         return hashlib.sha256(normalized.encode()).hexdigest()[:16]
 
-    def with_incremented_recurrence(self) -> "Experience":
+    def with_incremented_recurrence(self) -> Experience:
         """Return a new Experience with recurrence_count + 1."""
         return Experience(
             category=self.category,
@@ -126,11 +126,7 @@ class ExperienceStore:
 
         Includes: same-phase experiences + frequently-recurring (>= 2) from any phase.
         """
-        relevant = [
-            e
-            for e in self._entries
-            if e.phase == phase or e.recurrence_count >= 2
-        ]
+        relevant = [e for e in self._entries if e.phase == phase or e.recurrence_count >= 2]
         relevant.sort(key=lambda e: (e.recurrence_count, e.date), reverse=True)
         return relevant[:30]
 
@@ -158,15 +154,9 @@ class ExperienceStore:
         ]
 
         for e in entries:
-            recur = (
-                f"recurred {e.recurrence_count}×"
-                if e.recurrence_count > 1
-                else "once"
-            )
+            recur = f"recurred {e.recurrence_count}×" if e.recurrence_count > 1 else "once"
             outcome_label = e.outcome.upper()
-            lines.append(
-                f"- **[{outcome_label}]** ({recur}): {e.lesson}"
-            )
+            lines.append(f"- **[{outcome_label}]** ({recur}): {e.lesson}")
             if e.context:
                 lines.append(f"  > Context: {e.context}")
             lines.append("")

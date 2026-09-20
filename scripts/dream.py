@@ -40,24 +40,36 @@ from config import get_wiki_dir
 # ── constants ────────────────────────────────────────────────────────────────
 
 AUDIT_WINDOW_DAYS = 7
-TOP_N_AUDIT = 50      # queries to analyse
-TOP_N_PURIFY = 10     # queries to simulate-search
-TOP_N_ENRICH = 10     # max enrichment targets
-MIN_QUERY_COUNT = 2   # minimum before a query is considered recurring
+TOP_N_AUDIT = 50  # queries to analyse
+TOP_N_PURIFY = 10  # queries to simulate-search
+TOP_N_ENRICH = 10  # max enrichment targets
+MIN_QUERY_COUNT = 2  # minimum before a query is considered recurring
 LOW_DENSITY_THRESHOLD = 1200  # chars (excluding whitespace)
 
 LOW_VALUE_QUERIES = {
-    "", "嗯", "哦", "好的", "好", "ok", "yes", "no", "thanks", "谢谢",
+    "",
+    "嗯",
+    "哦",
+    "好的",
+    "好",
+    "ok",
+    "yes",
+    "no",
+    "thanks",
+    "谢谢",
 }
 
 # ── exceptions ────────────────────────────────────────────────────────────────
 
+
 class DreamCancelled(RuntimeError):
     """Raised when a dream worker is cancelled by a new query or compile."""
+
     pass
 
 
 # ── time helpers ──────────────────────────────────────────────────────────────
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -73,6 +85,7 @@ def _day_offset(offset_days: int) -> str:
 
 # ── paths ─────────────────────────────────────────────────────────────────────
 
+
 def _dream_dir() -> Path:
     return get_wiki_dir() / "dream"
 
@@ -86,6 +99,7 @@ def _cancel_path() -> Path:
 
 
 # ── status / cancel machinery ─────────────────────────────────────────────────
+
 
 def _write_status(state: str, stage: str, message: str) -> None:
     directory = _dream_dir()
@@ -130,15 +144,14 @@ def cancel_active_dream(reason: str) -> None:
     """
     directory = _dream_dir()
     directory.mkdir(parents=True, exist_ok=True)
-    _cancel_path().write_text(
-        json.dumps({"reason": reason, "timestamp": _now()}), encoding="utf-8"
-    )
+    _cancel_path().write_text(json.dumps({"reason": reason, "timestamp": _now()}), encoding="utf-8")
     status = _read_json(_status_path(), {})
     if isinstance(status, dict) and status.get("state") == "running":
         _write_status("cancelled", "cancelled", f"Dream cancelled: {reason}")
 
 
 # ── query logging ─────────────────────────────────────────────────────────────
+
 
 def log_query(result: dict, synthesis: bool) -> None:
     """Append a query event; logging must never fail the calling query."""
@@ -158,6 +171,7 @@ def log_query(result: dict, synthesis: bool) -> None:
 
 # ── query normalisation ───────────────────────────────────────────────────────
 
+
 def _normalize_query(query: str) -> str:
     value = query.strip().lower().strip("?!？！。，, ")
     for phrase in ("我喜欢", "我偏好", "首选", "i like", "my preferred", "my favorite is"):
@@ -172,17 +186,18 @@ def _is_low_value(query: str) -> bool:
 def _terms(query: str) -> list[str]:
     stripped = re.sub(
         r"(?:是什么|怎么|如何|为什么|请问|查询|介绍|what is|how to|why)",
-        " ", query, flags=re.I,
+        " ",
+        query,
+        flags=re.I,
     )
     values = [
-        term.strip("?!？！。，, ")
-        for term in re.split(r"\s+", stripped)
-        if len(term.strip()) >= 2
+        term.strip("?!？！。，, ") for term in re.split(r"\s+", stripped) if len(term.strip()) >= 2
     ]
     return list(dict.fromkeys(values))[:8] or [query]
 
 
 # ── page helpers ──────────────────────────────────────────────────────────────
+
 
 def _read_page(path: Path) -> tuple[dict, str] | None:
     try:
@@ -229,6 +244,7 @@ def _page_density(body: str) -> int:
 
 # ── multi-day log reader ──────────────────────────────────────────────────────
 
+
 def _read_logs(days: int = AUDIT_WINDOW_DAYS) -> list[dict]:
     """Read query-log entries from the last `days` days, oldest first."""
     audit_dir = get_wiki_dir() / "audit"
@@ -257,6 +273,7 @@ def _read_logs(days: int = AUDIT_WINDOW_DAYS) -> list[dict]:
 # ══════════════════════════════════════════════════════════════════════════════
 # Phase 1 — Light Sleep: metadata updates (safe, automatic)
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 def phase_light_sleep() -> list[dict]:
     """Update page metadata from today's query log.
@@ -326,7 +343,8 @@ def phase_light_sleep() -> list[dict]:
     directory = _dream_dir()
     directory.mkdir(parents=True, exist_ok=True)
     (directory / f"{_today()}-light.json").write_text(
-        json.dumps(items, indent=2, ensure_ascii=False), encoding="utf-8",
+        json.dumps(items, indent=2, ensure_ascii=False),
+        encoding="utf-8",
     )
     return items
 
@@ -334,6 +352,7 @@ def phase_light_sleep() -> list[dict]:
 # ══════════════════════════════════════════════════════════════════════════════
 # Phase 2 — Audit: multi-day analysis → Agent task
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 def phase_audit(light_items: list[dict]) -> Path:
     """Aggregate N-day query logs and produce an Agent analysis task.
@@ -345,14 +364,18 @@ def phase_audit(light_items: list[dict]) -> Path:
 
     Returns path to the audit task file.
     """
-    _write_status("running", "audit", f"Phase 2/4: Audit — analysing {AUDIT_WINDOW_DAYS}d query trends")
+    _write_status(
+        "running", "audit", f"Phase 2/4: Audit — analysing {AUDIT_WINDOW_DAYS}d query trends"
+    )
     _check_cancelled()
 
     entries = _read_logs(days=AUDIT_WINDOW_DAYS)
     if not entries:
         output = _dream_dir() / f"{_today()}-audit.md"
-        output.write_text("# Dream Audit\n\nNo queries recorded in the last "
-                          f"{AUDIT_WINDOW_DAYS} days.\n", encoding="utf-8")
+        output.write_text(
+            f"# Dream Audit\n\nNo queries recorded in the last {AUDIT_WINDOW_DAYS} days.\n",
+            encoding="utf-8",
+        )
         return output
 
     # Build raw query stats for the Agent to interpret
@@ -374,9 +397,7 @@ def phase_audit(light_items: list[dict]) -> Path:
     # Compile per-query source stats
     query_blocks: list[str] = []
     for i, (raw_query, stats) in enumerate(top, start=1):
-        source_ids = list({
-            s.get("id", "?") for s in stats["sources"] if isinstance(s, dict)
-        })[:10]
+        source_ids = list({s.get("id", "?") for s in stats["sources"] if isinstance(s, dict)})[:10]
         query_blocks.append(
             f"### Q{i}: [{stats['count']}×] {raw_query}\n\n"
             f"Last seen: {stats['latest']}\n"
@@ -401,7 +422,7 @@ def phase_audit(light_items: list[dict]) -> Path:
    sources fully answer it.  Mark queries whose answers rely on a single thin
    page.
 
-Output your analysis into `{_dream_dir() / f'{_today()}-audit-analysis.md'}`.
+Output your analysis into `{_dream_dir() / f"{_today()}-audit-analysis.md"}`.
 
 ## Raw Query Data (frequency-ordered, top {TOP_N_AUDIT})
 
@@ -418,10 +439,12 @@ Output your analysis into `{_dream_dir() / f'{_today()}-audit-analysis.md'}`.
 # Phase 3 — Purify: simulate searches → duplicate / density proposals
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 def _run_search(query_text: str) -> dict | None:
     """Run a local wiki search and return structured results."""
     try:
         from query import query_wiki
+
         return query_wiki(query_text, synthesis=False, mode="agent")
     except Exception as exc:
         print(f"  WARNING: search failed for '{query_text[:60]}': {exc}", file=sys.stderr)
@@ -429,7 +452,9 @@ def _run_search(query_text: str) -> dict | None:
 
 
 def _analyze_search_results(
-    query_text: str, result: dict, threshold: int = LOW_DENSITY_THRESHOLD,
+    query_text: str,
+    result: dict,
+    threshold: int = LOW_DENSITY_THRESHOLD,
 ) -> dict:
     """Extract per-result analysis: density, duplicates, coverage."""
     sources = result.get("source_details", []) if result else []
@@ -453,12 +478,14 @@ def _analyze_search_results(
         signature = re.sub(r"\s+", "", body)[:200]
         duplicate_of = seen_bodies.get(signature)
         if duplicate_of:
-            analysed.append({
-                **src,
-                "density": density,
-                "status": "duplicate",
-                "duplicate_of": duplicate_of,
-            })
+            analysed.append(
+                {
+                    **src,
+                    "density": density,
+                    "status": "duplicate",
+                    "duplicate_of": duplicate_of,
+                }
+            )
         else:
             seen_bodies[signature] = src.get("id", "unknown")
             status = "ok" if density >= threshold else "low-density"
@@ -533,10 +560,12 @@ def phase_purify(
     for a in analyses:
         dups = [r for r in a["results"] if r.get("status") == "duplicate"]
         if dups:
-            duplicate_groups.append({
-                "query": a["query"],
-                "duplicates": dups,
-            })
+            duplicate_groups.append(
+                {
+                    "query": a["query"],
+                    "duplicates": dups,
+                }
+            )
 
     # Build low-density report
     low_density_pages: dict[str, dict] = {}
@@ -622,8 +651,11 @@ def phase_purify(
         # 1. Snapshot before modifications — warn if git unavailable, continue anyway
         snapshot_hash = create_snapshot(wiki_dir, "pre-phase3-purify")
         if not snapshot_hash:
-            print("  [dream/purify] WARNING: git snapshot unavailable — "
-                  "modifications will proceed without rollback safety", file=sys.stderr)
+            print(
+                "  [dream/purify] WARNING: git snapshot unavailable — "
+                "modifications will proceed without rollback safety",
+                file=sys.stderr,
+            )
 
             # 2. Collect queries and run baseline
             test_queries = collect_test_queries(3, wiki_dir)
@@ -635,19 +667,28 @@ def phase_purify(
 
             # 3. Execute mechanical merges
             if duplicate_groups:
-                print(f"  [dream/purify] auto-merging {len(duplicate_groups)} "
-                      f"duplicate groups...", file=sys.stderr)
+                print(
+                    f"  [dream/purify] auto-merging {len(duplicate_groups)} duplicate groups...",
+                    file=sys.stderr,
+                )
                 merged_count, removed_count, modified_paths = auto_merge_duplicates(
-                    duplicate_groups, wiki_dir,
+                    duplicate_groups,
+                    wiki_dir,
                 )
 
             # 4. Post-modification quality assessment
             current = run_search_baseline(test_queries, wiki_dir)
             quality_report = assess_quality(
-                test_queries, baseline, current, modified_paths,
+                test_queries,
+                baseline,
+                current,
+                modified_paths,
             )
-            print(f"  [dream/purify] quality score: {quality_report.overall_score:+.3f} "
-                  f"→ {quality_report.recommendation}", file=sys.stderr)
+            print(
+                f"  [dream/purify] quality score: {quality_report.overall_score:+.3f} "
+                f"→ {quality_report.recommendation}",
+                file=sys.stderr,
+            )
 
             # 5. Decision: keep / warn / rollback
             if quality_report.recommendation == "rollback" and snapshot_hash:
@@ -664,7 +705,7 @@ def phase_purify(
                     category="merge",
                     phase=3,
                     context=f"Auto-merged {len(duplicate_groups)} duplicate groups. "
-                            f"Rank changes: {quality_report.rank_changes}",
+                    f"Rank changes: {quality_report.rank_changes}",
                     outcome="rollback",
                     lesson=lesson,
                 )
@@ -680,7 +721,7 @@ def phase_purify(
                     category="merge",
                     phase=3,
                     context=f"Merged {merged_count} duplicates, removed {removed_count} "
-                            f"pages. Modified: {[p.name for p in modified_paths]}",
+                    f"pages. Modified: {[p.name for p in modified_paths]}",
                     outcome="warning",
                     lesson=lesson,
                 )
@@ -725,6 +766,7 @@ def phase_purify(
 # Phase 4 — Enrich: research tasks for low-density + high-frequency pages
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 def phase_enrich(
     experiences: ExperienceStore | None = None,
     prior_context: str = "",
@@ -756,7 +798,11 @@ def phase_enrich(
             if not path:
                 continue
             if path not in page_stats:
-                page_stats[path] = {"count": 0, "name": src.get("name", src.get("id", "?")), "id": src.get("id", "?")}
+                page_stats[path] = {
+                    "count": 0,
+                    "name": src.get("name", src.get("id", "?")),
+                    "id": src.get("id", "?"),
+                }
             page_stats[path]["count"] += 1
 
     # Filter: frequently queried AND low-density
@@ -843,15 +889,16 @@ For each candidate below:
         # 1. Snapshot before modifications — warn if git unavailable, continue anyway
         snapshot_hash = create_snapshot(wiki_dir, "pre-phase4-enrich")
         if not snapshot_hash:
-            print("  [dream/enrich] WARNING: git snapshot unavailable — "
-                  "modifications will proceed without rollback safety", file=sys.stderr)
+            print(
+                "  [dream/enrich] WARNING: git snapshot unavailable — "
+                "modifications will proceed without rollback safety",
+                file=sys.stderr,
+            )
 
         # 2. Collect queries and run baseline
         test_queries = collect_test_queries(4, wiki_dir)
         if not test_queries:
-            test_queries = [
-                c.get("name", "") for c in selected if c.get("name")
-            ][:10]
+            test_queries = [c.get("name", "") for c in selected if c.get("name")][:10]
         if not test_queries:
             test_queries = [f"what is {c.get('name', '')}" for c in selected[:5]]
 
@@ -859,16 +906,23 @@ For each candidate below:
 
         # 3. Enrich page metadata mechanically
         enriched_count, modified_paths = auto_enrich_pages(
-            selected, wiki_dir,
+            selected,
+            wiki_dir,
         )
 
         # 4. Post-modification quality assessment
         current = run_search_baseline(test_queries, wiki_dir)
         quality_report = assess_quality(
-            test_queries, baseline, current, modified_paths,
+            test_queries,
+            baseline,
+            current,
+            modified_paths,
         )
-        print(f"  [dream/enrich] quality score: {quality_report.overall_score:+.3f} "
-              f"→ {quality_report.recommendation}", file=sys.stderr)
+        print(
+            f"  [dream/enrich] quality score: {quality_report.overall_score:+.3f} "
+            f"→ {quality_report.recommendation}",
+            file=sys.stderr,
+        )
 
         # 5. Decision
         if quality_report.recommendation == "rollback" and snapshot_hash:
@@ -884,7 +938,7 @@ For each candidate below:
                 category="enrich",
                 phase=4,
                 context=f"Auto-enriched {len(selected)} pages. "
-                        f"Rank changes: {quality_report.rank_changes}",
+                f"Rank changes: {quality_report.rank_changes}",
                 outcome="rollback",
                 lesson=lesson,
             )
@@ -900,7 +954,7 @@ For each candidate below:
                 category="enrich",
                 phase=4,
                 context=f"Enriched {enriched_count} pages. "
-                        f"Modified: {[p.name for p in modified_paths]}",
+                f"Modified: {[p.name for p in modified_paths]}",
                 outcome="warning",
                 lesson=lesson,
             )
@@ -942,6 +996,7 @@ For each candidate below:
 # Orchestration
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 def run_worker() -> str:
     """Execute all four dream phases.  Directly modifies wiki content with
     git snapshots, quality gating, auto-rollback, and experience recording.
@@ -960,11 +1015,15 @@ def run_worker() -> str:
     ctx_phase3 = experiences.to_context(3)
     ctx_phase4 = experiences.to_context(4)
     if ctx_phase3:
-        print(f"  [dream] loaded {len(experiences.load_for_phase(3))} prior experiences for phase 3",
-              file=sys.stderr)
+        print(
+            f"  [dream] loaded {len(experiences.load_for_phase(3))} prior experiences for phase 3",
+            file=sys.stderr,
+        )
     if ctx_phase4:
-        print(f"  [dream] loaded {len(experiences.load_for_phase(4))} prior experiences for phase 4",
-              file=sys.stderr)
+        print(
+            f"  [dream] loaded {len(experiences.load_for_phase(4))} prior experiences for phase 4",
+            file=sys.stderr,
+        )
 
     try:
         # Phase 1 — safe metadata updates
@@ -1042,7 +1101,8 @@ def start_dream(foreground: bool = False, worker: bool = False) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run query-driven dream consolidation")
     parser.add_argument(
-        "--foreground", action="store_true",
+        "--foreground",
+        action="store_true",
         help="Run the dream worker in this process",
     )
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)

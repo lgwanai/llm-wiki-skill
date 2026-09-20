@@ -63,6 +63,7 @@ TYPE_HINTS = {
 # Helpers
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def _slugify(name: str) -> str:
     s = name.lower().strip().replace(" ", "-").replace("_", "-")
     s = re.sub(r"[^a-z0-9-]", "", s)
@@ -142,7 +143,7 @@ def _migrate_from_json(conn: duckdb.DuckDBPyConnection) -> None:
         for fdef in fields:
             duck_type = TYPE_MAP.get(fdef.get("type", "string"), "VARCHAR")
             col_defs.append(f'"{fdef["name"]}" {duck_type}')
-        conn.execute(f'CREATE TABLE IF NOT EXISTS {_q(actual_name)} ({", ".join(col_defs)})')
+        conn.execute(f"CREATE TABLE IF NOT EXISTS {_q(actual_name)} ({', '.join(col_defs)})")
 
         # Sequence
         if schema.get("auto_increment"):
@@ -150,7 +151,9 @@ def _migrate_from_json(conn: duckdb.DuckDBPyConnection) -> None:
             if data:
                 max_id = max((row.get("_id", 0) for row in data), default=0)
                 next_id = max(next_id, max_id + 1)
-            conn.execute(f'CREATE SEQUENCE IF NOT EXISTS {_q(f"seq_{actual_name}")} START {next_id}')
+            conn.execute(
+                f"CREATE SEQUENCE IF NOT EXISTS {_q(f'seq_{actual_name}')} START {next_id}"
+            )
 
         # Insert data
         if data:
@@ -161,7 +164,7 @@ def _migrate_from_json(conn: duckdb.DuckDBPyConnection) -> None:
                 vals = [row.get(c) for c in col_names]
                 try:
                     conn.execute(
-                        f'INSERT INTO {_q(actual_name)} ({", ".join(quoted_cols)}) VALUES ({placeholders})',
+                        f"INSERT INTO {_q(actual_name)} ({', '.join(quoted_cols)}) VALUES ({placeholders})",
                         vals,
                     )
                 except duckdb.Error:
@@ -194,9 +197,7 @@ def _migrate_from_index_json(conn: duckdb.DuckDBPyConnection) -> None:
     if not isinstance(entries, list):
         return
 
-    existing = {
-        r[0] for r in conn.execute("SELECT actual_name FROM _registry").fetchall()
-    }
+    existing = {r[0] for r in conn.execute("SELECT actual_name FROM _registry").fetchall()}
 
     for entry in entries:
         if not isinstance(entry, dict):
@@ -216,22 +217,26 @@ def _migrate_from_index_json(conn: duckdb.DuckDBPyConnection) -> None:
             display_name = fdef.get("display_name") or fdef.get("name")
             if not display_name:
                 continue
-            fields.append({
-                "name": display_name,
-                "type": _normalize_import_type(fdef.get("type", "string")),
-                "required": False,
-                "description": "",
-                "source_name": fdef.get("name", display_name),
-            })
+            fields.append(
+                {
+                    "name": display_name,
+                    "type": _normalize_import_type(fdef.get("type", "string")),
+                    "required": False,
+                    "description": "",
+                    "source_name": fdef.get("name", display_name),
+                }
+            )
         if not fields:
             continue
 
-        actual_name = table_id if re.match(r"^[A-Za-z_][A-Za-z0-9_-]*$", table_id) else _generate_table_name(
-            schema.get("name", table_id), conn
+        actual_name = (
+            table_id
+            if re.match(r"^[A-Za-z_][A-Za-z0-9_-]*$", table_id)
+            else _generate_table_name(schema.get("name", table_id), conn)
         )
-        col_defs = [f'{_q(f["name"])} {TYPE_MAP.get(f["type"], "VARCHAR")}' for f in fields]
+        col_defs = [f"{_q(f['name'])} {TYPE_MAP.get(f['type'], 'VARCHAR')}" for f in fields]
         try:
-            conn.execute(f'CREATE TABLE IF NOT EXISTS {_q(actual_name)} ({", ".join(col_defs)})')
+            conn.execute(f"CREATE TABLE IF NOT EXISTS {_q(actual_name)} ({', '.join(col_defs)})")
         except duckdb.Error:
             continue
 
@@ -249,7 +254,7 @@ def _migrate_from_index_json(conn: duckdb.DuckDBPyConnection) -> None:
                 vals.append(_clean_import_value(raw, field["type"]))
             try:
                 conn.execute(
-                    f'INSERT INTO {_q(actual_name)} ({", ".join(quoted_cols)}) VALUES ({placeholders})',
+                    f"INSERT INTO {_q(actual_name)} ({', '.join(quoted_cols)}) VALUES ({placeholders})",
                     vals,
                 )
                 inserted += 1
@@ -268,7 +273,10 @@ def _migrate_from_index_json(conn: duckdb.DuckDBPyConnection) -> None:
                 inserted,
                 schema.get("import_time", _now_iso()),
                 schema.get("import_time", _now_iso()),
-                json.dumps([{k: v for k, v in f.items() if k != "source_name"} for f in fields], ensure_ascii=False),
+                json.dumps(
+                    [{k: v for k, v in f.items() if k != "source_name"} for f in fields],
+                    ensure_ascii=False,
+                ),
             ],
         )
         existing.add(actual_name)
@@ -287,6 +295,7 @@ def _load_json_legacy(path: Path, default=None):
 # Table name generation
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def _generate_table_name(display_name: str, conn: duckdb.DuckDBPyConnection) -> str:
     """Generate a unique, English-safe table name."""
     base = _slugify(display_name)
@@ -294,9 +303,7 @@ def _generate_table_name(display_name: str, conn: duckdb.DuckDBPyConnection) -> 
         h = hashlib.sha256(display_name.encode("utf-8")).hexdigest()[:8]
         base = f"table_{h}"
 
-    existing = {
-        r[0] for r in conn.execute("SELECT actual_name FROM _registry").fetchall()
-    }
+    existing = {r[0] for r in conn.execute("SELECT actual_name FROM _registry").fetchall()}
     candidate = base
     suffix = 1
     while candidate in existing:
@@ -308,11 +315,15 @@ def _generate_table_name(display_name: str, conn: duckdb.DuckDBPyConnection) -> 
 def _resolve_table(user_input: str, conn: duckdb.DuckDBPyConnection) -> str | None:
     """Look up *user_input* in _registry. Returns actual_name or None."""
     # Exact actual_name
-    row = conn.execute("SELECT actual_name FROM _registry WHERE actual_name = ?", [user_input]).fetchone()
+    row = conn.execute(
+        "SELECT actual_name FROM _registry WHERE actual_name = ?", [user_input]
+    ).fetchone()
     if row:
         return row[0]
     # Exact display_name
-    row = conn.execute("SELECT actual_name FROM _registry WHERE display_name = ?", [user_input]).fetchone()
+    row = conn.execute(
+        "SELECT actual_name FROM _registry WHERE display_name = ?", [user_input]
+    ).fetchone()
     if row:
         return row[0]
     # Case-insensitive display_name
@@ -325,6 +336,7 @@ def _resolve_table(user_input: str, conn: duckdb.DuckDBPyConnection) -> str | No
 # ═══════════════════════════════════════════════════════════════════════
 # Type validation & coercion (unchanged from JSON version)
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def _coerce_value(value, field_type: str):
     if value is None:
@@ -475,13 +487,15 @@ def _validate_row(row: dict, schema: dict, conn, actual_name: str) -> list[dict]
             continue
         try:
             row_exists = conn.execute(
-                f'SELECT 1 FROM {_q(actual_name)} WHERE {_q(uk_field)} = ? LIMIT 1', [new_val]
+                f"SELECT 1 FROM {_q(actual_name)} WHERE {_q(uk_field)} = ? LIMIT 1", [new_val]
             ).fetchone()
             if row_exists:
-                errors.append({
-                    "field": uk_field,
-                    "error": f"Duplicate value '{new_val}' (already exists in table)",
-                })
+                errors.append(
+                    {
+                        "field": uk_field,
+                        "error": f"Duplicate value '{new_val}' (already exists in table)",
+                    }
+                )
         except duckdb.Error:
             pass
 
@@ -492,6 +506,7 @@ def _validate_row(row: dict, schema: dict, conn, actual_name: str) -> list[dict]
 # Command handlers
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def cmd_list() -> dict:
     conn = _get_conn()
     rows = conn.execute(
@@ -500,14 +515,16 @@ def cmd_list() -> dict:
     ).fetchall()
     tables = []
     for r in rows:
-        tables.append({
-            "display_name": r[1],
-            "actual_name": r[0],
-            "description": r[2] or "",
-            "record_count": r[3],
-            "created_at": r[4].isoformat() if r[4] else "",
-            "updated_at": r[5].isoformat() if r[5] else "",
-        })
+        tables.append(
+            {
+                "display_name": r[1],
+                "actual_name": r[0],
+                "description": r[2] or "",
+                "record_count": r[3],
+                "created_at": r[4].isoformat() if r[4] else "",
+                "updated_at": r[5].isoformat() if r[5] else "",
+            }
+        )
     return {"success": True, "count": len(tables), "tables": tables}
 
 
@@ -533,10 +550,10 @@ def cmd_show(table: str) -> dict:
 
     # Get rows
     try:
-        rows = conn.execute(f'SELECT * FROM {_q(actual)} LIMIT 20').fetchall()
+        rows = conn.execute(f"SELECT * FROM {_q(actual)} LIMIT 20").fetchall()
         col_names = [desc[0] for desc in conn.description]
         data = [dict(zip(col_names, r)) for r in rows]
-        total = conn.execute(f'SELECT COUNT(*) FROM {_q(actual)}').fetchone()[0]
+        total = conn.execute(f"SELECT COUNT(*) FROM {_q(actual)}").fetchone()[0]
     except duckdb.Error as e:
         return {"success": False, "error": f"Failed to read table: {e}"}
 
@@ -579,7 +596,10 @@ def cmd_create(
     field_names: set[str] = set()
     for i, fdef in enumerate(fields):
         if not isinstance(fdef, dict):
-            return {"success": False, "error": f"Field {i}: expected object, got {type(fdef).__name__}"}
+            return {
+                "success": False,
+                "error": f"Field {i}: expected object, got {type(fdef).__name__}",
+            }
         fname = fdef.get("name", "").strip()
         if not fname:
             return {"success": False, "error": f"Field {i}: 'name' is required"}
@@ -587,7 +607,10 @@ def cmd_create(
             return {"success": False, "error": f"Duplicate field name: '{fname}'"}
         ftype = fdef.get("type", "string")
         if ftype not in VALID_TYPES:
-            return {"success": False, "error": f"Field '{fname}': unknown type '{ftype}'. Valid: {', '.join(sorted(VALID_TYPES))}"}
+            return {
+                "success": False,
+                "error": f"Field '{fname}': unknown type '{ftype}'. Valid: {', '.join(sorted(VALID_TYPES))}",
+            }
         field_names.add(fname)
 
     # Parse unique key
@@ -596,14 +619,22 @@ def cmd_create(
         unique_key = [u.strip() for u in unique.split(",") if u.strip()]
         for uk in unique_key:
             if uk not in field_names and uk != "_id":
-                return {"success": False, "error": f"Unique key field '{uk}' not found in field definitions"}
+                return {
+                    "success": False,
+                    "error": f"Unique key field '{uk}' not found in field definitions",
+                }
 
     conn = _get_conn()
 
     # Check duplicate display_name
-    dup = conn.execute("SELECT actual_name FROM _registry WHERE display_name = ?", [display_name]).fetchone()
+    dup = conn.execute(
+        "SELECT actual_name FROM _registry WHERE display_name = ?", [display_name]
+    ).fetchone()
     if dup:
-        return {"success": False, "error": f"A table named '{display_name}' already exists (actual: {dup[0]})."}
+        return {
+            "success": False,
+            "error": f"A table named '{display_name}' already exists (actual: {dup[0]}).",
+        }
 
     actual_name = table_name if table_name else _generate_table_name(display_name, conn)
 
@@ -613,12 +644,20 @@ def cmd_create(
 
     if auto_increment:
         if "_id" in field_names:
-            return {"success": False, "error": "Cannot use --auto-increment: '_id' already in --fields"}
+            return {
+                "success": False,
+                "error": "Cannot use --auto-increment: '_id' already in --fields",
+            }
         col_defs.append('"_id" INTEGER')
-        schema_fields.append({
-            "name": "_id", "type": "integer", "required": False,
-            "auto_increment": True, "description": "自动编号",
-        })
+        schema_fields.append(
+            {
+                "name": "_id",
+                "type": "integer",
+                "required": False,
+                "auto_increment": True,
+                "description": "自动编号",
+            }
+        )
         if not unique_key:
             unique_key = ["_id"]
 
@@ -626,21 +665,24 @@ def cmd_create(
         fname = fdef.get("name", "").strip()
         ftype = fdef.get("type", "string")
         duck_type = TYPE_MAP.get(ftype, "VARCHAR")
-        col_defs.append(f'{_q(fname)} {duck_type}')
-        schema_fields.append({
-            "name": fname, "type": ftype,
-            "required": fdef.get("required", False),
-            "description": fdef.get("description", ""),
-        })
+        col_defs.append(f"{_q(fname)} {duck_type}")
+        schema_fields.append(
+            {
+                "name": fname,
+                "type": ftype,
+                "required": fdef.get("required", False),
+                "description": fdef.get("description", ""),
+            }
+        )
 
     # Create table
     try:
-        conn.execute(f'CREATE TABLE {_q(actual_name)} ({", ".join(col_defs)})')
+        conn.execute(f"CREATE TABLE {_q(actual_name)} ({', '.join(col_defs)})")
     except duckdb.Error as e:
         return {"success": False, "error": f"Failed to create table: {e}"}
 
     if auto_increment:
-        conn.execute(f'CREATE SEQUENCE {_q(f"seq_{actual_name}")} START 1')
+        conn.execute(f"CREATE SEQUENCE {_q(f'seq_{actual_name}')} START 1")
 
     # Register
     conn.execute(
@@ -648,10 +690,15 @@ def cmd_create(
            (actual_name, display_name, description, record_count, created_at, updated_at,
             fields_json, unique_key, auto_increment, auto_increment_field)
            VALUES (?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, ?, ?)""",
-        [actual_name, display_name, description,
-         json.dumps(schema_fields, ensure_ascii=False),
-         json.dumps(unique_key), auto_increment,
-         "_id" if auto_increment else None],
+        [
+            actual_name,
+            display_name,
+            description,
+            json.dumps(schema_fields, ensure_ascii=False),
+            json.dumps(unique_key),
+            auto_increment,
+            "_id" if auto_increment else None,
+        ],
     )
 
     return {
@@ -714,7 +761,11 @@ def cmd_insert(table: str, data_json: str, batch: bool = False) -> dict:
         if errors:
             failed.append({"row": i, "errors": errors})
             if not batch:
-                return {"success": False, "error": f"Validation failed for row {i}", "details": errors}
+                return {
+                    "success": False,
+                    "error": f"Validation failed for row {i}",
+                    "details": errors,
+                }
             continue
 
         # Coerce values
@@ -735,7 +786,7 @@ def cmd_insert(table: str, data_json: str, batch: bool = False) -> dict:
             quoted = [_q(c) for c in col_names]
             placeholders = ", ".join(["?" for _ in col_names])
             conn.execute(
-                f'INSERT INTO {_q(actual)} ({", ".join(quoted)}) VALUES ({placeholders})',
+                f"INSERT INTO {_q(actual)} ({', '.join(quoted)}) VALUES ({placeholders})",
                 values,
             )
             clean_row = dict(zip(col_names, values))
@@ -746,10 +797,15 @@ def cmd_insert(table: str, data_json: str, batch: bool = False) -> dict:
                 return {"success": False, "error": f"Insert failed for row {i}: {e}"}
 
     if not inserted:
-        return {"success": False, "error": "No valid rows to insert.", "failed": len(failed), "details": failed}
+        return {
+            "success": False,
+            "error": "No valid rows to insert.",
+            "failed": len(failed),
+            "details": failed,
+        }
 
     # Update record count
-    count = conn.execute(f'SELECT COUNT(*) FROM {_q(actual)}').fetchone()[0]
+    count = conn.execute(f"SELECT COUNT(*) FROM {_q(actual)}").fetchone()[0]
     conn.execute(
         "UPDATE _registry SET record_count = ?, updated_at = CURRENT_TIMESTAMP WHERE actual_name = ?",
         [count, actual],
@@ -805,11 +861,15 @@ def cmd_update_schema(
                 return {"success": False, "error": f"Field '{fname}': unknown type '{ftype}'"}
             duck_type = TYPE_MAP.get(ftype, "VARCHAR")
             try:
-                conn.execute(f'ALTER TABLE {_q(actual)} ADD COLUMN {_q(fname)} {duck_type}')
+                conn.execute(f"ALTER TABLE {_q(actual)} ADD COLUMN {_q(fname)} {duck_type}")
             except duckdb.Error as e:
                 return {"success": False, "error": f"Failed to add column: {e}"}
-            new_fdef = {"name": fname, "type": ftype, "required": fdef.get("required", False),
-                        "description": fdef.get("description", "")}
+            new_fdef = {
+                "name": fname,
+                "type": ftype,
+                "required": fdef.get("required", False),
+                "description": fdef.get("description", ""),
+            }
             fields.append(new_fdef)
             field_map[fname] = new_fdef
             changes.append(f"added field '{fname}' ({ftype})")
@@ -825,7 +885,7 @@ def cmd_update_schema(
             if fname in unique_key:
                 return {"success": False, "error": f"Cannot remove unique key field '{fname}'"}
             try:
-                conn.execute(f'ALTER TABLE {_q(actual)} DROP COLUMN {_q(fname)}')
+                conn.execute(f"ALTER TABLE {_q(actual)} DROP COLUMN {_q(fname)}")
             except duckdb.Error as e:
                 return {"success": False, "error": f"Failed to drop column: {e}"}
             fields = [f for f in fields if f["name"] != fname]
@@ -843,7 +903,7 @@ def cmd_update_schema(
         if new_name in field_map:
             return {"success": False, "error": f"Field '{new_name}' already exists"}
         try:
-            conn.execute(f'ALTER TABLE {_q(actual)} RENAME COLUMN {_q(old_name)} TO {_q(new_name)}')
+            conn.execute(f"ALTER TABLE {_q(actual)} RENAME COLUMN {_q(old_name)} TO {_q(new_name)}")
         except duckdb.Error as e:
             return {"success": False, "error": f"Failed to rename column: {e}"}
         fdef = field_map.pop(old_name)
@@ -875,7 +935,7 @@ def cmd_update_schema(
             new_type = TYPE_MAP.get(mtype, "VARCHAR")
             old_type = field_map[mname]["type"]
             try:
-                conn.execute(f'ALTER TABLE {_q(actual)} ALTER COLUMN {_q(mname)} TYPE {new_type}')
+                conn.execute(f"ALTER TABLE {_q(actual)} ALTER COLUMN {_q(mname)} TYPE {new_type}")
             except duckdb.Error as e:
                 return {"success": False, "error": f"Failed to alter column type: {e}"}
             field_map[mname]["type"] = mtype
@@ -895,7 +955,7 @@ def cmd_update_schema(
 
     # Update record count
     try:
-        count = conn.execute(f'SELECT COUNT(*) FROM {_q(actual)}').fetchone()[0]
+        count = conn.execute(f"SELECT COUNT(*) FROM {_q(actual)}").fetchone()[0]
         conn.execute("UPDATE _registry SET record_count = ? WHERE actual_name = ?", [count, actual])
     except duckdb.Error:
         pass
@@ -916,11 +976,11 @@ def cmd_delete(table: str, keep_files: bool = False) -> dict:
     # Drop table and sequence
     if not keep_files:
         try:
-            conn.execute(f'DROP TABLE IF EXISTS {_q(actual)}')
+            conn.execute(f"DROP TABLE IF EXISTS {_q(actual)}")
         except duckdb.Error:
             pass
         try:
-            conn.execute(f'DROP SEQUENCE IF EXISTS {_q(f"seq_{actual}")}')
+            conn.execute(f"DROP SEQUENCE IF EXISTS {_q(f'seq_{actual}')}")
         except duckdb.Error:
             pass
     conn.execute("DELETE FROM _registry WHERE actual_name = ?", [actual])
@@ -935,7 +995,8 @@ def cmd_stats(table: str | None = None) -> dict:
             return {"success": False, "error": f"Table '{table}' not found."}
         reg = conn.execute(
             "SELECT display_name, fields_json, record_count, created_at, updated_at "
-            "FROM _registry WHERE actual_name = ?", [actual]
+            "FROM _registry WHERE actual_name = ?",
+            [actual],
         ).fetchone()
         if reg is None:
             return {"success": False, "error": f"Registry entry missing for '{actual}'."}
@@ -957,12 +1018,14 @@ def cmd_stats(table: str | None = None) -> dict:
     tables = []
     total_rows = 0
     for r in rows:
-        tables.append({
-            "display_name": r[0],
-            "actual_name": r[1],
-            "row_count": r[2],
-            "updated_at": r[3].isoformat() if r[3] else "",
-        })
+        tables.append(
+            {
+                "display_name": r[0],
+                "actual_name": r[1],
+                "row_count": r[2],
+                "updated_at": r[3].isoformat() if r[3] else "",
+            }
+        )
         total_rows += r[2]
     return {"success": True, "table_count": len(tables), "total_rows": total_rows, "tables": tables}
 
@@ -985,7 +1048,9 @@ def _read_tabular_file(filepath: str) -> list[list[str]]:
         wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
         try:
             ws = wb.active
-            return [["" if c.value is None else str(c.value) for c in row] for row in ws.iter_rows()]
+            return [
+                ["" if c.value is None else str(c.value) for c in row] for row in ws.iter_rows()
+            ]
         finally:
             wb.close()
 
@@ -1021,12 +1086,14 @@ def cmd_import(filepath: str, table_name: str | None = None) -> dict:
     fields = []
     for i, header in enumerate(headers):
         values = [row[i] for row in sample_rows if i < len(row)]
-        fields.append({
-            "name": header,
-            "type": _infer_import_type(values),
-            "required": False,
-            "description": "",
-        })
+        fields.append(
+            {
+                "name": header,
+                "type": _infer_import_type(values),
+                "required": False,
+                "description": "",
+            }
+        )
 
     source = Path(filepath).name
     display_name = table_name or source.replace("_", " ").replace("-", " ").rsplit(".", 1)[0]
@@ -1091,7 +1158,9 @@ def cmd_export(table: str, output_path: str | None = None) -> dict:
     fields = json.loads(reg[1])
     col_names = [f["name"] for f in fields]
     output = output_path or f"{actual}.csv"
-    rows = conn.execute(f'SELECT {", ".join(_q(c) for c in col_names)} FROM {_q(actual)}').fetchall()
+    rows = conn.execute(
+        f"SELECT {', '.join(_q(c) for c in col_names)} FROM {_q(actual)}"
+    ).fetchall()
 
     with open(output, "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
@@ -1163,18 +1232,20 @@ def search_ledgers(query: str, limit: int = 10) -> list[dict]:
                 preview = []
 
         if score > 0:
-            results.append({
-                "id": actual,
-                "name": display,
-                "type": "ledger",
-                "score": score,
-                "fields": [f["name"] for f in fields],
-                "field_types": {f["name"]: f.get("type", "text") for f in fields},
-                "rows_count": record_count,
-                "matched_fields": matched_fields,
-                "preview": preview,
-                "updated_at": updated_at.isoformat() if updated_at else "",
-            })
+            results.append(
+                {
+                    "id": actual,
+                    "name": display,
+                    "type": "ledger",
+                    "score": score,
+                    "fields": [f["name"] for f in fields],
+                    "field_types": {f["name"]: f.get("type", "text") for f in fields},
+                    "rows_count": record_count,
+                    "matched_fields": matched_fields,
+                    "preview": preview,
+                    "updated_at": updated_at.isoformat() if updated_at else "",
+                }
+            )
 
     results.sort(key=lambda item: -item["score"])
     return results[:limit]
@@ -1189,8 +1260,11 @@ def cmd_search(query: str, limit: int = 10) -> dict:
 # CLI
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Ledger/台账 management for LLM Wiki v2 (DuckDB backend)")
+    parser = argparse.ArgumentParser(
+        description="Ledger/台账 management for LLM Wiki v2 (DuckDB backend)"
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("list", help="List all tables")
@@ -1200,9 +1274,11 @@ def main():
 
     create_parser = subparsers.add_parser("create", help="Create a new table")
     create_parser.add_argument("display_name", help="Display name for the table")
-    create_parser.add_argument("--fields", required=True, help='Field definitions JSON')
+    create_parser.add_argument("--fields", required=True, help="Field definitions JSON")
     create_parser.add_argument("--unique", default=None, help="Unique key field(s)")
-    create_parser.add_argument("--auto-increment", action="store_true", help="Add _id auto-increment field")
+    create_parser.add_argument(
+        "--auto-increment", action="store_true", help="Add _id auto-increment field"
+    )
     create_parser.add_argument("--table-name", default=None, help="Override safe table name")
     create_parser.add_argument("--description", default="", help="Table description")
 
@@ -1220,7 +1296,9 @@ def main():
 
     del_parser = subparsers.add_parser("delete", help="Delete a table")
     del_parser.add_argument("table", help="Table name")
-    del_parser.add_argument("--keep-files", action="store_true", help="Keep data in DuckDB (remove only registry entry)")
+    del_parser.add_argument(
+        "--keep-files", action="store_true", help="Keep data in DuckDB (remove only registry entry)"
+    )
 
     stats_parser = subparsers.add_parser("stats", help="Show table statistics")
     stats_parser.add_argument("table", nargs="?", default=None, help="Table name (omit for all)")
@@ -1245,15 +1323,19 @@ def main():
         result = cmd_show(args.table)
     elif args.command == "create":
         result = cmd_create(
-            display_name=args.display_name, fields_json=args.fields, unique=args.unique,
-            auto_increment=args.auto_increment, table_name=args.table_name,
+            display_name=args.display_name,
+            fields_json=args.fields,
+            unique=args.unique,
+            auto_increment=args.auto_increment,
+            table_name=args.table_name,
             description=args.description,
         )
     elif args.command == "insert":
         result = cmd_insert(args.table, args.data, batch=args.batch)
     elif args.command == "update-schema":
-        result = cmd_update_schema(args.table, add=args.add, remove=args.remove,
-                                   rename=args.rename, modify=args.modify)
+        result = cmd_update_schema(
+            args.table, add=args.add, remove=args.remove, rename=args.rename, modify=args.modify
+        )
     elif args.command == "delete":
         result = cmd_delete(args.table, keep_files=args.keep_files)
     elif args.command == "stats":

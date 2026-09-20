@@ -21,7 +21,7 @@ while _project_root_text in sys.path:
     sys.path.remove(_project_root_text)
 sys.path.insert(0, _project_root_text)
 
-from ocr.cli import main
+from ocr.cli import main  # noqa: E402 -- path order must avoid scripts/ocr.py
 
 if __name__ == "__main__":
     main()

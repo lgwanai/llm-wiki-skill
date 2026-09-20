@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Backward-compatible shim — see ocr/ package for the implementation."""
+
 import sys
 from pathlib import Path
 

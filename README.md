@@ -8,10 +8,12 @@
 **A Living Knowledge Base That Compounds.** Not RAG — don't re-derive, compile once. The Agent reads your sources, builds a typed knowledge graph, and maintains it forever. Cross-references, contradiction detection, confidence decay — all automatic.
 
 <p align="center">
-  <img src="docs/benchmark_chart.png" alt="RAGAS Benchmark: llm-wiki vs Industry" width="100%">
+  <img src="docs/benchmark_chart.png" alt="PageIndex benchmark: llm-wiki comparison" width="100%">
 </p>
 
-> **Faithfulness 1.00** · **Answer Relevance 1.00** · **Answer Correctness 0.91** · **Context Recall 0.94**. Wiki-native pipeline (compile → search → synthesize). The default path needs no embedding model; Zvec and cross-encoder reranking are optional high-recall layers. [Full benchmark →](docs/BENCHMARK.md)
+> **62/62 on the same 34-PDF, 1,945-page PageIndex OSS benchmark material**, up from
+> 38/62 before lossless evidence retrieval. The score is directional because the answer and judge
+> models differ from PageIndex's published matrix. [Methodology and comparison →](docs/BENCHMARK.md)
 
 ---
 
@@ -97,8 +99,13 @@ llm-wiki keeps a fast lexical/graph baseline with no embedding calls or remote v
 
 ### Retrieval completeness and accuracy
 
-Query uses field-weighted BM25F over Concept ID, title, tags, description, key facts,
-headings, and body. Metadata, BM25F, graph, ledger, and optional vector results are
+Compile preserves canonical pages and also materializes atomic claims from explicit claim metadata,
+Key Facts, normal table rows, key/value fields, and bound footnotes. Each claim retains modality,
+conditions, exceptions, audience, jurisdiction, effective interval, source location, and known
+source authority. Query parses these same dimensions into a structured retrieval plan.
+
+Query uses claim-level retrieval plus field-weighted BM25F over Concept ID, title, tags, description,
+key facts, headings, and body. Claims, metadata, BM25F, graph, ledger, and optional vector results are
 combined with intent-aware weighted reciprocal-rank fusion. Each stream over-fetches
 candidates before scope/status filtering, so filtering does not silently starve the
 final result count. Evidence-driven multi-hop retrieval decomposes compound questions into
@@ -107,6 +114,13 @@ stops when the required evidence is covered (three hops by default). Coverage-aw
 selection avoids returning several near-duplicate pages while omitting one side of a comparison.
 Long concepts remain intact in OKF storage; heading-bounded virtual sections receive their own
 BM25 signal so an exact fact near the end of a page can rescue its canonical parent page.
+
+Time-sensitive policy queries use effective-time semantics instead of a simple newest/status
+filter. Compiled rules may declare inclusive `effective_from`, exclusive `effective_until`, and
+`supersedes` / `superseded_by` links. For a current query, the rule active now ranks first while a
+future replacement is retained as an upcoming-change notice; an explicit date reconstructs the
+rule applicable at that time. Missing dates remain unknown, and publication time, `timestamp`,
+`generated.at`, or `stale_after` are never treated as legal/business effective dates.
 
 Agents must call `wiki query` or `scripts/query.py`; they must not create temporary
 Python/Shell/SQL search code or scan `.wiki/` manually. The official query command applies
@@ -136,7 +150,7 @@ Optional local semantic retrieval and reranking:
 query:
   max_results: 8
   parallel_search: true
-  search_streams: metadata,bm25,graph,ledger,vector
+  search_streams: raw,claim,metadata,bm25,graph,ledger,vector
   cross_language_expansion: true
   multi_hop_enabled: true
   multi_hop_max_hops: 3
@@ -244,21 +258,26 @@ Compile writes OKF `type`, `title`, `description`, optional `resource`, `tags`, 
 `timestamp` directly. Search and query derive identity from paths and read those fields
 without a compatibility mapping. Relationships use standard Markdown links. Import
 preserves hierarchy, bodies, reserved files, unknown types, broken links, and extension
-fields. Export validates and copies the bundle as-is.
+fields. Time-sensitive rules additionally use `effective_from`, `effective_until`,
+`supersedes`, and `superseded_by`. Export validates and copies the bundle as-is.
 
 ## Benchmark
 
-We evaluate the **complete product pipeline** (compile → search → synthesize), not only components. The published baseline is the pure wiki-native path; optional Zvec and reranker configurations should be measured separately. Industry baselines come from published RAGAS/RGB/GraphRAG papers.
+We evaluate the **complete product pipeline**—compile, retrieve, synthesize, and verify—on the
+same material as PageIndex OSS Benchmark.
 
-| System | Faithfulness | Answer Relevance | Context Recall | Answer Correctness |
-|--------|-------------|-----------------|----------------|-------------------|
-| Naive RAG (chunk+embed) | 0.72 | 0.78 | 0.68 | 0.65 |
-| RAG + Reranker | 0.83 | 0.85 | 0.76 | 0.78 |
-| RAGFlow (est.) | 0.86 | 0.84 | 0.79 | 0.80 |
-| GraphRAG (Microsoft) | 0.88 | 0.87 | 0.84 | 0.83 |
-| **llm-wiki ★** | **1.00** | **1.00** | **0.94** | **0.91** |
+| System/configuration | Correct | Accuracy |
+|---|---:|---:|
+| PageIndex · gpt-5.6-luna/high | 60/62 | 96.8% |
+| PageIndex · gpt-5.6-terra/medium | 61/62 | 98.4% |
+| PageIndex · gpt-5.6-terra/high | **62/62** | **100.0%** |
+| PageIndex · gpt-5.6-sol/medium | **62/62** | **100.0%** |
+| **llm-wiki · directional run** | **62/62** | **100.0%** |
 
-> **All scores are LLM-as-judge (RAGAS framework)** over 19 test cases across tech, business, and Chinese domains. Industry baselines from published papers — not identical test sets. llm-wiki: compile_v2 → BM25+metadata+graph → entity link → 3-signal rank → synthesize. **4 of 5 metrics surpass GraphRAG.**
+llm-wiki improved from 61.3% to 100% through lossless page evidence, temporal applicability,
+multi-stream retrieval, adjacent-page context, and deterministic exact-value extraction. Because
+the model and judge configurations differ, this demonstrates the same measured ceiling rather than
+a strict model-for-model win.
 
 → [Full benchmark report with per-case breakdown](docs/BENCHMARK.md)
 
@@ -327,8 +346,8 @@ The standalone configuration is `~/.config/ocr/config.yaml` (override with
 `ocr config set MODEL.options.KEY VALUE` to configure each model independently.
 The same interface is available as `python -m ocr`, `python -m ocr.cli`, `wiki ocr`, and
 `llm-wiki-ocr`.
-The default model is `/Users/wuliang/.paddlex/official_models/PaddleOCR-VL-1.6`;
-the isolated runtime is `/Users/wuliang/workspace/PaddleOCR-VL-1.6-MLX/.venv`.
+The default model is `<user-home>/.paddlex/official_models/PaddleOCR-VL-1.6`;
+the isolated runtime is `<workspace>/PaddleOCR-VL-1.6-MLX/.venv`.
 Legacy backend models remain supported under this repository's `models/` directory.
 
 EPUB files enter the compile pipeline directly: `wiki compile textbook.epub`. Chapters
@@ -336,6 +355,14 @@ are converted to Markdown in OPF spine order and saved under
 `.wiki/source/epub_markdown/`; cover and in-chapter images are extracted, their Markdown
 references are rewritten to persistent local assets, and chapter/section locators are
 retained for source tracing when fixed page numbers do not exist.
+
+Legacy Word `.doc` files are supported directly: `wiki compile handbook.doc`. llm-wiki
+first uses LibreOffice for page-faithful PDF rendering. If rendering is unavailable, it
+converts a read-only copy to `.docx` with LibreOffice or macOS `textutil`, caches the
+result by source hash under `.wiki/source/converted_documents/`, and sends the DOCX—not
+the unsupported binary DOC—to MarkItDown. When rendering succeeds, every page image is
+retained for visual verification while native DOCX structure is used instead of OCR.
+Re-ingesting the same file reuses the cache.
 
 ## Configuration
 
@@ -352,7 +379,7 @@ llm:
 query:
   max_results: 8
   parallel_search: true
-  search_streams: metadata,bm25,graph,ledger
+  search_streams: raw,claim,metadata,bm25,graph,ledger
   multi_hop_enabled: true
   multi_hop_max_hops: 3
   verify_answers: true
@@ -399,7 +426,7 @@ with `ocr use` and `ocr config` so the same default is used inside and outside a
 | Document | Content |
 |----------|---------|
 | [Architecture & Lifecycle](docs/ARCHITECTURE.md) | 3-layer design, 10-stage knowledge lifecycle |
-| [Benchmark Details](docs/BENCHMARK.md) | RAGAS evaluation, industry comparison, per-case results |
+| [Benchmark Details](docs/BENCHMARK.md) | PageIndex same-material comparison, architecture, results |
 | [CLI Reference](docs/CLI.md) | Complete command reference |
 | [Improvement Plan](docs/IMPROVEMENT_PLAN.md) | Future roadmap and enhancement proposals |
 

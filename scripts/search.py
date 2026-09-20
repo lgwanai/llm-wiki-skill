@@ -52,9 +52,9 @@ def _load_jieba_entities():
             if not isinstance(data, dict):
                 continue
             name = data.get("name", "")
-            if name and any('一' <= c <= '鿿' for c in name):
+            if name and any("一" <= c <= "鿿" for c in name):
                 jieba.add_word(name, freq=100)
-                if any('一' <= c <= '鿿' for c in eid):
+                if any("一" <= c <= "鿿" for c in eid):
                     jieba.add_word(eid, freq=80)
     except Exception:
         pass  # Best-effort
@@ -67,8 +67,10 @@ _edges_cache: dict | list | None = None
 _bm25_index: dict | None = None
 _BM25_CACHE_FILE = WIKI_DIR / "graph" / ".bm25_index.json"
 _METADATA_CACHE_FILE = WIKI_DIR / "graph" / ".metadata_index.json"
+_CLAIM_CACHE_FILE = WIKI_DIR / "graph" / ".claim_index.json"
 _BM25_CACHE_VERSION = 4
-_METADATA_CACHE_VERSION = 4
+_METADATA_CACHE_VERSION = 5
+_CLAIM_CACHE_VERSION = 1
 
 
 def _pages_signature(pages_dir: str | Path = PAGES_DIR) -> tuple[str, int, int, int]:
@@ -195,25 +197,25 @@ def _load_edges() -> list:
     if _edges_cache is not None and not _pages_changed():
         return _edges_cache
     data = _load_json(EDGES_FILE)
-    _edges_cache = data.get('edges', []) if isinstance(data, dict) else []
+    _edges_cache = data.get("edges", []) if isinstance(data, dict) else []
     return _edges_cache
 
 
 def _load_json(path: str) -> dict | list:
     if not os.path.exists(path):
-        return {} if 'entities' in path else {'edges': []}
+        return {} if "entities" in path else {"edges": []}
     try:
-        with open(path, encoding='utf-8') as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
     except (json.JSONDecodeError, OSError):
-        return {} if 'entities' in path else {'edges': []}
+        return {} if "entities" in path else {"edges": []}
 
 
 def _load_json_safe(path: str, default: dict | list) -> dict | list:
     if not os.path.exists(path):
         return default
     try:
-        with open(path, encoding='utf-8') as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
     except (json.JSONDecodeError, OSError):
         return default
@@ -222,11 +224,11 @@ def _load_json_safe(path: str, default: dict | list) -> dict | list:
 def _read_page_content(filepath: str) -> str:
     """Read a markdown page, stripping YAML frontmatter."""
     try:
-        with open(filepath, encoding='utf-8') as f:
+        with open(filepath, encoding="utf-8") as f:
             content = f.read()
     except OSError:
-        return ''
-    content = re.sub(r'^---\s*\n.*?\n---\s*\n', '', content, flags=re.DOTALL)
+        return ""
+    content = re.sub(r"^---\s*\n.*?\n---\s*\n", "", content, flags=re.DOTALL)
     return content
 
 
@@ -253,7 +255,7 @@ def _read_page_parts(filepath: str) -> tuple[dict, str]:
             frontmatter = {}
     except Exception:
         frontmatter = {}
-    return frontmatter, "\n".join(lines[end + 1:])
+    return frontmatter, "\n".join(lines[end + 1 :])
 
 
 def _markdown_sections(body: str) -> list[tuple[str, str]]:
@@ -288,28 +290,28 @@ def _known_page_paths(pages_dir: str | Path = PAGES_DIR) -> list[Path]:
 def _tokenize(text: str) -> list[str]:
     """Split text into tokens: jieba for Chinese, regex for English."""
     tokens: list[str] = []
-    cjk_chars = sum(1 for c in text if '一' <= c <= '鿿')
+    cjk_chars = sum(1 for c in text if "一" <= c <= "鿿")
     if cjk_chars > 0 and jieba is not None:
         tokens.extend(w for w in jieba.cut(text) if len(w.strip()) > 1)
     else:
-        tokens.extend(re.findall(r'[a-z0-9]+', text.lower()))
+        tokens.extend(re.findall(r"[a-z0-9]+", text.lower()))
     # Extract English tokens if CJK content is mixed with English
     if cjk_chars > 0 and len(text) > cjk_chars * 1.5:
-        tokens.extend(re.findall(r'[a-z0-9]+', text.lower()))
+        tokens.extend(re.findall(r"[a-z0-9]+", text.lower()))
     return tokens
 
 
 def _stem(word: str) -> str:
     """Simple suffix-stripping stemmer. English only — CJK passed through."""
-    if any('一' <= c <= '鿿' for c in word):
+    if any("一" <= c <= "鿿" for c in word):
         return word
-    if word.endswith('ing') and len(word) > 5:
+    if word.endswith("ing") and len(word) > 5:
         word = word[:-3]
-    elif word.endswith('ed') and len(word) > 4:
+    elif word.endswith("ed") and len(word) > 4:
         word = word[:-2]
-    elif word.endswith('s') and not word.endswith('ss') and len(word) > 3:
+    elif word.endswith("s") and not word.endswith("ss") and len(word) > 3:
         word = word[:-1]
-    elif word.endswith('ion') and len(word) > 5:
+    elif word.endswith("ion") and len(word) > 5:
         word = word[:-3]
     return word
 
@@ -317,6 +319,7 @@ def _stem(word: str) -> str:
 # ═══════════════════════════════════════════════════════════════════════════
 # Stream 1: BM25 keyword search over full wiki pages
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def bm25_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
     """Field-weighted BM25F search over native OKF concepts."""
@@ -430,8 +433,10 @@ def bm25_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
                     continue
                 df = doc_freq.get(term, 0)
                 idf = math.log((num_docs - df + 0.5) / (df + 0.5) + 1.0)
-                section_score += idf * (frequency * (k1 + 1)) / (
-                    frequency + k1 * (0.35 + 0.65 * section_length / 100.0)
+                section_score += (
+                    idf
+                    * (frequency * (k1 + 1))
+                    / (frequency + k1 * (0.35 + 0.65 * section_length / 100.0))
                 )
             if section_score > best_section_score:
                 best_section_score = section_score
@@ -447,20 +452,23 @@ def bm25_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
     for path, score, best_section, section_score in scores[:limit]:
         from okf import concept_id
 
-        results.append({
-            'file': concept_id(path, pages_dir),
-            'path': path,
-            'score': round(score, 3),
-            'stream': 'bm25',
-            'matched_section': best_section,
-            'section_score': round(section_score, 3),
-        })
+        results.append(
+            {
+                "file": concept_id(path, pages_dir),
+                "path": path,
+                "score": round(score, 3),
+                "stream": "bm25",
+                "matched_section": best_section,
+                "section_score": round(section_score, 3),
+            }
+        )
     return results
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Stream 2: Metadata search (frontmatter aliases, keywords, questions, summary)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def _as_list(value) -> list[str]:
     if value is None:
@@ -527,42 +535,52 @@ def build_metadata_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
             "summary": fm.get("description", ""),
             "aliases": _as_list(fm.get("aliases")),
             "keywords": list(
-                dict.fromkeys(
-                    _as_list(fm.get("tags")) + _as_list(fm.get("keywords"))
-                )
+                dict.fromkeys(_as_list(fm.get("tags")) + _as_list(fm.get("keywords")))
             ),
             "questions": _as_list(fm.get("questions")),
             "facts": fm.get("facts", {}),
             # Date fields for date-based retrieval (compile creation / source publication).
             "created_at": _normalize_date(fm.get("timestamp")),
             "published_at": _normalize_date(fm.get("timestamp")),
+            "effective_from": _normalize_date(
+                fm.get("effective_from") or fm.get("valid_from") or fm.get("effective_at")
+            ),
+            "effective_until": _normalize_date(fm.get("effective_until") or fm.get("valid_until")),
+            "supersedes": _as_list(fm.get("supersedes")),
+            "superseded_by": _as_list(fm.get("superseded_by")),
         }
         # Build searchable text including facts
         facts_text = ""
         facts_dict = fields["facts"]
         if isinstance(facts_dict, dict):
-            facts_text = " ".join(
-                f"{k} {v}" for k, v in facts_dict.items()
-            )
-        searchable = " ".join([
-            str(fields["id"]),
-            str(fields["name"]),
-            str(fields["type"]),
-            str(fields["summary"]),
-            " ".join(fields["aliases"]),
-            " ".join(fields["keywords"]),
-            " ".join(fields["questions"]),
-            facts_text,
-            title,
-        ])
-        items.append({
-            "page_id": fields["id"],
-            "path": str(path),
-            "title": title,
-            "searchable": searchable,
-            "tokens": [_stem(t) for t in _tokenize(searchable)],
-            **fields,
-        })
+            facts_text = " ".join(f"{k} {v}" for k, v in facts_dict.items())
+        searchable = " ".join(
+            [
+                str(fields["id"]),
+                str(fields["name"]),
+                str(fields["type"]),
+                str(fields["summary"]),
+                " ".join(fields["aliases"]),
+                " ".join(fields["keywords"]),
+                " ".join(fields["questions"]),
+                facts_text,
+                title,
+                str(fields["effective_from"]),
+                str(fields["effective_until"]),
+                " ".join(fields["supersedes"]),
+                " ".join(fields["superseded_by"]),
+            ]
+        )
+        items.append(
+            {
+                "page_id": fields["id"],
+                "path": str(path),
+                "title": title,
+                "searchable": searchable,
+                "tokens": [_stem(t) for t in _tokenize(searchable)],
+                **fields,
+            }
+        )
     return items
 
 
@@ -643,20 +661,212 @@ def metadata_search(query: str, pages_dir: str, limit: int = 10) -> list[dict]:
             "text": item.get("summary") or item.get("searchable", "")[:800],
             "aliases": item.get("aliases", []),
             "keywords": item.get("keywords", []),
+            "type": item.get("type", "concept"),
+            "name": item.get("name", item.get("title", item["page_id"])),
         }
         for item, score in scored[:limit]
     ]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Stream 3: Entity-aware graph search
+# Stream 3: Atomic claim search
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def build_claim_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
+    """Build retrieval units from explicit and deterministically derived claims."""
+    from knowledge_claims import claim_text, extract_claims, source_authority
+    from okf import concept_id
+
+    items: list[dict] = []
+    for path in _known_page_paths(pages_dir):
+        metadata, body = _read_page_parts(str(path))
+        page_id = concept_id(path, pages_dir)
+        authority = source_authority(metadata)
+        for claim in extract_claims(metadata, body, page_id):
+            text = claim_text(claim)
+            tokens = [_stem(token) for token in _tokenize(text)]
+            if not tokens:
+                continue
+            items.append(
+                {
+                    "page_id": page_id,
+                    "path": str(path),
+                    "page_type": str(metadata.get("type", "concept")),
+                    "page_title": str(metadata.get("title", path.stem)),
+                    "claim": claim,
+                    "text": text,
+                    "tokens": tokens,
+                    "authority": authority,
+                }
+            )
+    return items
+
+
+def _load_claim_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
+    root = str(Path(pages_dir).resolve())
+    signature = list(_pages_signature(pages_dir))
+    if not _pages_changed(pages_dir) and _CLAIM_CACHE_FILE.exists():
+        try:
+            data = json.loads(_CLAIM_CACHE_FILE.read_text(encoding="utf-8"))
+            if (
+                data.get("version") == _CLAIM_CACHE_VERSION
+                and data.get("root") == root
+                and data.get("signature") == signature
+                and isinstance(data.get("items"), list)
+            ):
+                return data["items"]
+        except (json.JSONDecodeError, OSError):
+            pass
+    items = build_claim_index(pages_dir)
+    try:
+        _CLAIM_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _CLAIM_CACHE_FILE.write_text(
+            json.dumps(
+                {
+                    "version": _CLAIM_CACHE_VERSION,
+                    "root": root,
+                    "signature": signature,
+                    "items": items,
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+    return items
+
+
+def _qualifier_match_score(claim: dict, plan: dict) -> float:
+    """Reward matching scope while retaining conflicting or unknown evidence."""
+    multiplier = 1.0
+    for plan_key, claim_key in (("jurisdictions", "jurisdiction"), ("audiences", "audience")):
+        requested = {str(value).casefold() for value in plan.get(plan_key, [])}
+        available_raw = claim.get(claim_key, [])
+        if not isinstance(available_raw, list):
+            available_raw = [available_raw]
+        available = {str(value).casefold() for value in available_raw if str(value).strip()}
+        if not requested:
+            continue
+        if requested & available or any(
+            requested_value in available_value or available_value in requested_value
+            for requested_value in requested
+            for available_value in available
+        ):
+            multiplier *= 1.45
+        elif available:
+            multiplier *= 0.45
+        else:
+            multiplier *= 0.85
+    return multiplier
+
+
+def claim_search(
+    query: str,
+    pages_dir: str,
+    limit: int = 10,
+    plan: dict | None = None,
+) -> list[dict]:
+    """Search atomic claims, then group matches back to canonical OKF pages."""
+    items = _load_claim_index(pages_dir)
+    query_terms = [_stem(token) for token in _tokenize(query)]
+    if not items or not query_terms:
+        return []
+    plan = plan or {}
+    total = len(items)
+    frequencies: Counter = Counter()
+    for item in items:
+        frequencies.update(set(item["tokens"]))
+
+    page_hits: dict[str, list[tuple[float, dict]]] = {}
+    query_lower = query.casefold()
+    for item in items:
+        claim = item["claim"]
+        field_weights = {
+            "subject": 2.4,
+            "predicate": 3.0,
+            "value": 1.7,
+            "conditions": 2.0,
+            "exceptions": 2.2,
+            "audience": 2.2,
+            "jurisdiction": 2.2,
+            "footnotes": 1.2,
+        }
+        score = 0.0
+        for term in query_terms:
+            df = frequencies.get(term, 0)
+            idf = math.log((total - df + 0.5) / (df + 0.5) + 1.0)
+            for field, weight in field_weights.items():
+                raw = claim.get(field, "")
+                field_text = (
+                    " ".join(str(value) for value in raw) if isinstance(raw, list) else str(raw)
+                )
+                count = [_stem(token) for token in _tokenize(field_text)].count(term)
+                score += idf * weight * min(count, 3)
+        if query_lower and query_lower in item["text"].casefold():
+            score += 5.0
+        if score <= 0:
+            continue
+        score *= _qualifier_match_score(claim, plan)
+        score *= 0.8 + 0.4 * float(item.get("authority", 0.6))
+        page_hits.setdefault(item["page_id"], []).append((score, item))
+
+    results: list[dict] = []
+    for page_id, hits in page_hits.items():
+        hits.sort(key=lambda pair: pair[0], reverse=True)
+        best_score, best = hits[0]
+        aggregate = best_score + sum(score * 0.2 for score, _ in hits[1:3])
+        results.append(
+            {
+                "file": page_id,
+                "path": best["path"],
+                "score": round(aggregate, 4),
+                "stream": "claim",
+                "text": best["text"],
+                "matched_claim": best["claim"],
+                "claim_hits": [item["claim"] for _, item in hits[:3]],
+                "source_authority": best.get("authority", 0.6),
+                "type": best.get("page_type", "concept"),
+                "name": best.get("page_title", page_id),
+            }
+        )
+    results.sort(key=lambda item: -float(item["score"]))
+    return results[:limit]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stream 4: Entity-aware graph search
 # ═══════════════════════════════════════════════════════════════════════════
 
 _RELATION_QUERY_TERMS = {
-    "影响", "依赖", "关系", "路径", "关联", "对比", "比较", "区别",
-    "考查", "先修", "前置", "例题", "易混", "推导", "同类题",
-    "impact", "depends", "dependency", "relationship", "related",
-    "compare", "difference", "versus", "vs", "tests", "prerequisite", "example",
+    "影响",
+    "依赖",
+    "关系",
+    "路径",
+    "关联",
+    "对比",
+    "比较",
+    "区别",
+    "考查",
+    "先修",
+    "前置",
+    "例题",
+    "易混",
+    "推导",
+    "同类题",
+    "impact",
+    "depends",
+    "dependency",
+    "relationship",
+    "related",
+    "compare",
+    "difference",
+    "versus",
+    "vs",
+    "tests",
+    "prerequisite",
+    "example",
 }
 
 _RELATION_TYPE_HINTS = {
@@ -789,17 +999,19 @@ def graph_search(query: str, graph_dir: str, limit: int = 10) -> list[dict]:
         entity = entities_data.get(eid, {})
         connected: list = []
         for edge in all_edges:
-            if edge.get('source') == eid or edge.get('target') == eid:
-                other = edge['target'] if edge['source'] == eid else edge['source']
+            if edge.get("source") == eid or edge.get("target") == eid:
+                other = edge["target"] if edge["source"] == eid else edge["source"]
                 if other in entities_data:
-                    relation = edge.get('type', 'related_to')
+                    relation = edge.get("type", "related_to")
                     relation_relevant = not requested_types or relation in requested_types
-                    connected.append({
-                        'entity': other,
-                        'name': entities_data[other].get('name', other),
-                        'relation': relation,
-                        'relation_relevant': relation_relevant,
-                    })
+                    connected.append(
+                        {
+                            "entity": other,
+                            "name": entities_data[other].get("name", other),
+                            "relation": relation,
+                            "relation_relevant": relation_relevant,
+                        }
+                    )
                     if relation_query and other not in visited:
                         neighbor_score = match_score * (0.78 if relation_relevant else 0.42)
                         previous = neighbor_scores.get(other)
@@ -812,15 +1024,17 @@ def graph_search(query: str, graph_dir: str, limit: int = 10) -> list[dict]:
                             )
         connected.sort(key=lambda item: not item.get("relation_relevant", False))
         path = _entity_page_path(eid, entity, pages_dir)
-        results.append({
-            'entity_id': eid,
-            'name': entity.get('name', eid),
-            'type': entity.get('type', 'unknown'),
-            'confidence': match_score,
-            'connected': connected[:5],
-            'path': path,
-            'stream': 'graph',
-        })
+        results.append(
+            {
+                "entity_id": eid,
+                "name": entity.get("name", eid),
+                "type": entity.get("type", "unknown"),
+                "confidence": match_score,
+                "connected": connected[:5],
+                "path": path,
+                "stream": "graph",
+            }
+        )
 
     # Expand one additional typed hop. This supports paths such as
     # question --tests--> concept --depends_on--> prerequisite without
@@ -835,9 +1049,7 @@ def graph_search(query: str, graph_dir: str, limit: int = 10) -> list[dict]:
                 if relation not in requested_types:
                     continue
                 other = (
-                    edge.get("target")
-                    if edge.get("source") == middle_id
-                    else edge.get("source")
+                    edge.get("target") if edge.get("source") == middle_id else edge.get("source")
                 )
                 if other not in entities_data or other in graph_path_ids:
                     continue
@@ -866,21 +1078,25 @@ def graph_search(query: str, graph_dir: str, limit: int = 10) -> list[dict]:
                 continue
             visited.add(eid)
             path = _entity_page_path(eid, entity, pages_dir)
-            results.append({
-                'entity_id': eid,
-                'name': entity.get('name', eid),
-                'type': entity.get('type', 'unknown'),
-                'confidence': round(match_score, 4),
-                'connected': [{
-                    'entity': source_id,
-                    'name': entities_data.get(source_id, {}).get('name', source_id),
-                    'relation': relation,
-                }],
-                'path': path,
-                'stream': 'graph',
-                'graph_anchor': source_id,
-                'graph_path': graph_path_ids,
-            })
+            results.append(
+                {
+                    "entity_id": eid,
+                    "name": entity.get("name", eid),
+                    "type": entity.get("type", "unknown"),
+                    "confidence": round(match_score, 4),
+                    "connected": [
+                        {
+                            "entity": source_id,
+                            "name": entities_data.get(source_id, {}).get("name", source_id),
+                            "relation": relation,
+                        }
+                    ],
+                    "path": path,
+                    "stream": "graph",
+                    "graph_anchor": source_id,
+                    "graph_path": graph_path_ids,
+                }
+            )
 
     return results[:limit]
 
@@ -888,6 +1104,7 @@ def graph_search(query: str, graph_dir: str, limit: int = 10) -> list[dict]:
 # ═══════════════════════════════════════════════════════════════════════════
 # Reciprocal Rank Fusion
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def reciprocal_rank_fusion(
     results: list[list[dict]], k: int = 60, weights: dict[str, float] | None = None
@@ -898,16 +1115,16 @@ def reciprocal_rank_fusion(
 
     for result_list in results:
         for rank, item in enumerate(result_list, start=1):
-            key = item.get('file') or item.get('entity_id', str(rank))
-            stream = item.get('stream', 'unknown')
+            key = item.get("file") or item.get("entity_id", str(rank))
+            stream = item.get("stream", "unknown")
             if key not in fused:
                 fused[key] = dict(item)
-                fused[key]['rrf_score'] = 0.0
-                fused[key]['streams'] = {stream}
-                fused[key]['stream_ranks'] = {}
-                fused[key]['stream_scores'] = {}
+                fused[key]["rrf_score"] = 0.0
+                fused[key]["streams"] = {stream}
+                fused[key]["stream_ranks"] = {}
+                fused[key]["stream_scores"] = {}
             else:
-                fused[key]['streams'].add(stream)
+                fused[key]["streams"].add(stream)
                 if float(item.get("section_score", 0) or 0) > float(
                     fused[key].get("section_score", 0) or 0
                 ):
@@ -917,20 +1134,27 @@ def reciprocal_rank_fusion(
                     fused[key]["graph_path"] = item["graph_path"]
                 if item.get("connected") and not fused[key].get("connected"):
                     fused[key]["connected"] = item["connected"]
-            fused[key]['rrf_score'] += weights.get(stream, 1.0) / (k + rank)
-            ranks = fused[key].setdefault('stream_ranks', {})
-            scores = fused[key].setdefault('stream_scores', {})
+                if item.get("matched_claim") and not fused[key].get("matched_claim"):
+                    fused[key]["matched_claim"] = item["matched_claim"]
+                    fused[key]["claim_hits"] = item.get("claim_hits", [])
+                fused[key]["source_authority"] = max(
+                    float(fused[key].get("source_authority", 0) or 0),
+                    float(item.get("source_authority", 0) or 0),
+                )
+            fused[key]["rrf_score"] += weights.get(stream, 1.0) / (k + rank)
+            ranks = fused[key].setdefault("stream_ranks", {})
+            scores = fused[key].setdefault("stream_scores", {})
             ranks[stream] = min(rank, int(ranks.get(stream, rank)))
             try:
-                score = float(item.get('score', 0))
+                score = float(item.get("score", 0))
             except (TypeError, ValueError):
                 score = 0.0
             scores[stream] = max(score, float(scores.get(stream, 0.0)))
 
-    sorted_results = sorted(fused.values(), key=lambda x: -x['rrf_score'])
+    sorted_results = sorted(fused.values(), key=lambda x: -x["rrf_score"])
     for item in sorted_results:
-        item['streams'] = sorted(item['streams'])
-        item['rrf_score'] = round(item['rrf_score'], 4)
+        item["streams"] = sorted(item["streams"])
+        item["rrf_score"] = round(item["rrf_score"], 4)
 
     return sorted_results
 
@@ -938,6 +1162,7 @@ def reciprocal_rank_fusion(
 # ═══════════════════════════════════════════════════════════════════════════
 # Ledger table search
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def table_search(query: str, wiki_dir: str, limit: int = 10) -> list[dict]:
     """BM25 search over text columns in all ledger tables."""
@@ -968,7 +1193,8 @@ def table_search(query: str, wiki_dir: str, limit: int = 10) -> list[dict]:
     for actual_name, display_name, fields_json_str in rows:
         fields = json.loads(fields_json_str)
         search_cols = [
-            f["name"] for f in fields
+            f["name"]
+            for f in fields
             if f.get("type") in ("string", "text") and not f.get("auto_increment")
         ]
         if not search_cols:
@@ -985,9 +1211,7 @@ def table_search(query: str, wiki_dir: str, limit: int = 10) -> list[dict]:
             row_id = row_dict.get("_id", "")
 
             text_parts = [
-                str(row_dict.get(c, ""))
-                for c in search_cols
-                if row_dict.get(c) is not None
+                str(row_dict.get(c, "")) for c in search_cols if row_dict.get(c) is not None
             ]
             search_text = " ".join(text_parts)
             if not search_text.strip():
@@ -1009,17 +1233,20 @@ def table_search(query: str, wiki_dir: str, limit: int = 10) -> list[dict]:
                 score += idf * (f * (k1 + 1)) / (f + k1 * (1 - b + b * dl / 50.0))
 
             if score > 0:
-                results.append({
-                    "file": f"table::{actual_name}::{row_id}",
-                    "path": "",
-                    "score": round(score, 3),
-                    "stream": "table",
-                    "table_name": actual_name,
-                    "display_name": display_name,
-                    "row_id": row_id,
-                    "row_data": {k: v for k, v in row_dict.items()
-                                 if not k.startswith("_search")},
-                })
+                results.append(
+                    {
+                        "file": f"table::{actual_name}::{row_id}",
+                        "path": "",
+                        "score": round(score, 3),
+                        "stream": "table",
+                        "table_name": actual_name,
+                        "display_name": display_name,
+                        "row_id": row_id,
+                        "row_data": {
+                            k: v for k, v in row_dict.items() if not k.startswith("_search")
+                        },
+                    }
+                )
 
     # ── Table-level results: match table name/description/fields ──
     # A "预算表" may have no cell containing "预算", but the table IS about budgets.
@@ -1034,11 +1261,13 @@ def table_search(query: str, wiki_dir: str, limit: int = 10) -> list[dict]:
         field_names = [f["name"] for f in fields]
 
         # Score table metadata against query
-        table_searchable = " ".join([
-            str(display_name),
-            str(description or ""),
-            " ".join(field_names),
-        ])
+        table_searchable = " ".join(
+            [
+                str(display_name),
+                str(description or ""),
+                " ".join(field_names),
+            ]
+        )
         table_tokens = [_stem(t) for t in _tokenize(table_searchable)]
         if not table_tokens:
             continue
@@ -1053,9 +1282,7 @@ def table_search(query: str, wiki_dir: str, limit: int = 10) -> list[dict]:
         if table_score > 0:
             # Get sample rows for context
             try:
-                sample_rows = conn.execute(
-                    f'SELECT * FROM "{actual_name}" LIMIT 5'
-                ).fetchall()
+                sample_rows = conn.execute(f'SELECT * FROM "{actual_name}" LIMIT 5').fetchall()
                 sample_cols = [desc[0] for desc in conn.description]
                 sample_data = [
                     {c: v for c, v in zip(sample_cols, row) if not str(c).startswith("_")}
@@ -1064,18 +1291,20 @@ def table_search(query: str, wiki_dir: str, limit: int = 10) -> list[dict]:
             except duckdb.Error:
                 sample_data = []
 
-            table_results.append({
-                "file": f"table::{actual_name}",
-                "path": "",
-                "score": round(table_score, 3),
-                "stream": "table",
-                "table_name": actual_name,
-                "display_name": display_name,
-                "row_id": "",
-                "is_table_level": True,
-                "table_schema": {f["name"]: f["type"] for f in fields},
-                "sample_rows": sample_data,
-            })
+            table_results.append(
+                {
+                    "file": f"table::{actual_name}",
+                    "path": "",
+                    "score": round(table_score, 3),
+                    "stream": "table",
+                    "table_name": actual_name,
+                    "display_name": display_name,
+                    "row_id": "",
+                    "is_table_level": True,
+                    "table_schema": {f["name"]: f["type"] for f in fields},
+                    "sample_rows": sample_data,
+                }
+            )
 
     conn.close()
 
@@ -1101,6 +1330,7 @@ def table_search(query: str, wiki_dir: str, limit: int = 10) -> list[dict]:
 # Diagnostics
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def search_doctor(wiki_dir: str | Path = WIKI_DIR) -> dict:
     """Return retrieval index health diagnostics."""
     wiki = Path(wiki_dir)
@@ -1109,6 +1339,7 @@ def search_doctor(wiki_dir: str | Path = WIKI_DIR) -> dict:
     pages = iter_concepts(wiki / "pages")
 
     metadata_items = build_metadata_index(wiki / "pages")
+    claim_items = build_claim_index(wiki / "pages")
     entities = _load_json_safe(str(wiki / "graph" / "entities.json"), {})
     edges_data = _load_json_safe(str(wiki / "graph" / "edges.json"), {"edges": []})
     edges = edges_data.get("edges", []) if isinstance(edges_data, dict) else []
@@ -1128,6 +1359,7 @@ def search_doctor(wiki_dir: str | Path = WIKI_DIR) -> dict:
     return {
         "pages": len(pages),
         "metadata_items": len(metadata_items),
+        "claim_items": len(claim_items),
         "entities": len(graph_ids),
         "edges": len(edges),
         "orphan_graph_entities": orphan_graph_ids[:20],
@@ -1156,11 +1388,14 @@ def eval_retrieval(eval_file: str | Path, limit: int = 5) -> dict:
     for case in cases:
         query = case.get("query", "")
         expected = set(case.get("expected_pages", []))
-        results = reciprocal_rank_fusion([
-            metadata_search(query, str(PAGES_DIR), limit=limit * 2),
-            bm25_search(query, str(PAGES_DIR), limit=limit * 2),
-            graph_search(query, str(GRAPH_DIR), limit=limit),
-        ])[:limit]
+        results = reciprocal_rank_fusion(
+            [
+                claim_search(query, str(PAGES_DIR), limit=limit * 2),
+                metadata_search(query, str(PAGES_DIR), limit=limit * 2),
+                bm25_search(query, str(PAGES_DIR), limit=limit * 2),
+                graph_search(query, str(GRAPH_DIR), limit=limit),
+            ]
+        )[:limit]
         returned = [r.get("file") or r.get("entity_id", "") for r in results]
         first_rank = None
         for rank, rid in enumerate(returned, 1):
@@ -1171,13 +1406,15 @@ def eval_retrieval(eval_file: str | Path, limit: int = 5) -> dict:
         if hit:
             hits += 1
             reciprocal_ranks.append(1.0 / first_rank if first_rank else 0.0)
-        evaluated.append({
-            "query": query,
-            "expected": sorted(expected),
-            "returned": returned,
-            "hit": hit,
-            "rank": first_rank,
-        })
+        evaluated.append(
+            {
+                "query": query,
+                "expected": sorted(expected),
+                "returned": returned,
+                "hit": hit,
+                "rank": first_rank,
+            }
+        )
 
     total = len(cases)
     return {
@@ -1193,16 +1430,20 @@ def eval_retrieval(eval_file: str | Path, limit: int = 5) -> dict:
 # CLI
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _main() -> None:
-    parser = argparse.ArgumentParser(description='llm-wiki Hybrid Search')
-    parser.add_argument('query', nargs='?', help='Search query')
-    parser.add_argument('--streams', default='metadata,bm25,graph,ledger',
-                        help='Comma-separated streams: metadata,bm25,graph,table')
-    parser.add_argument('--limit', type=int, default=10, help='Max results per stream')
-    parser.add_argument('--impact', help='Impact analysis (entity ID)')
-    parser.add_argument('--related', help='Find entities related to this entity ID')
-    parser.add_argument('--doctor', action='store_true', help='Diagnose retrieval index health')
-    parser.add_argument('--eval', dest='eval_file', help='Evaluate retrieval with a jsonl file')
+    parser = argparse.ArgumentParser(description="llm-wiki Hybrid Search")
+    parser.add_argument("query", nargs="?", help="Search query")
+    parser.add_argument(
+        "--streams",
+        default="claim,metadata,bm25,graph,ledger",
+        help="Comma-separated streams: claim,metadata,bm25,graph,table",
+    )
+    parser.add_argument("--limit", type=int, default=10, help="Max results per stream")
+    parser.add_argument("--impact", help="Impact analysis (entity ID)")
+    parser.add_argument("--related", help="Find entities related to this entity ID")
+    parser.add_argument("--doctor", action="store_true", help="Diagnose retrieval index health")
+    parser.add_argument("--eval", dest="eval_file", help="Evaluate retrieval with a jsonl file")
     args = parser.parse_args()
 
     if args.doctor:
@@ -1210,20 +1451,26 @@ def _main() -> None:
         return
 
     if args.eval_file:
-        print(json.dumps(
-            eval_retrieval(args.eval_file, limit=args.limit),
-            indent=2, ensure_ascii=False, default=str,
-        ))
+        print(
+            json.dumps(
+                eval_retrieval(args.eval_file, limit=args.limit),
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            )
+        )
         return
 
     if args.impact:
         from graph import impact_analysis
+
         result = impact_analysis(args.impact)
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return
 
     if args.related:
         from graph import traverse
+
         result = traverse(args.related, depth=1)
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return
@@ -1232,26 +1479,37 @@ def _main() -> None:
         parser.print_help()
         sys.exit(1)
 
-    streams = [s.strip() for s in args.streams.split(',')]
+    streams = [s.strip() for s in args.streams.split(",")]
     all_results: list[list[dict]] = []
 
-    if 'bm25' in streams:
+    if "claim" in streams:
+        all_results.append(claim_search(args.query, str(PAGES_DIR), args.limit))
+    if "bm25" in streams:
         all_results.append(bm25_search(args.query, PAGES_DIR, args.limit))
-    if 'metadata' in streams:
+    if "metadata" in streams:
         all_results.append(metadata_search(args.query, PAGES_DIR, args.limit))
-    if 'graph' in streams:
+    if "graph" in streams:
         all_results.append(graph_search(args.query, GRAPH_DIR, args.limit))
-    if 'table' in streams:
+    if "table" in streams:
         all_results.append(table_search(args.query, str(WIKI_DIR), args.limit))
 
     if len(all_results) >= 2:
         fused = reciprocal_rank_fusion(all_results)
-        output = {'query': args.query, 'streams': streams, 'method': 'rrf',
-                  'total_results': len(fused), 'results': fused}
+        output = {
+            "query": args.query,
+            "streams": streams,
+            "method": "rrf",
+            "total_results": len(fused),
+            "results": fused,
+        }
     else:
-        output = {'query': args.query, 'streams': streams, 'method': 'single',
-                  'total_results': len(all_results[0]) if all_results else 0,
-                  'results': all_results[0] if all_results else []}
+        output = {
+            "query": args.query,
+            "streams": streams,
+            "method": "single",
+            "total_results": len(all_results[0]) if all_results else 0,
+            "results": all_results[0] if all_results else [],
+        }
 
     print(json.dumps(output, indent=2, ensure_ascii=False, default=str))
 

@@ -8,10 +8,12 @@
 **会自己生长的知识库。** 不是 RAG —— 不重复推导，一次编译永久使用。LLM 读取你的资料，构建类型化知识图谱，自动维护。交叉引用、矛盾检测、置信度衰减——全部自动化。
 
 <p align="center">
-  <img src="docs/benchmark_chart.png" alt="RAGAS 评测: llm-wiki vs 业界" width="100%">
+  <img src="docs/benchmark_chart.png" alt="PageIndex 与 llm-wiki 同物料评测" width="100%">
 </p>
 
-> **忠实度 1.00** · **答案相关性 1.00** · **答案正确性 0.91** · **上下文召回 0.94**。Wiki 原生管道（编译→搜索→合成）。无嵌入、无分块、无交叉编码器。[完整评测报告 →](docs/BENCHMARK.md)
+> 在 PageIndex OSS 的同一批 **34 份 PDF、1,945 页、62 道问题**上取得
+> **62/62**，相较无损证据检索前的 38/62 提升 38.7 个百分点。
+> 回答模型和 Judge 配置不同，因此这是方向性同物料对比。[完整评测报告 →](docs/BENCHMARK.md)
 
 ---
 
@@ -117,17 +119,20 @@ wiki doctor --list                                 # 列出未解决问题
 
 ## 评测
 
-我们评测的是**完整产品 pipeline**（编译→搜索→合成），而非组件。**无嵌入、无分块、无交叉编码器** —— 纯 Wiki 原生架构。业界基线来自 RAGAS/RGB/GraphRAG 论文。
+我们评测的是**完整产品 pipeline**（编译→检索→合成→校验），并使用 PageIndex OSS
+Benchmark 的相同 PDF、问题和参考答案。
 
-| 系统 | 忠实度 | 答案相关性 | 上下文召回 | 答案正确性 |
-|------|--------|-----------|-----------|-----------|
-| Naive RAG (chunk+embed) | 0.72 | 0.78 | 0.68 | 0.65 |
-| RAG + Reranker | 0.83 | 0.85 | 0.76 | 0.78 |
-| RAGFlow (估) | 0.86 | 0.84 | 0.79 | 0.80 |
-| GraphRAG (Microsoft) | 0.88 | 0.87 | 0.84 | 0.83 |
-| **llm-wiki ★** | **1.00** | **1.00** | **0.94** | **0.91** |
+| 系统/配置 | 正确数 | 准确率 |
+|---|---:|---:|
+| PageIndex · gpt-5.6-luna/high | 60/62 | 96.8% |
+| PageIndex · gpt-5.6-terra/medium | 61/62 | 98.4% |
+| PageIndex · gpt-5.6-terra/high | **62/62** | **100.0%** |
+| PageIndex · gpt-5.6-sol/medium | **62/62** | **100.0%** |
+| **llm-wiki · 方向性结果** | **62/62** | **100.0%** |
 
-> **所有分数均采用 LLM-as-judge（RAGAS 框架）**，在 19 个测试用例（技术/商业/中文领域）上评测。业界基线来自已发表论文——非相同测试集。llm-wiki: compile_v2 → BM25+metadata+graph → 实体链接 → 三信号排序 → 合成。**5 项指标中 4 项超越 GraphRAG 论文数据。**
+llm-wiki 通过无损逐页证据、时效适用性、多路检索、相邻页上下文和确定性精确值提取，
+将自身基线从 61.3% 提升到 100%。由于回答模型和 Judge 配置不同，这代表达到相同评测上限，
+而不是严格的模型对模型胜负。
 
 → [完整评测报告（含逐题明细）](docs/BENCHMARK.md)
 
@@ -153,7 +158,7 @@ wiki doctor --list                                 # 列出未解决问题
 | [安装与离线部署](docs/INSTALL.md) | pip 安装、Windows 注意事项、离线打包 |
 | [配置指南](docs/CONFIGURATION.md) | LLM、Embedding、OCR、查询等配置 |
 | [架构与生命周期](docs/ARCHITECTURE.md) | 三层设计、知识生命周期 |
-| [评测详情](docs/BENCHMARK.md) | RAGAS 评测、业界对比、逐题分数 |
+| [评测详情](docs/BENCHMARK.md) | PageIndex 同物料对比、架构亮点、完整结果 |
 | [台账管理](docs/LEDGER.md) | 结构化表格、CSV 导入、NL→SQL |
 | [OCR 后端](docs/OCR.md) | OvisOCR2（默认）、MinerU、DeepSeek-OCR、Logics、PaddleOCR |
 | [CLI 参考](docs/CLI.md) | 完整命令参考 |

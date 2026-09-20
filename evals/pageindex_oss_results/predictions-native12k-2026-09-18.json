@@ -1,0 +1,2000 @@
+[
+  {
+    "doc_id": "fdac8d1e9ef56519371df7e6532df27d.pdf",
+    "question": "What is NARL stand for in this document?",
+    "answer": "National Atmospheric Research Laboratory",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[19]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Research report / Introduction",
+    "response": "In this document, NARL stands for **National Atmospheric Research Laboratory** — the page title gives the full name as \"National Atmospheric Research Laboratory (NARL)\" [National Atmospheric Research Laboratory (NARL)](/entities/national-atmospheric-research-laboratory-narl.md).\n\nNARL is described as a centre for atmospheric research located at Gadanki near Tirupati, and as an autonomous society supported by the Department of Space (DOS) [National Atmospheric Research Laboratory (NARL)](/entities/national-atmospheric-research-laboratory-narl.md).",
+    "retrieved_sources": [
+      "entities/national-atmospheric-research-laboratory-narl",
+      "entities/space-commission"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.033,
+    "verification": {
+      "status": "pass",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "entities/national-atmospheric-research-laboratory-narl"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "2310.05634v2.pdf",
+    "question": "According to author's definition on conscious incompetence, when can a sentence map to both [NA] and a list of sub-graph knowledge?",
+    "answer": "If it can be partially verified by the knowledge graph G",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[2, 3]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Academic paper",
+    "response": "According to the author's definition, a sentence can map to both [NA] and a list of sub-graph knowledge when it can be partially verified by the knowledge graph G [Not Applicable Citation](/concepts/not-applicable-citation.md).\n\nThis is consistent with the general rule that a sentence maps to [NA] if it includes some knowledge to be verified but that knowledge is absent from G [Not Applicable Citation](/concepts/not-applicable-citation.md) — in the partial-verification case, part of the sentence's knowledge is present in G (hence the sub-graph list) while the remainder is absent (hence the [NA] marker). In KaLMA, each sub-graph is a knowledge triple [Knowledge Graph](/concepts/knowledge-graph.md).",
+    "retrieved_sources": [
+      "concepts/not-applicable-citation",
+      "concepts/knowledge-graph"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.353,
+    "verification": {
+      "status": "pass",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "concepts/knowledge-graph",
+        "concepts/not-applicable-citation"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "2401.18059v1.pdf",
+    "question": "What model is the clustering algorithm of this paper based on, and what presents a challenge to it?",
+    "answer": "['Gaussian Mixture Models', 'the high dimensionality of vector embeddings']",
+    "answer_format": "List",
+    "task_type": "lookup",
+    "evidence_pages": "[3, 4]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Academic paper",
+    "response": "The clustering algorithm is based on Gaussian Mixture Models (GMMs), a soft clustering approach in which nodes can belong to multiple clusters [Gaussian Mixture Models Clustering](/concepts/gaussian-mixture-models-clustering.md). The likelihood of a text vector x given membership in the kth Gaussian is P(x|k) = N(x; µk, Σk), with the overall distribution given by a weighted combination P(x) = Σ(k=1 to K) πk N(x; µk, Σk), where πk is the mixture weight [Gaussian Mixture Models Clustering](/concepts/gaussian-mixture-models-clustering.md). Parameters (means, covariances, mixture weights) are estimated via Expectation-Maximization, and the optimal number of clusters is chosen with the Bayesian Information Criterion, BIC = ln(N)k − 2 ln(L̂) [Gaussian Mixture Models Clustering](/concepts/gaussian-mixture-models-clustering.md).\n\nThe challenge is the high dimensionality of vector embeddings: distance metrics may behave poorly when used to measure similarity in high-dimensional spaces, which presents a challenge for traditional GMMs [UMAP Dimensionality Reduction](/concepts/umap-dimensionality-reduction.md). To mitigate this, UMAP — a manifold learning technique for dimensionality reduction — is applied after SBERT embedding and before GMM clustering [UMAP Dimensionality Reduction](/concepts/umap-dimensionality-reduction.md).",
+    "retrieved_sources": [
+      "concepts/gaussian-mixture-models-clustering",
+      "concepts/umap-dimensionality-reduction"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 3.855,
+    "verification": {
+      "status": "pass",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "concepts/gaussian-mixture-models-clustering",
+        "concepts/umap-dimensionality-reduction"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "watch_d.pdf",
+    "question": "How many steps are needed to customize the function of the Down Button?",
+    "answer": "2",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[9, 10]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Guidebook",
+    "response": "Customizing the Down button takes three steps: press the Up button to open the app list and go to Settings > Down button, select an app to customize the function, then return to the home screen and press the Down button to open the current app [Customizing the Down Button](/concepts/customizing-the-down-button.md).\n\nThe precondition is that the Down button's default function is the Blood pressure app, and it can be reassigned through Settings [Customizing the Down Button](/concepts/customizing-the-down-button.md). The wiki does not describe any exceptions or failure handling for this procedure.",
+    "retrieved_sources": [
+      "concepts/customizing-the-down-button",
+      "entities/charging-and-battery-level"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.973,
+    "verification": {
+      "status": "pass",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "concepts/customizing-the-down-button"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "2312.10997v5.pdf",
+    "question": "Which method integrates knowledge into white-box models via directive fine-tuning?",
+    "answer": "PKG",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[9, 10]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Academic paper",
+    "response": "The method is **PKG**, which integrates knowledge into white-box models via directive fine-tuning; its retriever module is directly substituted to generate relevant documents according to a query [RAG Adapter](/concepts/rag-adapter.md).",
+    "retrieved_sources": [
+      "concepts/rag-adapter",
+      "concepts/rag-vs-fine-tuning"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.85,
+    "verification": {
+      "status": "pass",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "concepts/rag-adapter"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 1
+    },
+    "error": null
+  },
+  {
+    "doc_id": "379f44022bb27aa53efd5d322c7b57bf.pdf",
+    "question": "What is the telephone no for The Limes Residential Home?",
+    "answer": "01983 873655",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[1]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Research report / Introduction",
+    "response": "The telephone number for The Limes Residential Home is **01983 873655** [The Limes Residential Care Home Limited](/entities/the-limes-residential-care-home-limited.md).\n\nThis number is listed as the contact telephone for the registered provider, whose address is 43 Foreland Road, Bembridge, Isle of Wight, PO35 5XN [The Limes Residential Care Home Limited](/entities/the-limes-residential-care-home-limited.md).\n\nNote that this is the provider's contact number as recorded in the wiki; the documents do not state whether it is the number used for general enquiries at the home itself. Separately, the complaints policy at The Limes did not display the provider's contact details, and no telephone numbers were given for the local authority or CQC [Complaints Handling](/concepts/complaints-handling.md).",
+    "retrieved_sources": [
+      "entities/the-limes-residential-care-home-limited",
+      "concepts/complaints-handling"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.528,
+    "verification": {
+      "status": "pass",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "concepts/complaints-handling",
+        "entities/the-limes-residential-care-home-limited"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "379f44022bb27aa53efd5d322c7b57bf.pdf",
+    "question": "How many regulations of the HSCA 2008 are breached in all according to this report?",
+    "answer": "7",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[6, 7, 8, 9, 10, 12, 13]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Research report / Introduction",
+    "response": "The provided documents do not state a total number of regulations breached. They confirm that \"multiple breaches\" of the Health and Social Care Act 2008 (Regulated Activities) Regulations 2014 were found at The Limes in the July 2015 inspection [Health and Social Care Act 2008 (Regulated Activities) Regulations 2014](/entities/health-and-social-care-act-2008-regulated-activities-regulations-2014.md), and they identify specific regulations individually:\n\n- Regulation 9 — person-centred care [Health and Social Care Act 2008 (Regulated Activities) Regulations 2014](/entities/health-and-social-care-act-2008-regulated-activities-regulations-2014.md)\n- Regulation 11 — consent / Mental Capacity Act 2005 code of practice [Health and Social Care Act 2008 (Regulated Activities) Regulations 2014](/entities/health-and-social-care-act-2008-regulated-activities-regulations-2014.md)\n- Regulation 12 — safe care, including safe management of medicines [Health and Social Care Act 2008 (Regulated Activities) Regulations 2014](/entities/health-and-social-care-act-2008-regulated-activities-regulations-2014.md)\n- Regulation 13 — safeguarding from abuse and unlawful restraint [Health and Social Care Act 2008 (Regulated Activities) Regulations 2014](/entities/health-and-social-care-act-2008-regulated-activities-regulations-2014.md)\n- Regulation 18 — staffing [Staffing Levels](/concepts/staffing-levels.md)\n\nThe overview also mentions breaches covering dignity and respect and governance, but does not assign those regulation numbers, and no document gives an aggregate count. Warning notices were issued for Regulations 13 and 12, to be met by 30 September 2015 [Health and Social Care Act 2008 (Regulated Activities) Regulations 2014](/entities/health-and-social-care-act-2008-regulated-activities-regulations-2014.md).\n\nSo the total number of regulations breached cannot be verified from these documents; only the individual regulations listed above are documented.",
+    "retrieved_sources": [
+      "entities/health-and-social-care-act-2008-regulated-activities-regulations-2014",
+      "concepts/staffing-levels"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.754,
+    "verification": {
+      "status": "pass",
+      "citation_coverage": 0.875,
+      "cited_concepts": [
+        "concepts/staffing-levels",
+        "entities/health-and-social-care-act-2008-regulated-activities-regulations-2014"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 8
+    },
+    "error": null
+  },
+  {
+    "doc_id": "0b85477387a9d0cc33fca0f4becaa0e5.pdf",
+    "question": "Who Visited the U.S. Naval Medical Research centre on November 29, 2012 in the document?",
+    "answer": "Tim Ziemer",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[1]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "Rear Adm. (Ret.) Tim Ziemer, the U.S. Global Malaria Coordinator for the President's Malaria Initiative, visited the Naval Medical Research Center on November 29, 2012 [Rear Adm. Tim Ziemer](/entities/rear-adm.-tim-ziemer.md). He came to receive a brief on current malaria vaccine research efforts and to tour the facility [Rear Adm. Tim Ziemer](/entities/rear-adm.-tim-ziemer.md).",
+    "retrieved_sources": [
+      "entities/rear-adm.-tim-ziemer",
+      "entities/nmrc-rickettsial-diseases-research-program"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.801,
+    "verification": {
+      "status": "pass",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "entities/rear-adm.-tim-ziemer"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 1
+    },
+    "error": null
+  },
+  {
+    "doc_id": "698bba535087fa9a7f9009e172a7f763.pdf",
+    "question": "What is the Email address in this document on the second cover page?",
+    "answer": "['combshj@unk.edu']",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[3]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Research report / Introduction",
+    "response": "The provided wiki documents do not contain any email address, and they do not describe a \"second cover page.\" The documents cover the survey methodology and objectives of the NeHBS Hamilton County report [Survey Methodology and Objectives (NeHBS Hamilton County)](/concepts/survey-methodology-and-objectives-nehbs-hamilton-county.md) and the preservation programs described in Chapter 4 [Preservation in Nebraska](/concepts/preservation-in-nebraska.md), but neither includes contact email details or cover-page content.\n\nThe only contact-related item present is a table-of-contents reference to \"Nebraska Historic Preservation Office Contacts\" on page 57 [Preservation in Nebraska](/concepts/preservation-in-nebraska.md), but the actual contact information (including any email address) is not provided in these documents.\n\nThe wiki does not contain sufficient information to answer this question.",
+    "retrieved_sources": [
+      "concepts/survey-methodology-and-objectives-nehbs-hamilton-county",
+      "concepts/preservation-in-nebraska"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.347,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.6667,
+      "cited_concepts": [
+        "concepts/preservation-in-nebraska",
+        "concepts/survey-methodology-and-objectives-nehbs-hamilton-county"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [
+        {
+          "claim": "The only contact-related item present is a table-of-contents reference to \"Nebraska Historic Preservation Office Contacts\" on page 57 [Preservation in Nebraska](/concepts/preservation-in-nebraska.md), but the actual contact information (inc",
+          "citation_ids": [
+            "concepts/preservation-in-nebraska"
+          ],
+          "lexical_support": 0.44
+        }
+      ],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "698bba535087fa9a7f9009e172a7f763.pdf",
+    "question": "How many square miles did the Hamilton country covers on year 1882? Return me a rounded integer.",
+    "answer": "538",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[11]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Research report / Introduction",
+    "response": "The provided wiki documents do not contain the land area of Hamilton County, Nebraska, for the year 1882. The only area figure present is for the state of Nebraska — 77,538 sq mi, ranked 16th [Homestead Act and Transcontinental Railroad Act of 1862](/concepts/homestead-act-and-transcontinental-railroad-act-of-1862) — which is a different jurisdiction and not a Hamilton County value.\n\nWhat the documents do provide about Hamilton County is survey-related, not geographic: the county was surveyed by the Nebraska Historic Buildings Survey in the summer and fall of 2008, with a report dated July 2009; it had previously been surveyed in 1984, when 546 properties were identified, and 183 newly identified properties were added in the 2008 resurvey [Survey Methodology and Objectives (NeHBS Hamilton County)](/concepts/survey-methodology-and-objectives-nehbs-hamilton-county).\n\nBecause no Hamilton County area figure (for 1882 or any year) appears in these documents, the required aggregation field and calculation result are missing, and no rounded integer can be produced.",
+    "retrieved_sources": [
+      "concepts/homestead-act-and-transcontinental-railroad-act-of-1862",
+      "concepts/survey-methodology-and-objectives-nehbs-hamilton-county"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.236,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "698bba535087fa9a7f9009e172a7f763.pdf",
+    "question": "How many square miles does the Hamilton country covers according to the document? Give me an appropriate integer.",
+    "answer": "538",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[11]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Research report / Introduction",
+    "response": "According to the document, Hamilton County covers approximately 538 square miles [Hamilton County, Nebraska](/entities/hamilton-county-nebraska). As an integer, that is **538 square miles**.",
+    "retrieved_sources": [
+      "entities/hamilton-county-nebraska",
+      "concepts/survey-methodology-and-objectives-nehbs-hamilton-county"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.373,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 1
+    },
+    "error": null
+  },
+  {
+    "doc_id": "e79deb02a0c0e87511080836c5d4347b.pdf",
+    "question": "Who produced the document that was revised on May 2016?",
+    "answer": "Florida Department of Health",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[2]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The document revised in May 2016 — the MQA Strategic Plan 2016-2018, Version 1.3 — was produced by the Florida Department of Health [MQA Strategic Plan 2016-2018](/mqa-strategic-plan-2016-2018.md). The plan's source context states that the Florida Department of Health conducted the strategic planning process during the summer of 2015 to define the agency's direction for the next three years [MQA Strategic Plan 2016-2018](/mqa-strategic-plan-2016-2018.md).",
+    "retrieved_sources": [
+      "entities/mqa-strategic-plan-2016-2018",
+      "concepts/florida-health-performs"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.89,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "mqa-strategic-plan-2016-2018"
+      ],
+      "unsupported_citations": [
+        "mqa-strategic-plan-2016-2018"
+      ],
+      "unverified_values": [
+        {
+          "value": "2016",
+          "claim": "The document revised in May 2016 — the MQA Strategic Plan 2016-2018, Version 1.3 — was produced by the Florida Department of Health [MQA Strategic Plan 2016-2018](/mqa-strategic-plan-2016-2018.md). The plan's source context states that the "
+        },
+        {
+          "value": "2016-2018,",
+          "claim": "The document revised in May 2016 — the MQA Strategic Plan 2016-2018, Version 1.3 — was produced by the Florida Department of Health [MQA Strategic Plan 2016-2018](/mqa-strategic-plan-2016-2018.md). The plan's source context states that the "
+        },
+        {
+          "value": "1.3",
+          "claim": "The document revised in May 2016 — the MQA Strategic Plan 2016-2018, Version 1.3 — was produced by the Florida Department of Health [MQA Strategic Plan 2016-2018](/mqa-strategic-plan-2016-2018.md). The plan's source context states that the "
+        },
+        {
+          "value": "2016-2018",
+          "claim": "The document revised in May 2016 — the MQA Strategic Plan 2016-2018, Version 1.3 — was produced by the Florida Department of Health [MQA Strategic Plan 2016-2018](/mqa-strategic-plan-2016-2018.md). The plan's source context states that the "
+        },
+        {
+          "value": "2016-2018.",
+          "claim": "The document revised in May 2016 — the MQA Strategic Plan 2016-2018, Version 1.3 — was produced by the Florida Department of Health [MQA Strategic Plan 2016-2018](/mqa-strategic-plan-2016-2018.md). The plan's source context states that the "
+        },
+        {
+          "value": "2015",
+          "claim": "The document revised in May 2016 — the MQA Strategic Plan 2016-2018, Version 1.3 — was produced by the Florida Department of Health [MQA Strategic Plan 2016-2018](/mqa-strategic-plan-2016-2018.md). The plan's source context states that the "
+        },
+        {
+          "value": "2016-2018",
+          "claim": "The document revised in May 2016 — the MQA Strategic Plan 2016-2018, Version 1.3 — was produced by the Florida Department of Health [MQA Strategic Plan 2016-2018](/mqa-strategic-plan-2016-2018.md). The plan's source context states that the "
+        },
+        {
+          "value": "2016-2018.",
+          "claim": "The document revised in May 2016 — the MQA Strategic Plan 2016-2018, Version 1.3 — was produced by the Florida Department of Health [MQA Strategic Plan 2016-2018](/mqa-strategic-plan-2016-2018.md). The plan's source context states that the "
+        }
+      ],
+      "unsupported_claims": [
+        {
+          "claim": "The document revised in May 2016 — the MQA Strategic Plan 2016-2018, Version 1.3 — was produced by the Florida Department of Health [MQA Strategic Plan 2016-2018](/mqa-strategic-plan-2016-2018.md). The plan's source context states that the ",
+          "citation_ids": [
+            "mqa-strategic-plan-2016-2018"
+          ],
+          "lexical_support": 0.0
+        }
+      ],
+      "claims_checked": 1
+    },
+    "error": null
+  },
+  {
+    "doc_id": "e79deb02a0c0e87511080836c5d4347b.pdf",
+    "question": "What is the name of the governor as mentioned on the first page of the document?",
+    "answer": "Rick Scott",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[1]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The governor named in the document is Rick Scott, listed as Governor of the Florida Department of Health Division of Medical Quality Assurance [Florida Department of Health Division of Medical Quality Assurance](/entities/florida-department-of-health-division-of-medical-quality-assurance.md).\n\nOne caveat on scope: the wiki page records \"Governor: Rick Scott\" as an attribute of the division, but it does not state that this name appears specifically on page 1 of the document. The only page-1 content quoted is the title line \"Florida Department of Health / Division of Medical Quality Assurance Strategic Plan / 2016-2018\" [Florida Department of Health Division of Medical Quality Assurance](/entities/florida-department-of-health-division-of-medical-quality-assurance.md). So the governor's identity is confirmed, but its placement on the first page is not verifiable from the provided material.",
+    "retrieved_sources": [
+      "entities/florida-department-of-health-division-of-medical-quality-assurance",
+      "concepts/florida-health-performs"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.057,
+    "verification": {
+      "status": "pass",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "entities/florida-department-of-health-division-of-medical-quality-assurance"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "User_Manual_1500S_Classic_EN.pdf",
+    "question": "How many coffee quality levels can the coffee machine be set to?",
+    "answer": "7",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[39]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Guidebook",
+    "response": "The coffee machine can be set to 7 coffee quality levels, numbered 1 to 7 [WMF 1500 S Beverage Settings](/entities/wmf-1500-s-beverage-settings.md).\n\nEach level changes how the coffee is prepared after pressing: level 1 leaves space for the ground coffee to swell, level 2 brews immediately, level 3 performs a pre-infusion, level 4 adds wet pressing after pre-infusion, level 5 uses stronger wet pressing, and level 6 uses stronger and longer wet pressing [WMF 1500 S Beverage Settings](/entities/wmf-1500-s-beverage-settings.md). The description of level 7 is cut off in the provided document, so its exact behavior is uncertain.",
+    "retrieved_sources": [
+      "entities/wmf-1500-s-beverage-settings",
+      "entities/wmf-1500-s-coffee-machine"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.088,
+    "verification": {
+      "status": "pass",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "entities/wmf-1500-s-beverage-settings"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "camry_ebrochure.pdf",
+    "question": "What technology does the car’s Wi-Fi Connect use?",
+    "answer": "4G",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[6]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Brochure",
+    "response": "The car's Wi-Fi Connect uses 4G connectivity and operates as an AT&T Hotspot, supporting up to 5 devices on in-vehicle connectivity [Toyota Connected Services](/concepts/toyota-connected-services.md).\n\nIts trial begins at enrollment and expires at the earlier of 3 GB of data use or the end of the 1-month trial period [Toyota Connected Services](/concepts/toyota-connected-services.md). Note that all Connected Services depend on factors outside Toyota's control, including cellular network availability and GPS signal, without which operability may be limited or precluded [Toyota Connected Services](/concepts/toyota-connected-services.md).",
+    "retrieved_sources": [
+      "concepts/toyota-connected-services",
+      "concepts/toyota-warranty-coverage"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.759,
+    "verification": {
+      "status": "pass",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "concepts/toyota-connected-services"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "8dfc21ec151fb9d3578fc32d5c4e5df9.pdf",
+    "question": "What's the geographic market name for EPS Code AR01?\n\n",
+    "answer": "Little Rock",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[8]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Guidebook",
+    "response": "The wiki documents do not contain the geographic market name for EPS Code AR01. The code format is described as a state's two-letter abbreviation plus a two-digit number (e.g., NY01, CA34) [EPS Geographic Market Codes](/concepts/eps-geographic-market-codes.md), and the market listings cover states such as New York, New Jersey, Pennsylvania, California, and Texas — but no state with the abbreviation \"AR\" (Arkansas) is listed with its individual market names. Arkansas appears only as a state count in the Southwestern Region (Arkansas, 2 markets) [Enrollment Planning Service](/entities/enrollment-planning-service.md), without the specific code-to-name mapping needed to identify AR01.\n\nSo the specific market name for AR01 cannot be verified from the provided pages.",
+    "retrieved_sources": [
+      "concepts/eps-geographic-market-codes",
+      "entities/enrollment-planning-service",
+      "entities/college-board-search",
+      "entities/search-for-students"
+    ],
+    "pages_searched": 4,
+    "query_seconds": 2.987,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.5,
+      "cited_concepts": [
+        "concepts/eps-geographic-market-codes",
+        "entities/enrollment-planning-service"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "mmdetection-readthedocs-io-en-v2.18.0.pdf",
+    "question": "If I want to use the decoupled variant of the detector in the paper `SOLO: Segmenting Objects by Locations`, what is the implemented class name in `mmdet.models.dense_heads`?",
+    "answer": "DecoupledSOLOHead",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[336]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Guidebook",
+    "response": "The provided wiki documents do not contain the implemented class name for the decoupled variant of SOLO in `mmdet.models.dense_heads`.\n\nWhat the documents do provide:\n\n- SOLO is documented as an implementation of \"SOLO: Segmenting Objects by Locations\" [MMDetection Detector Implementations](/concepts/mmdetection-detector-base-classes-singlestagedetector-twostagedetector.md).\n- The SOLO detector signature is `(backbone, neck=None, bbox_head=None, mask_head=None, train_cfg=None, test_cfg=None, init_cfg=None, pretrained=None)` [MMDetection Detector Implementations](/concepts/mmdetection-detector-base-classes-singlestagedetector-twostagedetector.md).\n- The only dense head explicitly named in the documents is `LDHead` (Localization Distillation Head), which is unrelated to SOLO [LDHead](/concepts/ldhead-localization-distillation-head.md).\n\nThe specific class name for SOLO's decoupled variant (e.g., a \"DecoupledSOLO\" head) is not stated anywhere in the supplied documents, so I cannot confirm it from this wiki.",
+    "retrieved_sources": [
+      "concepts/mmdetection-detector-base-classes-singlestagedetector-twostagedetector",
+      "concepts/ldhead-localization-distillation-head"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 6.939,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.6,
+      "cited_concepts": [
+        "concepts/ldhead-localization-distillation-head",
+        "concepts/mmdetection-detector-base-classes-singlestagedetector-twostagedetector"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 5
+    },
+    "error": null
+  },
+  {
+    "doc_id": "mmdetection-readthedocs-io-en-v2.18.0.pdf",
+    "question": "Which paper uses the Fast NMS processing?",
+    "answer": "YOLACT",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[229]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Guidebook",
+    "response": "Fast NMS is used by YOLACT: the post-processing documentation describes `fast_nms` as \"Fast NMS in YOLACT,\" which allows already-removed detections to suppress other detections so every instance can be decided in parallel, implemented entirely in standard GPU-accelerated matrix operations [mmdet.core.post_processing (NMS and Augmentation Merging)](/concepts/mmdet.core.post_processing-nms-and-augmentation-merging.md).\n\nIts signature is `fast_nms(multi_bboxes, multi_scores, multi_coeffs, score_thr, iou_thr, top_k, max_num=-1)`, with a default `max_num` of -1 (keep all bboxes) [mmdet.core.post_processing (NMS and Augmentation Merging)](/concepts/mmdet.core.post_processing-nms-and-augmentation-merging.md).\n\nNote that the wiki does not name a specific paper title or publication for Fast NMS beyond attributing it to YOLACT; that attribution is the only source-level identification available in the provided documents.",
+    "retrieved_sources": [
+      "concepts/mmdet.core.post_processing-nms-and-augmentation-merging",
+      "entities/pytorch-to-onnx-conversion-in-mmdetection"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 3.29,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.6667,
+      "cited_concepts": [
+        "concepts/mmdet.core.post_processing-nms-and-augmentation-merging"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "e639029d16094ea71d964e2fb953952b.pdf",
+    "question": "Since what year has Mr. Kildee been involved with child nutrition?",
+    "answer": "1954",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[8]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "Mr. Kildee has been involved with child nutrition since about 1954, when he became a teacher [Dale E. Kildee](/entities/dale-e.-kildee.md). He stated this himself at the October 7, 2003 hearing, saying: \"I have been involved with child nutrition since about 1954, when I became a teacher\" [Dale E. Kildee](/entities/dale-e.-kildee.md).",
+    "retrieved_sources": [
+      "entities/dale-e.-kildee",
+      "concepts/child-nutrition-act-reauthorization"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.823,
+    "verification": {
+      "status": "pass",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "entities/dale-e.-kildee"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 1
+    },
+    "error": null
+  },
+  {
+    "doc_id": "e639029d16094ea71d964e2fb953952b.pdf",
+    "question": "What date is mentioned at the beginning of page(1)? Format the date as YYYY-MM-DD",
+    "answer": "2003-10-07",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[5]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The wiki documents do not contain sufficient information to answer this question. Neither document describes the contents or beginning of \"page(1),\" so no date appearing at the start of that page can be identified.\n\nThe only date present in the provided material is October 7, 2003, which is given as the hearing date for the Child Nutrition Act reauthorization [Child Nutrition Act Reauthorization](/concepts/child-nutrition-act-reauthorization.md) and is also referenced as the date of the hearing at which Rep. Kildee raised the overcertification concern [Overcertification of Eligibles](/concepts/overcertification-of-eligibles.md). Whether this date appears at the beginning of page(1) is not stated in the documents.",
+    "retrieved_sources": [
+      "concepts/child-nutrition-act-reauthorization",
+      "concepts/overcertification-of-eligibles"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.085,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.5,
+      "cited_concepts": [
+        "concepts/child-nutrition-act-reauthorization",
+        "concepts/overcertification-of-eligibles"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "2003,",
+          "claim": "The only date present in the provided material is October 7, 2003, which is given as the hearing date for the Child Nutrition Act reauthorization [Child Nutrition Act Reauthorization](/concepts/child-nutrition-act-reauthorization.md) and is"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "a5879805d70c854ea4361e43a84e3bb2.pdf",
+    "question": "Format the date mentioned on page 14 as YYYY-MM-DD.",
+    "answer": "2021-02-08",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[14]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The provided wiki documents do not contain any information about a date on \"page 14,\" so the date cannot be formatted as YYYY-MM-DD.\n\nThe documents do contain several dates, but none is tied to a page number:\n\n- Defence filing date: February 8, 2021 [Defence of the Defendant The Toronto-Dominion Bank](/entities/defence-of-the-defendant-the-toronto-dominion-bank.md)\n- FCAC report date: March 20, 2018 [Defence of the Defendant The Toronto-Dominion Bank](/entities/defence-of-the-defendant-the-toronto-dominion-bank.md)\n- Share purchase date: February 14, 2018 [Defence of the Defendant The Toronto-Dominion Bank](/entities/defence-of-the-defendant-the-toronto-dominion-bank.md)\n- CBC Reports dates: March 6 and March 10, 2017 [Corrective Disclosure](/concepts/corrective-disclosure.md)\n\nSince no document identifies which date appears on page 14, the requested formatting cannot be verified from the wiki.",
+    "retrieved_sources": [
+      "entities/defence-of-the-defendant-the-toronto-dominion-bank",
+      "concepts/corrective-disclosure"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.164,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.5714,
+      "cited_concepts": [
+        "concepts/corrective-disclosure",
+        "entities/defence-of-the-defendant-the-toronto-dominion-bank"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 7
+    },
+    "error": null
+  },
+  {
+    "doc_id": "a5879805d70c854ea4361e43a84e3bb2.pdf",
+    "question": "What is INF SERCRL LLP FAX No on page fourteen?",
+    "answer": "514-312-0292",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[14]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The provided wiki documents do not contain any fax number for INF LLP, nor do they contain any information tied to \"page fourteen.\" The documents only identify INF LLP as defence counsel for The Toronto-Dominion Bank, naming Mtre Marianne Ignacz and Mtre Laurent Nahmiash [The Toronto-Dominion Bank](/entities/the-toronto-dominion-bank.md) [Defence of the Defendant The Toronto-Dominion Bank](/entities/defence-of-the-defendant-the-toronto-dominion-bank.md).\n\nNo fax number, telephone number, address, or page-level citation for INF LLP appears anywhere in the supplied material, so the requested value cannot be verified from the wiki.",
+    "retrieved_sources": [
+      "entities/the-toronto-dominion-bank",
+      "entities/defence-of-the-defendant-the-toronto-dominion-bank"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.863,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.5,
+      "cited_concepts": [
+        "entities/defence-of-the-defendant-the-toronto-dominion-bank",
+        "entities/the-toronto-dominion-bank"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "a5879805d70c854ea4361e43a84e3bb2.pdf",
+    "question": "What type of court is noted on the cover page?",
+    "answer": "SUPERIOR COURT",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[1]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The court noted is the **Superior Court of Québec (Class Action Division)**, sitting in the District of Montréal, in file number 500-06-000914-180 [Defence of the Defendant The Toronto-Dominion Bank](/entities/defence-of-the-defendant-the-toronto-dominion-bank.md). The same court designation is associated with the class action authorized by Justice Morrison on June 21, 2019 [Authorization Judgment of June 21, 2019](/entities/authorization-judgment-of-june-21-2019.md).\n\nNote: the documents describe this as the court for the proceeding, but they do not explicitly state that this designation appears on the cover page of the pleading; that specific placement is [uncertain].",
+    "retrieved_sources": [
+      "entities/defence-of-the-defendant-the-toronto-dominion-bank",
+      "entities/authorization-judgment-of-june-21-2019"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.962,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.5,
+      "cited_concepts": [
+        "entities/authorization-judgment-of-june-21-2019",
+        "entities/defence-of-the-defendant-the-toronto-dominion-bank"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "21-2019.",
+          "claim": "The court noted is the **Superior Court of Québec (Class Action Division)**, sitting in the District of Montréal, in file number 500-06-000914-180 [Defence of the Defendant The Toronto-Dominion Bank](/entities/defence-of-the-defendant-the-t"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "a5879805d70c854ea4361e43a84e3bb2.pdf",
+    "question": "what is the email id of the mtre laurent nahmiash ?",
+    "answer": "lnahmiash@infavocats.com",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[14]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The wiki documents do not contain an email address for Mtre Laurent Nahmiash. The only information available about him is that he is defence counsel at INF LLP, alongside Mtre Marianne Ignacz, for The Toronto-Dominion Bank in this class action ([Defence of the Defendant The Toronto-Dominion Bank](/entities/defence-of-the-defendant-the-toronto-dominion-bank), [The Toronto-Dominion Bank](/entities/the-toronto-dominion-bank)).\n\nNo contact details — email or otherwise — are provided for counsel in either document, so the requested email ID cannot be verified from the available material.",
+    "retrieved_sources": [
+      "entities/defence-of-the-defendant-the-toronto-dominion-bank",
+      "entities/the-toronto-dominion-bank"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.807,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "owners-manual-2170416.pdf",
+    "question": "In the \"Before Using Your Refrigerator\" Section, \"Installing it properly\" is the step before or after the step \"Plugging it in\"? ",
+    "answer": "after",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[7, 8]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Guidebook",
+    "response": "The provided documents do not specify the order of these two steps. The \"Before Using Your Refrigerator\" page lists the steps it covers — removing packaging materials, removing glue, cleaning before use, plugging it in, installing it properly, and leveling it — but does not state which comes before or after which [Before Using Your Refrigerator](/concepts/before-using-your-refrigerator.md). The \"Plugging it in\" step is documented as a step in preparing the refrigerator for use, part of that same section [Plugging In and Grounding the Refrigerator](/entities/plugging-in-and-grounding-the-refrigerator.md), but no sequencing relative to \"Installing it properly\" is given.\n\nSo the wiki does not contain sufficient information to answer whether \"Installing it properly\" comes before or after \"Plugging it in.\"",
+    "retrieved_sources": [
+      "concepts/before-using-your-refrigerator",
+      "entities/plugging-in-and-grounding-the-refrigerator"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.398,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.5,
+      "cited_concepts": [
+        "concepts/before-using-your-refrigerator",
+        "entities/plugging-in-and-grounding-the-refrigerator"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "owners-manual-2170416.pdf",
+    "question": "How many steps are required to replace the grille? Write the answer in integer format.",
+    "answer": "3",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[17]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Guidebook",
+    "response": "Replacing the grille requires **3** steps: line up the grille support tabs with the metal clips, push firmly to snap it into place, and close the doors [Removing the Base Grille](/entities/removing-the-base-grille.md).\n\nNote that the leveling procedure also references replacing the base grille, but it only points back to the grille page rather than listing the steps itself [Installing and Leveling the Refrigerator](/entities/installing-and-leveling-the-refrigerator.md).",
+    "retrieved_sources": [
+      "entities/installing-and-leveling-the-refrigerator",
+      "entities/removing-the-base-grille"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.932,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "entities/installing-and-leveling-the-refrigerator",
+        "entities/removing-the-base-grille"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [
+        {
+          "claim": "Note that the leveling procedure also references replacing the base grille, but it only points back to the grille page rather than listing the steps itself [Installing and Leveling the Refrigerator](/entities/installing-and-leveling-the-ref",
+          "citation_ids": [
+            "entities/installing-and-leveling-the-refrigerator"
+          ],
+          "lexical_support": 0.3889
+        }
+      ],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "Campaign_038_Introducing_AC_Whitepaper_v5e.pdf",
+    "question": "How many data centers does the China's largest cloud provider have?",
+    "answer": "18",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[5, 6]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Brochure",
+    "response": "Alibaba Cloud, described as China's largest public cloud service provider, has an international network of 18 data centers, including access to Mainland China [Alibaba Cloud](/entities/alibaba-cloud.md).\n\nNote that a separate page describes Alibaba Cloud's China network as including seven data centers and over 1100 CDN nodes [Gateway to China](/concepts/gateway-to-china.md). These two figures differ in scope: 18 is the international network total, while seven refers specifically to the China network.",
+    "retrieved_sources": [
+      "entities/alibaba-cloud",
+      "concepts/gateway-to-china"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.744,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "concepts/gateway-to-china",
+        "entities/alibaba-cloud"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "18",
+          "claim": "Note that a separate page describes Alibaba Cloud's China network as including seven data centers and over 1100 CDN nodes [Gateway to China](/concepts/gateway-to-china.md). These two figures differ in scope: 18 is the international network "
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "7c3f6204b3241f142f0f8eb8e1fefe7a.pdf",
+    "question": "Write the filling id and case number in this document?",
+    "answer": "['48897809', '5152012']",
+    "answer_format": "List",
+    "task_type": "lookup",
+    "evidence_pages": "[1, 1]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The document's filing information is:\n\n- **Filing ID**: 48897809\n- **Case Number (filing)**: 515,2012\n\nThese appear in the Key Facts for [Hanson v. Delaware State Public Integrity Commission](/entities/hanson-v.-delaware-state-public-integrity-commission.md), which also records the filing date as Jan 14 2013 09:42AM EST. Note that this filing case number (515,2012) is distinct from the court's case number, C.A. No. 11A–06–001(ESB), listed on the same page.",
+    "retrieved_sources": [
+      "entities/hanson-v.-delaware-state-public-integrity-commission",
+      "concepts/conflict-of-interest-under-the-code-of-conduct"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.888,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.3333,
+      "cited_concepts": [
+        "entities/hanson-v.-delaware-state-public-integrity-commission"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "7c3f6204b3241f142f0f8eb8e1fefe7a.pdf",
+    "question": "Which case is related to the statement that \"PIC also never determined if Hanson's qualified immunity defense would overcome her conflicts of interest.\"?",
+    "answer": "FN54. Wong v. Allison, 208 F.3d 224, 2000 WL 206572",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[13, 14]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The statement that PIC never determined whether Hanson's qualified immunity defense would overcome her conflicts of interest is not found in the provided wiki documents. The documents contain a related but different fact: PIC found that Hanson violated 29 Del. C. § 5805(a)(1) because the Clarifying Ordinance would help her qualified immunity defense in the Federal Case [Conflict of Interest Under the Code of Conduct](/concepts/conflict-of-interest-under-the-code-of-conduct.md), and the Court held that PIC's finding on this point was not supported by substantial evidence [Qualified Immunity](/concepts/qualified-immunity.md).\n\nThe documents also state that PIC never reviewed DBE's complaint against Hanson and thus was not aware of the underlying factual allegations against her [Qualified Immunity](/concepts/qualified-immunity.md), and that the Court reversed all of PIC's conflict-of-interest findings, including the appearance-of-impropriety finding because it was based on three unproven conflicts of interest [Conflict of Interest Under the Code of Conduct](/concepts/conflict-of-interest-under-the-code-of-conduct.md).\n\nHowever, no document states that PIC \"never determined if Hanson's qualified immunity defense would overcome her conflicts of interest.\" The case most closely associated with the qualified immunity and conflict-of-interest findings is the Federal Case [Qualified Immunity](/concepts/qualified-immunity.md), but the specific quoted statement cannot be verified from the provided material.",
+    "retrieved_sources": [
+      "concepts/qualified-immunity",
+      "concepts/conflict-of-interest-under-the-code-of-conduct"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.582,
+    "verification": {
+      "status": "pass",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "concepts/conflict-of-interest-under-the-code-of-conduct",
+        "concepts/qualified-immunity"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "7c3f6204b3241f142f0f8eb8e1fefe7a.pdf",
+    "question": "The document represents which judges' opinions?",
+    "answer": "Scott Bradley.",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The document is a decision of the Superior Court of Delaware, issued by Judge E. Scott Bradley, in the case *Hanson v. Delaware State Public Integrity Commission* [Hanson v. Delaware State Public Integrity Commission](/entities/hanson-v.-delaware-state-public-integrity-commission.md). It is a single-judge opinion of that court, not a multi-judge appellate panel, and the documents do not attribute the opinion to any other judge.\n\nThe case was decided on Aug. 30, 2012, under citation \"Not Reported in A.3d, 2012 WL 3860732 (Del.Super.)\", C.A. No. 11A–06–001(ESB), with Judge E. Scott Bradley listed as the judge [Hanson v. Delaware State Public Integrity Commission](/entities/hanson-v.-delaware-state-public-integrity-commission.md). The underlying agency decision being reviewed was that of the Delaware State Public Integrity Commission, which issued a Final Disposition Opinion on May 13, 2011 [Delaware State Public Integrity Commission](/entities/delaware-state-public-integrity-commission.md); PIC members who disagree with a PIC decision may file dissenting opinions [PIC Rules of Procedure](/entities/pic-rules-of-procedure.md), but the documents do not indicate that any dissenting opinions were filed in this matter.",
+    "retrieved_sources": [
+      "entities/delaware-state-public-integrity-commission",
+      "entities/pic-rules-of-procedure",
+      "entities/hanson-v.-delaware-state-public-integrity-commission",
+      "entities/diane-hanson",
+      "entities/code-of-conduct"
+    ],
+    "pages_searched": 5,
+    "query_seconds": 3.543,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "entities/delaware-state-public-integrity-commission",
+        "entities/hanson-v.-delaware-state-public-integrity-commission",
+        "entities/pic-rules-of-procedure"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "2012,",
+          "claim": "The case was decided on Aug. 30, 2012, under citation \"Not Reported in A.3d, 2012 WL 3860732 (Del.Super.)\", C.A. No. 11A–06–001(ESB), with Judge E. Scott Bradley listed as the judge [Hanson v. Delaware State Public Integrity Commission](/en"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "7c3f6204b3241f142f0f8eb8e1fefe7a.pdf",
+    "question": "Who is the defendant of this case?",
+    "answer": "DELAWARE STATE PUBLIC INTEGRITY COMMISSION.",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[1]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The provided wiki documents do not identify a single named defendant for \"this case.\" They describe the Federal Case in terms of the \"Individual Defendants,\" who asserted immunity defenses including the Noerr–Pennington doctrine, legislative immunity, and qualified immunity [Noerr–Pennington Doctrine](/concepts/noerr-pennington-doctrine.md). One of those Individual Defendants is identified as Diane Hanson [Noerr–Pennington Doctrine](/concepts/noerr-pennington-doctrine.md), and she is also the official found by the Delaware State Public Integrity Commission to have conflicts of interest under the Code of Conduct [Conflict of Interest Under the Code of Conduct](/concepts/conflict-of-interest-under-the-code-of-conduct.md).\n\nThe documents do not state who the plaintiff is, nor do they name a defendant in a way that matches a case caption, so the specific defendant cannot be confirmed from the material provided.",
+    "retrieved_sources": [
+      "concepts/noerr-pennington-doctrine",
+      "concepts/conflict-of-interest-under-the-code-of-conduct"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.737,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.5,
+      "cited_concepts": [
+        "concepts/conflict-of-interest-under-the-code-of-conduct",
+        "concepts/noerr-pennington-doctrine"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "f1f5242528411b262be447e61e2eb10f.pdf",
+    "question": "What does a point mutation of the codon TTT or thymine-thymine define?",
+    "answer": "phenylalanine",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[7]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Academic paper",
+    "response": "A point mutation of the codon TTT (thymine-thymine-thymine) defines a **mis-sense mutation** when it is replaced by another base to give a codon specifying a different amino acid. The wiki gives the example TTT (phenylalanine) → TCT (serine) [Point Mutation](/concepts/point-mutation.md).\n\nMore precisely, the codon TTT itself is the codon that defines the amino acid phenylalanine; the point mutation is the base replacement that converts it into a codon defining a different amino acid, which is what makes it a mis-sense mutation [Point Mutation](/concepts/point-mutation.md).\n\nScope and boundary: a point mutation is defined as mutation of one single base of the gene irrespective of gene size, and its molecular mechanisms are replacement of one base by another, deletion/loss of one base, or addition of one base [Point Mutation](/concepts/point-mutation.md). The mis-sense type is distinguished from same-sense (codon changes to another codon defining the same amino acid, e.g., leucine codons TTA→TTG) and non-sense (functional codon changed to a stop codon TAA, TGA or TAG) [Point Mutation](/concepts/point-mutation.md).\n\nNote: the documents do not state that TTT or \"thymine-thymine\" by itself \"defines\" a mutation type; the defining feature is the change of the codon to one specifying a different amino acid.",
+    "retrieved_sources": [
+      "concepts/point-mutation",
+      "concepts/mutation"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.892,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.75,
+      "cited_concepts": [
+        "concepts/point-mutation"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 4
+    },
+    "error": null
+  },
+  {
+    "doc_id": "f1f5242528411b262be447e61e2eb10f.pdf",
+    "question": "What is the web link to this paper?",
+    "answer": "http://dx.doi.org/10.1016/j.ejmhg.2015.07.002",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[1]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Academic paper",
+    "response": "The provided wiki documents do not contain a web link (URL) to the paper itself. The only link-related item present is the license URL, CC BY-NC-ND (http://creativecommons.org/licenses/by-nc-nd/4.0/), which points to the license, not to the paper [Pathogenetics](/concepts/pathogenetics.md).\n\nWhat the documents do provide for identifying the paper is its DOI: 10.1016/j.ejmhg.2015.07.002, along with its publication in The Egyptian Journal of Medical Human Genetics (2016) 17, 1–23, authored by Mohammad Saad Zaghloul Salem, received 1 July 2015, accepted 7 July 2015, and available online 27 July 2015 [Pathogenetics](/concepts/pathogenetics.md). No direct web link to the article is stated, so the answer to the query is not available in the wiki.",
+    "retrieved_sources": [
+      "concepts/pathogenetics",
+      "concepts/melatonin"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.999,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "concepts/pathogenetics"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "2015.07.002,",
+          "claim": "What the documents do provide for identifying the paper is its DOI: 10.1016/j.ejmhg.2015.07.002, along with its publication in The Egyptian Journal of Medical Human Genetics (2016) 17, 1–23, authored by Mohammad Saad Zaghloul Salem, receive"
+        },
+        {
+          "value": "23,",
+          "claim": "What the documents do provide for identifying the paper is its DOI: 10.1016/j.ejmhg.2015.07.002, along with its publication in The Egyptian Journal of Medical Human Genetics (2016) 17, 1–23, authored by Mohammad Saad Zaghloul Salem, receive"
+        },
+        {
+          "value": "2015,",
+          "claim": "What the documents do provide for identifying the paper is its DOI: 10.1016/j.ejmhg.2015.07.002, along with its publication in The Egyptian Journal of Medical Human Genetics (2016) 17, 1–23, authored by Mohammad Saad Zaghloul Salem, receive"
+        },
+        {
+          "value": "2015,",
+          "claim": "What the documents do provide for identifying the paper is its DOI: 10.1016/j.ejmhg.2015.07.002, along with its publication in The Egyptian Journal of Medical Human Genetics (2016) 17, 1–23, authored by Mohammad Saad Zaghloul Salem, receive"
+        }
+      ],
+      "unsupported_claims": [
+        {
+          "claim": "The provided wiki documents do not contain a web link (URL) to the paper itself. The only link-related item present is the license URL, CC BY-NC-ND (http://creativecommons.org/licenses/by-nc-nd/4.0/), which points to the license, not to the",
+          "citation_ids": [
+            "concepts/pathogenetics"
+          ],
+          "lexical_support": 0.3333
+        }
+      ],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "936c0e2c2e6c8e0c07c51bfaf7fd0a83.pdf",
+    "question": "Describe the significant changes of the Risk Management Plan since last year.",
+    "answer": "N/A",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[14]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The Risk Management Plan for IPMS has **not** significantly changed since last year's OMB submission. The plan is dated 7/26/2007, and the response to the question of whether it changed significantly since the prior year's submission is \"No,\" with the changes description recorded as \"N/A\" [IPMS Risk Management](/concepts/ipms-risk-management.md).\n\nBecause no significant changes were reported, there are no specific change details to describe — the wiki records the change description as not applicable [IPMS Risk Management](/concepts/ipms-risk-management.md).\n\nFor context on what the plan does cover: the life cycle cost estimate is risk adjusted for currently identified program risks and the likelihood of additional risks, and the project schedule is based on a conservative estimate of the time required to maintain and implement new applications within IPMS [IPMS Risk Management](/concepts/ipms-risk-management.md).",
+    "retrieved_sources": [
+      "concepts/ipms-risk-management",
+      "concepts/ipms-performance-information-table"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.435,
+    "verification": {
+      "status": "pass",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "concepts/ipms-risk-management"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "f8d3a162ab9507e021d83dd109118b60.pdf",
+    "question": "What is the title of case study given under unit-8 in table?",
+    "answer": "Discrimination in the Workplace Continues",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[7]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The provided wiki documents do not contain a table listing case study titles by unit, so the title of the case study given under Unit 8 cannot be determined from them.\n\nWhat the documents do show is that Unit 8 is titled \"Unit 8: Managing Human Resources and Labor Relations,\" which concludes Semester 1 [Semester Final Assessments](/entities/semester-final-assessments-business-management-and-entrepreneurship.md). The only Unit 8–related assessment detail available is that the Comprehensive Final covers key concepts from Units 1–8, with students in 8 teams of 4 each assigned to one unit [Semester Final Assessments](/entities/semester-final-assessments-business-management-and-entrepreneurship.md). No case study title is stated anywhere in the supplied material.",
+    "retrieved_sources": [
+      "entities/build-key-portfolio-stock-project",
+      "entities/semester-final-assessments-business-management-and-entrepreneurship"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.224,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.5,
+      "cited_concepts": [
+        "entities/semester-final-assessments-business-management-and-entrepreneurship"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "f8d3a162ab9507e021d83dd109118b60.pdf",
+    "question": "how many LEARNING OUTCOMES should be ANSWERed in UNIT 8? ",
+    "answer": "10",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[6, 7]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The provided wiki documents do not contain information about Unit 8 or the number of learning outcomes to be answered in it. The only learning-outcome material available is the list of seven CSUSB & Chaffey course learning outcomes for the Business Management and Entrepreneurship course ([Course Learning Outcomes (Business Management and Entrepreneurship)](/concepts/course-learning-outcomes-business-management-and-entrepreneurship)), which is not tied to any unit numbering. The other document covers the Build Key Portfolio Stock Project ([Build Key Portfolio Stock Project](/entities/build-key-portfolio-stock-project)) and is unrelated to unit learning outcomes.\n\nThe wiki does not contain sufficient information to answer this question.",
+    "retrieved_sources": [
+      "concepts/course-learning-outcomes-business-management-and-entrepreneurship",
+      "entities/build-key-portfolio-stock-project"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.591,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "f8d3a162ab9507e021d83dd109118b60.pdf",
+    "question": "what's the topic of UNIT 14?",
+    "answer": "Using Financial Information and Accounting",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[10]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The provided wiki documents do not contain any information about a \"UNIT 14\" or its topic. Neither the Supply Chain Management and Logistics page nor the Course Objectives page mentions units by number.\n\nThe only partial information available is that the course covers supply chain management and logistics, with objectives A through J addressing topics such as information systems for logistics, customer service objectives, unit loads in materials handling, packaging functions, freight forwarders and transportation specialists, site location characteristics, inventory flow patterns, warehouse safety and design, and international trade distribution [Course Objectives](/concepts/course-objectives-business-management-and-entrepreneurship.md). However, none of these are labeled as \"UNIT 14,\" so I cannot confirm which topic that unit covers.",
+    "retrieved_sources": [
+      "concepts/supply-chain-management-and-logistics",
+      "concepts/course-objectives-business-management-and-entrepreneurship"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.971,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.5,
+      "cited_concepts": [
+        "concepts/course-objectives-business-management-and-entrepreneurship"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "14,",
+          "claim": "The only partial information available is that the course covers supply chain management and logistics, with objectives A through J addressing topics such as information systems for logistics, customer service objectives, unit loads in mate"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "2312.09390v1.pdf",
+    "question": "For the paper by Long Ouyang published in 2022, how many times has it been cited? \n",
+    "answer": "6",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[1, 2, 5, 7, 32, 47]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Academic paper",
+    "response": "The wiki does not contain sufficient information to answer this question. None of the provided documents report a citation count for any paper by Long Ouyang published in 2022.\n\nWhat the documents do contain:\n\n- A paper on weak-to-strong generalization, titled \"Weak-to-Strong Generalization: Eliciting Strong Capabilities with Weak Supervision\" (arXiv 2312.09390v1, published 2023 Dec, OpenAI), whose listed authors are Collin Burns, Pavel Izmailov, Jan Hendrik Kirchner, Bowen Baker, Leo Gao, Leopold Aschenbrenner, Yining Chen, Adrien Ecoffet, Manas Joglekar, Jeff Wu, Jan Leike, and Ilya Sutskever — Long Ouyang is not among them, and the publication year is 2023, not 2022 [Weak-to-Strong Generalization](/concepts/weak-to-strong-generalization.md).\n- A concept page on prompting for knowledge elicitation, which discusses zero-shot and 5-shot prompting results and cites \"Brown et al. (2020)\" but gives no citation counts and no Long Ouyang paper [Prompting for Knowledge Elicitation](/concepts/prompting-for-knowledge-elicitation.md).\n\nNo citation metric (e.g., citation count) for any paper appears anywhere in the supplied documents, so the requested figure cannot be verified from this wiki.",
+    "retrieved_sources": [
+      "concepts/prompting-for-knowledge-elicitation",
+      "concepts/weak-to-strong-generalization"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 5.589,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.5,
+      "cited_concepts": [
+        "concepts/prompting-for-knowledge-elicitation",
+        "concepts/weak-to-strong-generalization"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "2023,",
+          "claim": "- A paper on weak-to-strong generalization, titled \"Weak-to-Strong Generalization: Eliciting Strong Capabilities with Weak Supervision\" (arXiv 2312.09390v1, published 2023 Dec, OpenAI), whose listed authors are Collin Burns, Pavel Izmailov,"
+        },
+        {
+          "value": "2022",
+          "claim": "- A paper on weak-to-strong generalization, titled \"Weak-to-Strong Generalization: Eliciting Strong Capabilities with Weak Supervision\" (arXiv 2312.09390v1, published 2023 Dec, OpenAI), whose listed authors are Collin Burns, Pavel Izmailov,"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 4
+    },
+    "error": null
+  },
+  {
+    "doc_id": "mi_phone.pdf",
+    "question": "How many steps are needed for editing an SMS?",
+    "answer": "4",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[22]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Guidebook",
+    "response": "Editing an SMS on a Mi Phone takes 4 steps, as documented in Chapter 4 of the Mi Phone User Guide [Mi Phone Messaging](/concepts/mi-phone-messaging.md):\n\n1. Tap the \"Compose\" button.\n2. Add a recipient — either type the contact's phone number directly, or type any letters or phone numbers of a contact, select the result from the speed search bar and press \"Add contacts\".\n3. Tap \"Text message\" to type the text.\n4. Tap the \"Send\" button.\n\nThese steps are listed on page 22 of the guide [Mi Phone Messaging](/concepts/mi-phone-messaging.md).\n\nOne exception worth noting: if you attach a picture, video or PPT during editing, the message is switched to MMS directly rather than remaining an SMS [Mi Phone Messaging](/concepts/mi-phone-messaging.md). The supported SMS attachment types are emoticon, contacts' information, mass name and everyday expressions [Mi Phone Messaging](/concepts/mi-phone-messaging.md).\n\nThe documents do not describe any failure handling or error-recovery procedure for these steps, so that part of the procedure is not covered by the wiki.",
+    "retrieved_sources": [
+      "concepts/mi-phone-messaging",
+      "concepts/mi-phone-calling"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 4.287,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.375,
+      "cited_concepts": [
+        "concepts/mi-phone-messaging"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 8
+    },
+    "error": null
+  },
+  {
+    "doc_id": "stereo_headset.pdf",
+    "question": "What if the USB AC adaptor supplies an output less than 1.5 A for the headset?",
+    "answer": "the charging time will increase, and the music playback time after 10 minutes of charging will decrease.",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[19]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Guidebook",
+    "response": "If the USB AC adaptor supplies an output current of less than 1.5 A, the headset will still charge, but the charging time will increase and the music playback time after 10 minutes of charging will decrease [Charging the Headset](/entities/charging-the-headset.md). This is because a commercially available USB AC adaptor capable of supplying an output current of 1.5 A or more is the requirement for normal charging [Charging the Headset](/entities/charging-the-headset.md), a specification also listed for the WH-1000XM4 [Sony WH-1000XM4 Wireless Noise Canceling Stereo Headset](/entities/sony-wh-1000xm4-wireless-noise-canceling-stereo-headset.md).\n\nNote that the documents do not state that charging fails or stops below 1.5 A — only that charging time increases and post-charge playback time decreases.",
+    "retrieved_sources": [
+      "entities/charging-the-headset",
+      "entities/sony-wh-1000xm4-wireless-noise-canceling-stereo-headset"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.238,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.5,
+      "cited_concepts": [
+        "entities/charging-the-headset",
+        "entities/sony-wh-1000xm4-wireless-noise-canceling-stereo-headset"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "NYU_graduate.pdf",
+    "question": "How many steps are needed to apply for housing and themed engagement communities?",
+    "answer": "3",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[25]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Brochure",
+    "response": "Applying for housing and themed engagement communities at NYU is a **three-step process** [NYU Housing Application Process](/entities/nyu-housing-application-process.md):\n\n1. **Log in to NYUHome and apply online under Housing Forms**, submitting the $1,000 reservation payment before May 1, 2022 [NYU Housing Application Process](/entities/nyu-housing-application-process.md).\n2. **Apply for preferred themed engagement communities** within the housing application [NYU Housing Application Process](/entities/nyu-housing-application-process.md). This is done through the themed engagement community section of the NYU Housing application [Explorations Communities](/concepts/explorations-communities.md).\n3. **Receive themed engagement community placement information by mid-July** [NYU Housing Application Process](/entities/nyu-housing-application-process.md).\n\nTwo conditions are worth noting: students may indicate **up to four preferences**, and top choices are usually accommodated [NYU First Year Residential Experience (FYRE)](/entities/nyu-first-year-residential-experience-fyre.md). However, applying for a Themed Engagement Community makes it the student's **first choice and dictates the housing assignment** [NYU First Year Residential Experience (FYRE)](/entities/nyu-first-year-residential-experience-fyre.md).\n\nThe documents do not describe any exceptions, failure handling, or what happens if the payment deadline is missed, so that part of the procedure is not covered by the available wiki pages.",
+    "retrieved_sources": [
+      "entities/nyu-housing-application-process",
+      "entities/nyu-first-year-residential-experience-fyre",
+      "concepts/explorations-communities"
+    ],
+    "pages_searched": 3,
+    "query_seconds": 3.902,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.8333,
+      "cited_concepts": [
+        "concepts/explorations-communities",
+        "entities/nyu-first-year-residential-experience-fyre",
+        "entities/nyu-housing-application-process"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "1.",
+          "claim": "1. **Log in to NYUHome and apply online under Housing Forms**, submitting the $1,000 reservation payment before May 1, 2022 [NYU Housing Application Process](/entities/nyu-housing-application-process.md)."
+        },
+        {
+          "value": "3.",
+          "claim": "3. **Receive themed engagement community placement information by mid-July** [NYU Housing Application Process](/entities/nyu-housing-application-process.md)."
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 6
+    },
+    "error": null
+  },
+  {
+    "doc_id": "NYU_graduate.pdf",
+    "question": "Where is Office of Residential Life & Housing Services?",
+    "answer": "726 Broadway, 7th Floor New York, NY 10003",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[28]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Brochure",
+    "response": "The NYU Office of Residential Life & Housing Services is located at 726 Broadway, 7th Floor, New York, NY 10003 [NYU Office of Residential Life & Housing Services](/entities/nyu-office-of-residential-life-housing-services.md). The same address is listed as the office's contact address in the FYRE program information [NYU First Year Residential Experience (FYRE)](/entities/nyu-first-year-residential-experience-fyre.md).\n\nFor contact, the office phone is 212.998.4600 (also listed as 212-998-4600) and the website is www.nyu.edu/living-on [NYU Office of Residential Life & Housing Services](/entities/nyu-office-of-residential-life-housing-services.md).",
+    "retrieved_sources": [
+      "entities/nyu-office-of-residential-life-housing-services",
+      "entities/nyu-first-year-residential-experience-fyre"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.011,
+    "verification": {
+      "status": "pass",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "entities/nyu-first-year-residential-experience-fyre",
+        "entities/nyu-office-of-residential-life-housing-services"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "NYU_graduate.pdf",
+    "question": "How large student community center can be which residents have access? Give me a number of its square.",
+    "answer": "8300",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[18]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Brochure",
+    "response": "The student community center at Clark Residence Hall is **8,300 square feet** [Othmer & Clark Halls](/entities/othmer-clark-halls.md). It is located on the main floor and includes a common kitchen, library, and screening room [Othmer & Clark Halls](/entities/othmer-clark-halls.md).\n\nThis is the only student community center size stated in the provided documents; the documents do not give a square footage for any community space at Othmer Hall.",
+    "retrieved_sources": [
+      "entities/othmer-clark-halls",
+      "concepts/explorations-communities"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.67,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.5,
+      "cited_concepts": [
+        "entities/othmer-clark-halls"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "a4f3ced0696009fec3179f493e4f28c4.pdf",
+    "question": "What company is a plaintiff?",
+    "answer": "LIBERTARIAN PARTY OF GEORGIA, INC",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[1]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The plaintiff in the case is the **Libertarian Party of Georgia, Inc.**, a Georgia nonprofit corporation, which served as Plaintiff-Appellee-Cross Appellant [Libertarian Party of Georgia, Inc.](/entities/libertarian-party-of-georgia-inc.md). It was joined by voters and prospective candidates, including individual plaintiffs Martin Cowen, Allen Buckley, Aaron Gilmer, and John Monds [Libertarian Party of Georgia, Inc.](/entities/libertarian-party-of-georgia-inc.md).\n\nThe Party brought suit against the Secretary of State of the State of Georgia, challenging Georgia's ballot-access requirements for prospective Libertarian candidates for U.S. Representative [Libertarian Party of Georgia, Inc.](/entities/libertarian-party-of-georgia-inc.md).",
+    "retrieved_sources": [
+      "entities/libertarian-party-of-georgia-inc",
+      "concepts/qualifying-fee"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.937,
+    "verification": {
+      "status": "pass",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "entities/libertarian-party-of-georgia-inc"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "a4f3ced0696009fec3179f493e4f28c4.pdf",
+    "question": "WHAT IS USCA CASE NUMBER?",
+    "answer": "21-13199",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[1]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "\"USCA\" is the case-number prefix used by the United States Court of Appeals in its docket captions. In the documents provided, the only instance of this format appears in the citation line of the Cowen appeal: \"USCA11 Case: 21-13199 Date Filed: 01/05/2022 Page: 1 of 17\" [Cowen v. Secretary of State of Georgia (11th Cir. 2022)](/entities/cowen-v.-secretary-of-state-of-georgia-11th-cir.-2022.md).\n\nSo the USCA case number in that document is **No. 21-13199**, the docket number for the appeal decided by the United States Court of Appeals for the Eleventh Circuit, filed 01/05/2022 [Cowen v. Secretary of State of Georgia (11th Cir. 2022)](/entities/cowen-v.-secretary-of-state-of-georgia-11th-cir.-2022.md).\n\nNote on scope: the wiki does not define the abbreviation \"USCA\" itself, nor does it state a general rule for how USCA case numbers are formatted. The identification above is limited to the one case number appearing in the provided documents.",
+    "retrieved_sources": [
+      "entities/georgia-ballot-access-system",
+      "entities/cowen-v.-secretary-of-state-of-georgia-11th-cir.-2022"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.088,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.6667,
+      "cited_concepts": [
+        "entities/cowen-v.-secretary-of-state-of-georgia-11th-cir.-2022"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "2022.",
+          "claim": "\"USCA\" is the case-number prefix used by the United States Court of Appeals in its docket captions. In the documents provided, the only instance of this format appears in the citation line of the Cowen appeal: \"USCA11 Case: 21-13199 Date Fi"
+        },
+        {
+          "value": "2022.",
+          "claim": "So the USCA case number in that document is **No. 21-13199**, the docket number for the appeal decided by the United States Court of Appeals for the Eleventh Circuit, filed 01/05/2022 [Cowen v. Secretary of State of Georgia (11th Cir. 2022)"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "a4f3ced0696009fec3179f493e4f28c4.pdf",
+    "question": "What is the date of the document? Format your answer as YYYY-MM-DD.",
+    "answer": "2022-01-05",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[1]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Administration/Industry file",
+    "response": "The document date is 2022-01-05, recorded as the \"Date filed\" for the case Cowen v. Secretary of State of Georgia (11th Cir. 2022) [Cowen v. Secretary of State of Georgia (11th Cir. 2022)](/entities/cowen-v.-secretary-of-state-of-georgia-11th-cir.-2022).\n\nNote that this date is the filing date of the court decision; the wiki page does not separately state a document publication date, so the filing date is the only date available for this document.",
+    "retrieved_sources": [
+      "entities/cowen-v.-secretary-of-state-of-georgia-11th-cir.-2022",
+      "entities/georgia-ballot-access-system"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 1.44,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "2312.04350v3.pdf",
+    "question": "What rung is the second ladder of causation refer to?",
+    "answer": "intervention",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[3]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Academic paper",
+    "response": "The second rung of the Ladder of Causation corresponds to **do-calculus**. The Causal Inference Engine notes that while some previous works refer to the CI engine in the context of Rung 2 queries — where it corresponds to do-calculus — the engine is here referred to in a more general sense encompassing all three rungs [Causal Inference Engine](/concepts/causal-inference-engine.md).\n\nIn CLADDER, this correspondence is used concretely: Rung 2 queries simplify to Rung 1 terms using do-calculus, while Rung 3 queries apply methods of counterfactual causal inference [Causal Inference Engine](/concepts/causal-inference-engine.md). Do-calculus rules are also described as sound and complete, meaning that if all terms on the right-hand side are available, the causal term on the left-hand side is identifiable [Identification in Causal Inference](/concepts/identification-in-causal-inference.md).",
+    "retrieved_sources": [
+      "concepts/causal-inference-engine",
+      "concepts/identification-in-causal-inference"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.418,
+    "verification": {
+      "status": "pass",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "concepts/causal-inference-engine",
+        "concepts/identification-in-causal-inference"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "SAO-StudentSupport_Guidebook-Content.pdf",
+    "question": "Excepted for the public holidays, when is the counter closed on Tuesday according to the provided operating hours?",
+    "answer": "5:00pm",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[7]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Guidebook",
+    "response": "The provided wiki documents do not contain any operating hours for a counter, nor any statement about a counter being closed on Tuesday. The only Tuesday-related fact present is that National Day fell on Tuesday, 9 Aug 2016, a public holiday on which the university is closed [University Holidays (2016 and 2017 Public Holidays)](/entities/university-holidays-2016-and-2017-public-holidays).\n\nThe required evidence for this aggregation — matching records of counter operating hours, an aggregation field, and a calculation result — is missing. The wiki does not contain sufficient information to answer this question.\n\nPartial information available:\n- The university is closed during public holidays in Singapore [University Holidays (2016 and 2017 Public Holidays)](/entities/university-holidays-2016-and-2017-public-holidays).\n- Classes proceed as usual on the following Monday if a public holiday falls on a Saturday [University Holidays (2016 and 2017 Public Holidays)](/entities/university-holidays-2016-and-2017-public-holidays).\n- SAO-Student Support is located on level 4 of the Student Services Centre, with telephone (65) 6790 6823 during office hours and (65) 6790 5200 for the 24-hour Campus Security Hotline [Pastoral Care](/concepts/pastoral-care) — but no counter opening or closing times are given.",
+    "retrieved_sources": [
+      "entities/university-holidays-2016-and-2017-public-holidays",
+      "concepts/pastoral-care"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 3.067,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 5
+    },
+    "error": null
+  },
+  {
+    "doc_id": "ACTIVISIONBLIZZARD_2019_10K.pdf",
+    "question": "what value stock does Activsion Blizzard repurchase in FY2019? Answer in USD billion\n",
+    "answer": "0",
+    "answer_format": "Float",
+    "task_type": "lookup",
+    "evidence_pages": "[29]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "Activision Blizzard repurchased **no shares** under its FY2019 repurchase program, so the value repurchased was **$0 billion**. The Board authorized repurchase of up to $1.5 billion of common stock on January 31, 2019, for the two-year period from February 14, 2019 until the earlier of February 13, 2021 and a Board determination to discontinue the program, but no shares were repurchased to date [Activision Blizzard Share Repurchase Programs](/concepts/activision-blizzard-share-repurchase-programs) [Activision Blizzard Common Stock, Dividends, and Share Repurchase Programs](/entities/activision-blizzard-common-stock-dividends-and-share-repurchase-programs).\n\nFor comparison, the earlier 2017 program authorized up to $1 billion of common stock for the period February 13, 2017 through February 12, 2019, and likewise no shares were repurchased under it [Activision Blizzard Share Repurchase Programs](/concepts/activision-blizzard-share-repurchase-programs).",
+    "retrieved_sources": [
+      "concepts/activision-blizzard-share-repurchase-programs",
+      "entities/activision-blizzard-common-stock-dividends-and-share-repurchase-programs"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 4.868,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "COSTCO_2021_10K.pdf",
+    "question": "How much shares did COSTCO repurchase in FY2021?",
+    "answer": "1358000",
+    "answer_format": "Float",
+    "task_type": "lookup",
+    "evidence_pages": "[29]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "In FY2021, Costco repurchased **1,358,000 shares** at an average price of **$364.39**, for a total of approximately **$495** (million) [Costco Stock Repurchase and Dividends](/concepts/costco-stock-repurchase-and-dividends.md).\n\nFor context, this compares with 643,000 shares repurchased in 2020 and 1,097,000 in 2019 [Costco Stock Repurchase and Dividends](/concepts/costco-stock-repurchase-and-dividends.md).",
+    "retrieved_sources": [
+      "concepts/costco-stock-repurchase-and-dividends",
+      "concepts/covid-19-impact-on-costco"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.025,
+    "verification": {
+      "status": "pass",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "concepts/costco-stock-repurchase-and-dividends"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "COSTCO_2021_10K.pdf",
+    "question": "How much did COSTCO spend on repurchasing of common stock in FY2021?Answer in millions.\n",
+    "answer": "495.00",
+    "answer_format": "Float",
+    "task_type": "lookup",
+    "evidence_pages": "[29]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "Costco spent approximately $495 million repurchasing its common stock in FY2021, buying 1,358,000 shares at an average price of $364.39 [Costco Stock Repurchase and Dividends](/concepts/costco-stock-repurchase-and-dividends.md).\n\nFor context, this compares with $198 million in FY2020 (643,000 shares at an average $308.45) and $247 million in FY2019 (1,097,000 shares at an average $225.16) [Costco Stock Repurchase and Dividends](/concepts/costco-stock-repurchase-and-dividends.md). The repurchases were made under a $4,000 million authorization approved in April 2019 and expiring April 2023, leaving $3,250 million available at the end of 2021 [Costco Stock Repurchase and Dividends](/concepts/costco-stock-repurchase-and-dividends.md).",
+    "retrieved_sources": [
+      "concepts/costco-stock-repurchase-and-dividends",
+      "concepts/costco-property-and-equipment"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.233,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "concepts/costco-stock-repurchase-and-dividends"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "2023,",
+          "claim": "For context, this compares with $198 million in FY2020 (643,000 shares at an average $308.45) and $247 million in FY2019 (1,097,000 shares at an average $225.16) [Costco Stock Repurchase and Dividends](/concepts/costco-stock-repurchase-and-"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "COSTCO_2021_10K.pdf",
+    "question": "Costco's FY2021 10-K states that its financial and operational performance is highly dependent on operations that comprised 86% of net sales and 81% of operating income in 2021. Which operations are these?",
+    "answer": "the financial performance of our U.S. and Canadian operations.",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[9]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "The operations are Costco's **U.S. and Canadian operations**. Costco's FY2021 10-K states that its financial and operational performance is highly dependent on these operations, which comprised 86% of net sales and 81% of operating income in 2021 [Costco Risk Factors](/concepts/costco-risk-factors.md).\n\nWithin the U.S., the filing further notes a high dependence on California operations, which comprised 28% of U.S. net sales in 2021 [Costco Risk Factors](/concepts/costco-risk-factors.md).",
+    "retrieved_sources": [
+      "concepts/costco-risk-factors",
+      "concepts/costco-warehouse-and-property-portfolio"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.341,
+    "verification": {
+      "status": "pass",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "concepts/costco-risk-factors"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "NETFLIX_2015_10K.pdf",
+    "question": "what is advertsing expense of Neflix in FY 2015? Answer in millions",
+    "answer": "714.3",
+    "answer_format": "Float",
+    "task_type": "lookup",
+    "evidence_pages": "[47]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "The provided wiki documents do not contain Netflix's advertising expense for FY 2015. The only marketing-related figure present is for the Domestic DVD segment, which reported $0 in marketing for 2015 [Domestic DVD Segment](/entities/domestic-dvd-segment.md). That is a segment-level marketing line, not a company-wide advertising expense, so it does not answer the question.\n\nThe documents otherwise cover free cash flow and its components [Netflix Free Cash Flow](/concepts/netflix-free-cash-flow.md) and DVD segment financials [Domestic DVD Segment](/entities/domestic-dvd-segment.md), but neither states a total advertising expense figure for FY 2015.\n\nThe wiki does not contain sufficient information to answer this question.",
+    "retrieved_sources": [
+      "concepts/netflix-free-cash-flow",
+      "entities/domestic-dvd-segment"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 3.104,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.6667,
+      "cited_concepts": [
+        "concepts/netflix-free-cash-flow",
+        "entities/domestic-dvd-segment"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "2015.",
+          "claim": "The provided wiki documents do not contain Netflix's advertising expense for FY 2015. The only marketing-related figure present is for the Domestic DVD segment, which reported $0 in marketing for 2015 [Domestic DVD Segment](/entities/domest"
+        },
+        {
+          "value": "2015.",
+          "claim": "The documents otherwise cover free cash flow and its components [Netflix Free Cash Flow](/concepts/netflix-free-cash-flow.md) and DVD segment financials [Domestic DVD Segment](/entities/domestic-dvd-segment.md), but neither states a total a"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "NETFLIX_2015_10K.pdf",
+    "question": "what method did netflix use to pay the dividend to shareholders in FY2015.",
+    "answer": "seven-for-one stock split",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[55]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "Netflix paid the FY2015 dividend to shareholders in the form of a stock dividend — specifically, a seven-for-one stock split declared as a stock dividend.\n\nThe Board of Directors declared the seven-for-one stock split in the form of a stock dividend on June 23, 2015, and it was paid on July 14, 2015 to all shareholders of record as of July 2, 2015 [Netflix Seven-for-One Stock Split](/entities/netflix-seven-for-one-stock-split.md). Outstanding share and per-share amounts for all periods presented were retroactively adjusted to reflect the split [Netflix Seven-for-One Stock Split](/entities/netflix-seven-for-one-stock-split.md).\n\nNote that the documents describe this stock dividend only; they do not mention any cash dividend paid to shareholders in FY2015.",
+    "retrieved_sources": [
+      "entities/netflix-seven-for-one-stock-split",
+      "concepts/netflix-streaming-content-accounting"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.349,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.3333,
+      "cited_concepts": [
+        "entities/netflix-seven-for-one-stock-split"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "NETFLIX_2015_10K.pdf",
+    "question": "what is operating leases occurred in FY 2015 for Netfilx?Answer in million.",
+    "answer": "34.7",
+    "answer_format": "Float",
+    "task_type": "lookup",
+    "evidence_pages": "[54]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "The wiki does not contain a figure specifically labeled \"operating leases occurred in FY 2015\" for Netflix. The closest available data is the total **lease obligations** of $529,744 thousand (i.e., $529.7 million) reported in the contractual obligations table at December 31, 2015 [Netflix Content Obligations](/entities/netflix-content-obligations.md).\n\nThat lease obligation figure is a combined total, not a standalone operating-lease expense. It is described as including lease financing obligations of $21.1 million related to the current Los Gatos headquarters, commitments of $428.7 million for expanded headquarters and new Los Angeles office space, and other commitments of $79.9 million for facilities under non-cancelable operating leases with expiration dates varying through approximately 2028 [Netflix Content Obligations](/entities/netflix-content-obligations.md).\n\nSo, if the question is asking for Netflix's total lease obligations at FY2015 year-end, the answer is **$529.7 million**. If it is asking for the operating-lease expense recognized during FY 2015, that specific amount is not stated in the provided documents.",
+    "retrieved_sources": [
+      "entities/netflix-content-obligations",
+      "concepts/netflix-fy2015-risk-factors",
+      "entities/netflix-inc",
+      "entities/netflix-seven-for-one-stock-split",
+      "concepts/netflix-free-cash-flow"
+    ],
+    "pages_searched": 5,
+    "query_seconds": 5.487,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.6667,
+      "cited_concepts": [
+        "entities/netflix-content-obligations"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "529.7",
+          "claim": "The wiki does not contain a figure specifically labeled \"operating leases occurred in FY 2015\" for Netflix. The closest available data is the total **lease obligations** of $529,744 thousand (i.e., $529.7 million) reported in the contractua"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "AMAZON_2017_10K.pdf",
+    "question": "How do Amazon recognize lease costs?",
+    "answer": "straight-line basis without regard to deferred payment terms",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[47]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "The provided wiki documents do not contain a description of how Amazon recognizes lease costs (for example, the lease cost recognition or classification policy under its accounting policies). The documents cover Amazon's property and equipment note, free cash flow measures, and certain accounting policies, but none of them state a lease cost recognition policy.\n\nWhat the documents do contain on related lease matters:\n\n- Amazon capitalizes construction in progress and records a corresponding long-term liability for build-to-suit lease agreements where it is considered the owner during the construction period; for buildings under build-to-suit arrangements where Amazon has taken occupancy and which do not qualify for sales recognition under sale-leaseback guidance, Amazon continues to be the deemed owner, principally due to significant investment in tenant improvements, and buildings are depreciated over the shorter of useful lives or the related lease terms [Amazon Property and Equipment (Note 3)](/concepts/amazon-property-and-equipment-note-3.md).\n- Certain build-to-suit lease arrangements and finance leases provide purchase options; upon occupancy, long-term construction obligations are considered long-term finance lease obligations, with amounts payable during the next 12 months recorded as \"Accrued expenses and other\" [Amazon Property and Equipment (Note 3)](/concepts/amazon-property-and-equipment-note-3.md).\n- Capital lease gross assets were $17.0B (2016) and $26.4B (2017), and finance lease gross assets were $2.9B (2016) and $5.4B (2017) [Amazon Property and Equipment (Note 3)](/concepts/amazon-property-and-equipment-note-3.md).\n- \"Accrued expenses and other\" includes liabilities for leases and asset retirement obligations [Amazon Accounting Policies — Capitalized Content, Investments, Long-Lived Assets, Unearned Revenue, Foreign Currency](/concepts/amazon-accounting-policies-capitalized-content-investments-long-lived-assets-unearned-revenue-foreign-currency.md).\n- Lease principal repayments affect Amazon's non-GAAP free cash flow measures: principal repayments of capital lease obligations were $(2,462)M (2015), $(3,860)M (2016), $(4,799)M (2017), and principal repayments of finance lease obligations were $(121)M (2015), $(147)M (2016), $(200)M (2017) [Amazon 2017 Free Cash Flow Measures](/concepts/amazon-2017-free-cash-flow-measures.md).\n\nThe specific lease cost recognition policy is not stated in these documents, so it cannot be answered from the provided material.",
+    "retrieved_sources": [
+      "concepts/amazon-business-overview-and-financial-focus-2017-form-10-k",
+      "concepts/amazon-property-and-equipment-note-3",
+      "concepts/amazon-accounting-policies-capitalized-content-investments-long-lived-assets-unearned-revenue-foreign-currency",
+      "concepts/amazon-2017-free-cash-flow-measures"
+    ],
+    "pages_searched": 4,
+    "query_seconds": 5.006,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.625,
+      "cited_concepts": [
+        "concepts/amazon-2017-free-cash-flow-measures",
+        "concepts/amazon-accounting-policies-capitalized-content-investments-long-lived-assets-unearned-revenue-foreign-currency",
+        "concepts/amazon-property-and-equipment-note-3"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 8
+    },
+    "error": null
+  },
+  {
+    "doc_id": "AMAZON_2017_10K.pdf",
+    "question": "what amount is liabilities for unredeemed gift cards in FY2017 for Amazon? Answer in billion.",
+    "answer": "3.0",
+    "answer_format": "Float",
+    "task_type": "lookup",
+    "evidence_pages": "[48]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "Amazon's liability for unredeemed gift cards was **$3.0 billion** as of December 31, 2017 (compared with $2.4 billion as of December 31, 2016) [Amazon Accounting Policies — Capitalized Content, Investments, Long-Lived Assets, Unearned Revenue, Foreign Currency](/concepts/amazon-accounting-policies-capitalized-content-investments-long-lived-assets-unearned-revenue-foreign-currency).\n\nThis liability is included within \"Accrued expenses and other\" on the balance sheet, and gift card revenue is recognized when the card expires or when the likelihood of redemption becomes remote, generally two years from the date of issuance [Amazon Accounting Policies — Capitalized Content, Investments, Long-Lived Assets, Unearned Revenue, Foreign Currency](/concepts/amazon-accounting-policies-capitalized-content-investments-long-lived-assets-unearned-revenue-foreign-currency).",
+    "retrieved_sources": [
+      "concepts/amazon-accounting-policies-capitalized-content-investments-long-lived-assets-unearned-revenue-foreign-currency",
+      "entities/amazon-2017-form-10-k"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 8.498,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "AMAZON_2017_10K.pdf",
+    "question": "what is depreciation expense on property and equipment in 2017 for Amazon? Answer in billion",
+    "answer": "8.8",
+    "answer_format": "Float",
+    "task_type": "lookup",
+    "evidence_pages": "[52]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "Amazon's depreciation expense on property and equipment in 2017 was **$8.8 billion** [Amazon Property and Equipment (Note 3)](/concepts/amazon-property-and-equipment-note-3).\n\nThis figure includes amortization of property and equipment acquired under capital leases of $5.4 billion for 2017, and it covers the full property and equipment note (which includes land and buildings, equipment and internal-use software, other corporate assets, and construction in progress) [Amazon Property and Equipment (Note 3)](/concepts/amazon-property-and-equipment-note-3). For context, the same note reports depreciation expense of $4.9 billion in 2015 and $6.4 billion in 2016 [Amazon Property and Equipment (Note 3)](/concepts/amazon-property-and-equipment-note-3).",
+    "retrieved_sources": [
+      "concepts/amazon-property-and-equipment-note-3",
+      "concepts/amazon-liquidity-and-capital-resources-2017-form-10-k"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 2.98,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "ADOBE_2015_10K.pdf",
+    "question": "what channel  is the majority of ADBE product sold by in FY2015?",
+    "answer": "a software subscription model",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[13]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "In fiscal 2015, the majority of Adobe's products were sold through a software subscription model, in which customers purchase access to a product for a specific period of time during which they always have rights to use the most recent version [Adobe Operations, Marketing and Sales](/concepts/adobe-operations-marketing-and-sales.md).\n\nAdobe also markets and licenses products directly through its sales force and its own website (www.adobe.com), and through channel partners such as distributors, retailers, software developers, SIs, ISVs, VARs, and OEM/hardware bundle customers [Adobe Operations, Marketing and Sales](/concepts/adobe-operations-marketing-and-sales.md). Packaged products are still produced for a subset of the business, but that percentage is declining as digital delivery grows [Adobe Operations, Marketing and Sales](/concepts/adobe-operations-marketing-and-sales.md).",
+    "retrieved_sources": [
+      "concepts/adobe-operations-marketing-and-sales",
+      "concepts/adobe-fiscal-2015-cost-of-revenue-and-operating-expenses"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 4.302,
+    "verification": {
+      "status": "pass",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "concepts/adobe-operations-marketing-and-sales"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  },
+  {
+    "doc_id": "BESTBUY_2023_10K.pdf",
+    "question": "how does Best Buy record Merchandise inventories?",
+    "answer": "the lower of cost or net realizable value",
+    "answer_format": "Str",
+    "task_type": "lookup",
+    "evidence_pages": "[45]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "The provided wiki documents do not describe the specific basis or method by which Best Buy records (measures) its merchandise inventories — for example, whether inventories are stated at the lower of cost or market, and which cost flow method (such as FIFO or weighted average) is used. That accounting policy is not stated in the documents.\n\nWhat the documents do provide is the reported inventory amount and related classification:\n\n- Merchandise inventories were $5,140 million as of January 28, 2023, and $5,965 million as of January 29, 2022, and are presented within current assets [Best Buy Fiscal 2023 Consolidated Balance Sheets](/concepts/best-buy-fiscal-2023-consolidated-balance-sheets).\n- Inventory carrying values are noted as being subject to critical accounting estimates [Best Buy Fiscal 2023 Consolidated Balance Sheets](/concepts/best-buy-fiscal-2023-consolidated-balance-sheets).\n- Costs that flow into inventory and are later recognized in Cost of Sales include product costs such as freight from vendors to distribution centers, vendor allowances not reimbursing specific costs, cash discounts, physical inventory losses, markdowns, customer shipping and handling, distribution network operating costs, and store freight [Best Buy Cost of Sales and SG&A Expense Classification](/concepts/best-buy-cost-of-sales-and-sg-a-expense-classification).\n\nThe measurement basis (cost method) and cost-flow assumption for merchandise inventories are not verifiable from the supplied pages.",
+    "retrieved_sources": [
+      "concepts/best-buy-fiscal-2023-consolidated-balance-sheets",
+      "concepts/best-buy-cost-of-sales-and-sg-a-expense-classification"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 4.526,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 0.0,
+      "cited_concepts": [],
+      "unsupported_citations": [],
+      "unverified_values": [],
+      "unsupported_claims": [],
+      "claims_checked": 6
+    },
+    "error": null
+  },
+  {
+    "doc_id": "BESTBUY_2023_10K.pdf",
+    "question": "what goodwill does Best Buy have for for the fiscal year ending January 28, 2023?",
+    "answer": "1383",
+    "answer_format": "Int",
+    "task_type": "lookup",
+    "evidence_pages": "[39]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "Best Buy's total goodwill for the fiscal year ending January 28, 2023 was **$1,383 million**, as reported on its consolidated balance sheet [Best Buy Fiscal 2023 Consolidated Balance Sheets](/concepts/best-buy-fiscal-2023-consolidated-balance-sheets.md).\n\nThis total is split across two reporting units: Best Buy Domestic at $492 million and Best Buy Health at $891 million as of January 28, 2023 [Best Buy Summary of Significant Accounting Policies](/concepts/best-buy-summary-of-significant-accounting-policies.md) [Best Buy Fiscal 2023 Critical Accounting Estimates](/concepts/best-buy-fiscal-2023-critical-accounting-estimates.md). Goodwill is tested for impairment annually in the fiscal fourth quarter at the reporting unit level [Best Buy Fiscal 2023 Critical Accounting Estimates](/concepts/best-buy-fiscal-2023-critical-accounting-estimates.md).\n\nFor comparison, goodwill was $1,384 million as of January 29, 2022 [Best Buy Fiscal 2023 Consolidated Balance Sheets](/concepts/best-buy-fiscal-2023-consolidated-balance-sheets.md).",
+    "retrieved_sources": [
+      "concepts/best-buy-summary-of-significant-accounting-policies",
+      "concepts/best-buy-fiscal-2023-critical-accounting-estimates",
+      "concepts/best-buy-fiscal-2023-liquidity-and-capital-resources",
+      "concepts/best-buy-fiscal-2023-consolidated-balance-sheets",
+      "concepts/best-buy-fiscal-2023-consolidated-statements-of-cash-flows"
+    ],
+    "pages_searched": 5,
+    "query_seconds": 8.036,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "concepts/best-buy-fiscal-2023-consolidated-balance-sheets",
+        "concepts/best-buy-fiscal-2023-critical-accounting-estimates",
+        "concepts/best-buy-summary-of-significant-accounting-policies"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "2023-",
+          "claim": "Best Buy's total goodwill for the fiscal year ending January 28, 2023 was **$1,383 million**, as reported on its consolidated balance sheet [Best Buy Fiscal 2023 Consolidated Balance Sheets](/concepts/best-buy-fiscal-2023-consolidated-balan"
+        },
+        {
+          "value": "2023-",
+          "claim": "This total is split across two reporting units: Best Buy Domestic at $492 million and Best Buy Health at $891 million as of January 28, 2023 [Best Buy Summary of Significant Accounting Policies](/concepts/best-buy-summary-of-significant-acc"
+        },
+        {
+          "value": "2023-",
+          "claim": "This total is split across two reporting units: Best Buy Domestic at $492 million and Best Buy Health at $891 million as of January 28, 2023 [Best Buy Summary of Significant Accounting Policies](/concepts/best-buy-summary-of-significant-acc"
+        },
+        {
+          "value": "2023-",
+          "claim": "For comparison, goodwill was $1,384 million as of January 29, 2022 [Best Buy Fiscal 2023 Consolidated Balance Sheets](/concepts/best-buy-fiscal-2023-consolidated-balance-sheets.md)."
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 3
+    },
+    "error": null
+  },
+  {
+    "doc_id": "BESTBUY_2023_10K.pdf",
+    "question": "what proportion does Best Buy have female employees in new, salaried field positions  for the fiscal year ending January 28, 2023?",
+    "answer": "25%",
+    "answer_format": "Float",
+    "task_type": "lookup",
+    "evidence_pages": "[7]",
+    "evidence_sources": "['Pure-text (Plain-text)']",
+    "doc_type": "Financial report",
+    "response": "For the fiscal year ending January 28, 2023 (fiscal 2023), women made up **25%** of new salaried field positions filled at Best Buy, against a goal of filling one of every three such positions [Best Buy Human Capital Management](/concepts/best-buy-human-capital-management.md).\n\nFor context, the comparable figure for new salaried *corporate* positions was 37% BIPOC, also against a one-of-three goal [Best Buy Human Capital Management](/concepts/best-buy-human-capital-management.md).",
+    "retrieved_sources": [
+      "concepts/best-buy-human-capital-management",
+      "concepts/best-buy-environmental-and-social-goals"
+    ],
+    "pages_searched": 2,
+    "query_seconds": 7.135,
+    "verification": {
+      "status": "warning",
+      "citation_coverage": 1.0,
+      "cited_concepts": [
+        "concepts/best-buy-human-capital-management"
+      ],
+      "unsupported_citations": [],
+      "unverified_values": [
+        {
+          "value": "28,",
+          "claim": "For the fiscal year ending January 28, 2023 (fiscal 2023), women made up **25%** of new salaried field positions filled at Best Buy, against a goal of filling one of every three such positions [Best Buy Human Capital Management](/concepts/b"
+        }
+      ],
+      "unsupported_claims": [],
+      "claims_checked": 2
+    },
+    "error": null
+  }
+]

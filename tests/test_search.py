@@ -104,16 +104,18 @@ class TestGraphSearch:
         page = page_dir / "llm-wiki.md"
         page.write_text("# LLM Wiki\n\nCompiled knowledge base.", encoding="utf-8")
         (graph_dir / "entities.json").write_text(
-            json.dumps({
-                "llm-wiki": {
-                    "id": "llm-wiki",
-                    "type": "concept",
-                    "name": "LLM Wiki",
-                    "aliases": ["个人知识库", "LLM维基"],
-                    "confidence": 0.95,
-                    "page": "pages/concepts/llm-wiki.md",
+            json.dumps(
+                {
+                    "llm-wiki": {
+                        "id": "llm-wiki",
+                        "type": "concept",
+                        "name": "LLM Wiki",
+                        "aliases": ["个人知识库", "LLM维基"],
+                        "confidence": 0.95,
+                        "page": "pages/concepts/llm-wiki.md",
+                    }
                 }
-            }),
+            ),
             encoding="utf-8",
         )
         (graph_dir / "edges.json").write_text('{"edges":[]}', encoding="utf-8")
@@ -181,9 +183,7 @@ class TestGraphSearch:
 
         results = search.graph_search("第1题需要哪些前置知识", str(graph_dir), limit=5)
 
-        prerequisite = next(
-            item for item in results if item["entity_id"] == "concepts/ratio"
-        )
+        prerequisite = next(item for item in results if item["entity_id"] == "concepts/ratio")
         assert prerequisite["graph_path"] == [
             "concepts/question-1",
             "concepts/density",
@@ -216,10 +216,12 @@ class TestReciprocalRankFusion:
         assert len(fused[0]["streams"]) == 2
 
     def test_higher_rank_gets_higher_score(self):
-        results = [[
-            {"file": "top.md", "score": 1.0, "stream": "bm25"},
-            {"file": "mid.md", "score": 0.5, "stream": "bm25"},
-        ]]
+        results = [
+            [
+                {"file": "top.md", "score": 1.0, "stream": "bm25"},
+                {"file": "mid.md", "score": 0.5, "stream": "bm25"},
+            ]
+        ]
         fused = search.reciprocal_rank_fusion(results)
         first = fused[0]
         assert first["rrf_score"] > 0
@@ -248,9 +250,7 @@ tags:
         )
         monkeypatch.setattr(search, "WIKI_DIR", wiki)
         monkeypatch.setattr(search, "PAGES_DIR", wiki / "pages")
-        monkeypatch.setattr(
-            search, "_METADATA_CACHE_FILE", wiki / "graph" / ".metadata_index.json"
-        )
+        monkeypatch.setattr(search, "_METADATA_CACHE_FILE", wiki / "graph" / ".metadata_index.json")
         monkeypatch.setattr(search, "_cache_marker", None)
 
         results = search.metadata_search("OAF", str(wiki / "pages"), limit=5)
@@ -270,24 +270,18 @@ tags:
             "aliases: [密度]\nkeywords: [质量体积比]\n---\n# 质量密度\n",
             encoding="utf-8",
         )
-        monkeypatch.setattr(
-            search, "_METADATA_CACHE_FILE", wiki / "graph" / ".metadata_index.json"
-        )
+        monkeypatch.setattr(search, "_METADATA_CACHE_FILE", wiki / "graph" / ".metadata_index.json")
         monkeypatch.setattr(search, "_cache_marker", None)
 
         alias_results = search.metadata_search("密度", str(wiki / "pages"), limit=3)
-        keyword_results = search.metadata_search(
-            "质量体积比", str(wiki / "pages"), limit=3
-        )
+        keyword_results = search.metadata_search("质量体积比", str(wiki / "pages"), limit=3)
 
         assert alias_results[0]["file"] == "concepts/mass-density"
         assert "密度" in alias_results[0]["aliases"]
         assert keyword_results[0]["file"] == "concepts/mass-density"
         assert "质量体积比" in keyword_results[0]["keywords"]
 
-    def test_nested_okf_change_invalidates_bm25_and_metadata_caches(
-        self, tmp_path, monkeypatch
-    ):
+    def test_nested_okf_change_invalidates_bm25_and_metadata_caches(self, tmp_path, monkeypatch):
         wiki = tmp_path / ".wiki"
         pages = wiki / "pages"
         first = pages / "concepts" / "first.md"
@@ -329,9 +323,7 @@ tags:
         (wiki / "graph" / "edges.json").write_text('{"edges":[]}', encoding="utf-8")
         monkeypatch.setattr(search, "WIKI_DIR", wiki)
         monkeypatch.setattr(search, "PAGES_DIR", wiki / "pages")
-        monkeypatch.setattr(
-            search, "_METADATA_CACHE_FILE", wiki / "graph" / ".metadata_index.json"
-        )
+        monkeypatch.setattr(search, "_METADATA_CACHE_FILE", wiki / "graph" / ".metadata_index.json")
         monkeypatch.setattr(search, "_cache_marker", None)
 
         result = search.search_doctor(wiki)

@@ -1,7 +1,6 @@
 """Tests for graph.py — knowledge graph builder and querier."""
 
 import json
-import os
 from pathlib import Path
 
 import graph
@@ -24,7 +23,7 @@ class TestBuildEntityRegistry:
     def test_handles_non_md_files(self, wiki_dir, sample_entities):
         entities_path = Path(wiki_dir) / ".wiki" / "graph" / "entities.json"
         data = json.loads(entities_path.read_text())
-        assert all(not k.endswith('.json') for k in data.keys())
+        assert all(not k.endswith(".json") for k in data.keys())
 
 
 class TestBuildEdges:

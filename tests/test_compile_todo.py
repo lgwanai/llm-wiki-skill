@@ -135,11 +135,13 @@ def test_agent_completion_attaches_and_verifies_cited_source_images(tmp_path: Pa
         manifest_path,
         source="geography.md",
         mode="agent",
-        items=[{
-            "id": "chunk-0001",
-            "artifact_path": str(artifact),
-            "artifact_sha256": compile_todo.sha256_file(artifact),
-        }],
+        items=[
+            {
+                "id": "chunk-0001",
+                "artifact_path": str(artifact),
+                "artifact_sha256": compile_todo.sha256_file(artifact),
+            }
+        ],
         metadata={"wiki_dir": str(wiki), "study_material": True},
     )
 
@@ -175,11 +177,13 @@ def test_image_bearing_study_output_requires_page_or_section_citation(tmp_path: 
         manifest_path,
         source="geography.md",
         mode="agent",
-        items=[{
-            "id": "chunk-0001",
-            "artifact_path": str(artifact),
-            "artifact_sha256": compile_todo.sha256_file(artifact),
-        }],
+        items=[
+            {
+                "id": "chunk-0001",
+                "artifact_path": str(artifact),
+                "artifact_sha256": compile_todo.sha256_file(artifact),
+            }
+        ],
         metadata={"wiki_dir": str(wiki), "study_material": True},
     )
     compile_todo.update_task(manifest_path, "chunk-0001", "in_progress")

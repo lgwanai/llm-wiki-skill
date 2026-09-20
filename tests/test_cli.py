@@ -53,9 +53,7 @@ if __name__ == "__main__":
     )
     env = os.environ.copy()
     existing = env.get("PYTHONPATH")
-    env["PYTHONPATH"] = (
-        f"{project_root}{os.pathsep}{existing}" if existing else str(project_root)
-    )
+    env["PYTHONPATH"] = f"{project_root}{os.pathsep}{existing}" if existing else str(project_root)
 
     result = subprocess.run(
         [sys.executable, str(probe)],

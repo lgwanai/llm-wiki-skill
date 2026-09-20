@@ -30,12 +30,14 @@ def _read_page(path: Path) -> tuple[dict, str] | None:
     if not match:
         return None
     import yaml
+
     fm = yaml.safe_load(match.group(1)) or {}
     return (fm if isinstance(fm, dict) else {}, match.group(2))
 
 
 def _write_page(path: Path, frontmatter: dict, body: str) -> None:
     import yaml
+
     content = (
         "---\n"
         + yaml.safe_dump(frontmatter, allow_unicode=True, sort_keys=False).strip()
@@ -46,6 +48,7 @@ def _write_page(path: Path, frontmatter: dict, body: str) -> None:
 
 
 # ── page helpers ──────────────────────────────────────────────────────────────
+
 
 def find_page_path(page_id: str, pages_dir: Path) -> Path | None:
     """Locate a native OKF concept by Concept ID or unique stem."""
@@ -62,10 +65,7 @@ def extract_paragraphs(body: str) -> list[str]:
 def extract_key_terms(body: str) -> set[str]:
     """Extract Chinese (2-8 chars) and English (4+ chars) terms for keywords."""
     cn_terms = set(re.findall(r"[一-鿿]{2,8}", body))
-    en_terms = {
-        w.lower() for w in re.findall(r"[a-zA-Z]{3,}", body)
-        if len(w) >= 4
-    }
+    en_terms = {w.lower() for w in re.findall(r"[a-zA-Z]{3,}", body) if len(w) >= 4}
     return cn_terms | en_terms
 
 
@@ -84,11 +84,7 @@ def update_edges_redirect(edges_file: Path, from_id: str, to_id: str) -> None:
         return
     try:
         edges_data = json.loads(edges_file.read_text(encoding="utf-8"))
-        edges = (
-            edges_data.get("edges", edges_data)
-            if isinstance(edges_data, dict)
-            else edges_data
-        )
+        edges = edges_data.get("edges", edges_data) if isinstance(edges_data, dict) else edges_data
         if not isinstance(edges, list):
             return
         changed = False
@@ -113,30 +109,23 @@ def update_edges_redirect(edges_file: Path, from_id: str, to_id: str) -> None:
 from _llm_utils import llm_fuse_pages
 
 
-def _mechanical_fallback_merge(
-    surv_body: str, dup_body: str, dup_id: str
-) -> str | None:
+def _mechanical_fallback_merge(surv_body: str, dup_body: str, dup_id: str) -> str | None:
     """Mechanical paragraph-level dedup fallback when LLM fusion is unavailable.
 
     Returns merged body with new paragraphs appended, or None if nothing new.
     """
     surv_paragraphs = set(extract_paragraphs(surv_body))
-    new_paragraphs = [
-        p for p in extract_paragraphs(dup_body)
-        if p not in surv_paragraphs
-    ]
+    new_paragraphs = [p for p in extract_paragraphs(dup_body) if p not in surv_paragraphs]
     if not new_paragraphs:
         return None
     merged = surv_body.rstrip() + "\n\n"
-    merged += (
-        f"<!-- merged from [[{dup_id}]] by dream auto-merge (mechanical) -->\n\n"
-
-    )
+    merged += f"<!-- merged from [[{dup_id}]] by dream auto-merge (mechanical) -->\n\n"
     merged += "\n\n".join(new_paragraphs)
     return merged
 
 
 # ── auto-execute ──────────────────────────────────────────────────────────────
+
 
 def auto_merge_duplicates(
     duplicate_groups: list[dict],
@@ -181,7 +170,10 @@ def auto_merge_duplicates(
 
             # ── LLM semantic fusion (primary) ──
             fused_body = llm_fuse_pages(
-                surv_body, dup_body, dup_id, dup_of_id,
+                surv_body,
+                dup_body,
+                dup_id,
+                dup_of_id,
             )
             if fused_body is not None:
                 _write_page(survivor_path, surv_fm, fused_body)
@@ -194,20 +186,20 @@ def auto_merge_duplicates(
             else:
                 # ── Mechanical fallback ──
                 merged_body = _mechanical_fallback_merge(
-                    surv_body, dup_body, dup_id,
+                    surv_body,
+                    dup_body,
+                    dup_id,
                 )
                 if merged_body is not None:
                     _write_page(survivor_path, surv_fm, merged_body)
                     modified.append(survivor_path)
                     print(
-                        f"  Merged: [[{dup_id}]] → [[{dup_of_id}]] "
-                        f"(mechanical fallback)",
+                        f"  Merged: [[{dup_id}]] → [[{dup_of_id}]] (mechanical fallback)",
                         file=sys.stderr,
                     )
                 else:
                     print(
-                        f"  Skipped: [[{dup_id}]] → [[{dup_of_id}]] "
-                        f"(no new content)",
+                        f"  Skipped: [[{dup_id}]] → [[{dup_of_id}]] (no new content)",
                         file=sys.stderr,
                     )
 

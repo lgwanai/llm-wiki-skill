@@ -54,8 +54,11 @@ def ledger_module(ledger_dir, monkeypatch):
 def _get_schema(led, actual_name):
     """Get schema info from DuckDB."""
     conn = led._get_conn()
-    reg = conn.execute("SELECT fields_json, unique_key, auto_increment, auto_increment_field "
-                       "FROM _registry WHERE actual_name = ?", [actual_name]).fetchone()
+    reg = conn.execute(
+        "SELECT fields_json, unique_key, auto_increment, auto_increment_field "
+        "FROM _registry WHERE actual_name = ?",
+        [actual_name],
+    ).fetchone()
     if reg is None:
         return None
     return {
@@ -140,7 +143,9 @@ def test_generate_table_name_collision(ledger_module):
     conn = _empty_conn(ledger_module)
     # Pre-register names to force collision
     conn.execute("INSERT INTO _registry (actual_name, display_name) VALUES ('project-ledger', 'x')")
-    conn.execute("INSERT INTO _registry (actual_name, display_name) VALUES ('project-ledger_2', 'y')")
+    conn.execute(
+        "INSERT INTO _registry (actual_name, display_name) VALUES ('project-ledger_2', 'y')"
+    )
     name = ledger_module._generate_table_name("Project Ledger", conn)
     assert name == "project-ledger_3"
 
@@ -148,7 +153,9 @@ def test_generate_table_name_collision(ledger_module):
 def test_resolve_table_by_display_name(ledger_module):
     """Should find table by display name."""
     conn = _empty_conn(ledger_module)
-    conn.execute("INSERT INTO _registry (actual_name, display_name) VALUES ('table_abc123', '员工表')")
+    conn.execute(
+        "INSERT INTO _registry (actual_name, display_name) VALUES ('table_abc123', '员工表')"
+    )
     result = ledger_module._resolve_table("员工表", conn)
     assert result == "table_abc123"
 
@@ -156,7 +163,9 @@ def test_resolve_table_by_display_name(ledger_module):
 def test_resolve_table_by_actual_name(ledger_module):
     """Should find table by actual name."""
     conn = _empty_conn(ledger_module)
-    conn.execute("INSERT INTO _registry (actual_name, display_name) VALUES ('table_abc123', '员工表')")
+    conn.execute(
+        "INSERT INTO _registry (actual_name, display_name) VALUES ('table_abc123', '员工表')"
+    )
     result = ledger_module._resolve_table("table_abc123", conn)
     assert result == "table_abc123"
 
@@ -194,8 +203,9 @@ def test_create_simple_table(ledger_module):
 
     # Verify in DuckDB
     conn = ledger_module._get_conn()
-    reg = conn.execute("SELECT * FROM _registry WHERE actual_name = ?",
-                       [result["actual_name"]]).fetchone()
+    reg = conn.execute(
+        "SELECT * FROM _registry WHERE actual_name = ?", [result["actual_name"]]
+    ).fetchone()
     assert reg is not None
     assert reg[1] == "简单表"  # display_name
 
@@ -212,7 +222,8 @@ def test_create_with_auto_increment(ledger_module):
     conn = ledger_module._get_conn()
     reg = conn.execute(
         "SELECT auto_increment, auto_increment_field, unique_key, fields_json "
-        "FROM _registry WHERE actual_name = ?", [result["actual_name"]]
+        "FROM _registry WHERE actual_name = ?",
+        [result["actual_name"]],
     ).fetchone()
     assert reg[0] is True  # auto_increment
     assert reg[1] == "_id"
@@ -355,7 +366,9 @@ def test_insert_batch_mode(ledger_module):
     r = _create_table(ledger_module)
     rows = [
         {"名称": "项目A", "数量": 1},
-        {"名称": "项目B"},  # missing required "数量" won't matter since it's not required by default
+        {
+            "名称": "项目B"
+        },  # missing required "数量" won't matter since it's not required by default
         {"名称": "项目C", "数量": 3},
     ]
     result = _insert(ledger_module, r["actual_name"], rows, batch=True)
@@ -458,8 +471,10 @@ def test_update_schema_add_field(ledger_module):
 
     # Verify via DuckDB
     conn = ledger_module._get_conn()
-    cols = conn.execute("SELECT column_name FROM information_schema.columns WHERE table_name = ?",
-                        [r["actual_name"]]).fetchall()
+    cols = conn.execute(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = ?",
+        [r["actual_name"]],
+    ).fetchall()
     col_names = [c[0] for c in cols]
     assert "备注" in col_names
 
@@ -474,8 +489,10 @@ def test_update_schema_remove_field(ledger_module):
     assert result["success"]
 
     conn = ledger_module._get_conn()
-    cols = conn.execute("SELECT column_name FROM information_schema.columns WHERE table_name = ?",
-                        [r["actual_name"]]).fetchall()
+    cols = conn.execute(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = ?",
+        [r["actual_name"]],
+    ).fetchall()
     col_names = [c[0] for c in cols]
     assert "数量" not in col_names
 
@@ -489,8 +506,10 @@ def test_update_schema_rename_field(ledger_module):
     assert result["success"]
 
     conn = ledger_module._get_conn()
-    cols = conn.execute("SELECT column_name FROM information_schema.columns WHERE table_name = ?",
-                        [r["actual_name"]]).fetchall()
+    cols = conn.execute(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = ?",
+        [r["actual_name"]],
+    ).fetchall()
     col_names = [c[0] for c in cols]
     assert "数量" not in col_names
     assert "个数" in col_names
@@ -541,7 +560,9 @@ def test_delete_table(ledger_module):
 
     # Registry entry removed
     conn = ledger_module._get_conn()
-    reg = conn.execute("SELECT COUNT(*) FROM _registry WHERE actual_name = ?", [actual]).fetchone()[0]
+    reg = conn.execute("SELECT COUNT(*) FROM _registry WHERE actual_name = ?", [actual]).fetchone()[
+        0
+    ]
     assert reg == 0
 
     # DuckDB table dropped
@@ -557,7 +578,9 @@ def test_delete_keep_files(ledger_module):
     assert result["success"]
 
     conn = ledger_module._get_conn()
-    reg = conn.execute("SELECT COUNT(*) FROM _registry WHERE actual_name = ?", [actual]).fetchone()[0]
+    reg = conn.execute("SELECT COUNT(*) FROM _registry WHERE actual_name = ?", [actual]).fetchone()[
+        0
+    ]
     assert reg == 0
     # Table still exists
     assert _table_exists(ledger_module, actual)

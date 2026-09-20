@@ -55,10 +55,14 @@ def _q(name: str) -> str:
 
 def _resolve_table(user_input: str, conn: duckdb.DuckDBPyConnection) -> str | None:
     """Look up actual_name from display_name or actual_name."""
-    row = conn.execute("SELECT actual_name FROM _registry WHERE actual_name = ?", [user_input]).fetchone()
+    row = conn.execute(
+        "SELECT actual_name FROM _registry WHERE actual_name = ?", [user_input]
+    ).fetchone()
     if row:
         return row[0]
-    row = conn.execute("SELECT actual_name FROM _registry WHERE display_name = ?", [user_input]).fetchone()
+    row = conn.execute(
+        "SELECT actual_name FROM _registry WHERE display_name = ?", [user_input]
+    ).fetchone()
     if row:
         return row[0]
     row = conn.execute(
@@ -74,8 +78,18 @@ def _is_readonly(sql: str) -> bool:
     if ";" in stripped.rstrip(";"):
         return False
     # Reject DML/DDL keywords anywhere in the statement
-    forbidden = ("INSERT ", "UPDATE ", "DELETE ", "DROP ", "CREATE ", "ALTER ",
-                 "TRUNCATE ", "GRANT ", "REVOKE ", "PRAGMA ")
+    forbidden = (
+        "INSERT ",
+        "UPDATE ",
+        "DELETE ",
+        "DROP ",
+        "CREATE ",
+        "ALTER ",
+        "TRUNCATE ",
+        "GRANT ",
+        "REVOKE ",
+        "PRAGMA ",
+    )
     for kw in forbidden:
         if kw in stripped:
             return False
@@ -119,7 +133,7 @@ def get_table_schema(table_name: str) -> dict:
         unique_key = json.loads(reg[3])
 
         # Sample rows
-        sample_rows = conn.execute(f'SELECT * FROM {_q(actual)} LIMIT 3').fetchall()
+        sample_rows = conn.execute(f"SELECT * FROM {_q(actual)} LIMIT 3").fetchall()
         sample_cols = [c[0] for c in cols]
         sample = [dict(zip(sample_cols, r)) for r in sample_rows]
     except Exception as e:
@@ -289,17 +303,94 @@ SQL_FUNCTIONS_FILE = REF_DIR / "sql-functions.md"
 
 # Keyword → function category mapping
 FUNCTION_CATEGORIES: dict[str, list[str]] = {
-    "聚合函数": ["统计", "汇总", "总共", "平均", "求和", "计数", "最大", "最小", "总和", "合计",
-                 "avg", "sum", "count", "max", "min", "total", "group by"],
+    "聚合函数": [
+        "统计",
+        "汇总",
+        "总共",
+        "平均",
+        "求和",
+        "计数",
+        "最大",
+        "最小",
+        "总和",
+        "合计",
+        "avg",
+        "sum",
+        "count",
+        "max",
+        "min",
+        "total",
+        "group by",
+    ],
     "统计聚合函数": ["相关", "协方差", "熵", "标准差", "方差", "corr", "stddev", "variance"],
-    "窗口函数": ["排名", "前N", "后N", "第几", "排序", "排行", "rank", "row_number", "dense_rank",
-                 "over", "partition", "lag", "lead", "顺序", "名次"],
-    "数值函数": ["比例", "占比", "百分比", "四舍五入", "绝对值", "取整", "平方根", "ceil", "floor",
-                 "round", "abs", "sqrt", "mod", "取余", "取模"],
-    "文本/字符串函数": ["包含", "开头", "拼接", "截取", "替换", "长度", "大小写", "like", "substring",
-                       "replace", "concat", "trim", "upper", "lower", "包含文字", "模糊"],
-    "日期函数": ["今年", "本月", "上周", "去年", "明年", "季度", "星期", "year", "month", "day",
-                 "date", "日期", "时间范围", "年月日"],
+    "窗口函数": [
+        "排名",
+        "前N",
+        "后N",
+        "第几",
+        "排序",
+        "排行",
+        "rank",
+        "row_number",
+        "dense_rank",
+        "over",
+        "partition",
+        "lag",
+        "lead",
+        "顺序",
+        "名次",
+    ],
+    "数值函数": [
+        "比例",
+        "占比",
+        "百分比",
+        "四舍五入",
+        "绝对值",
+        "取整",
+        "平方根",
+        "ceil",
+        "floor",
+        "round",
+        "abs",
+        "sqrt",
+        "mod",
+        "取余",
+        "取模",
+    ],
+    "文本/字符串函数": [
+        "包含",
+        "开头",
+        "拼接",
+        "截取",
+        "替换",
+        "长度",
+        "大小写",
+        "like",
+        "substring",
+        "replace",
+        "concat",
+        "trim",
+        "upper",
+        "lower",
+        "包含文字",
+        "模糊",
+    ],
+    "日期函数": [
+        "今年",
+        "本月",
+        "上周",
+        "去年",
+        "明年",
+        "季度",
+        "星期",
+        "year",
+        "month",
+        "day",
+        "date",
+        "日期",
+        "时间范围",
+        "年月日",
+    ],
     "时间函数": ["时间", "时分秒", "几点", "hour", "minute", "second", "time"],
     "时间戳函数": ["时间戳", "timestamp", "now", "current_date", "current_time"],
     "列表函数": ["列表", "数组", "展开", "list", "array", "unnest", "flatten"],
@@ -346,9 +437,7 @@ def _build_sql_prompt(
     """Build system + user prompts for SQL generation."""
     # Build schema summary
     cols = schema.get("columns", [])
-    col_desc = "\n".join(
-        f"  - \"{c['name']}\" ({c['type']})" for c in cols
-    )
+    col_desc = "\n".join(f'  - "{c["name"]}" ({c["type"]})' for c in cols)
     actual_name = schema.get("table", {}).get("actual_name", "")
     display_name = schema.get("table", {}).get("display_name", "")
 
@@ -356,9 +445,9 @@ def _build_sql_prompt(
 Columns ({len(cols)}):
 {col_desc}
 
-Row count: {schema.get('row_count', 0)}
+Row count: {schema.get("row_count", 0)}
 Sample rows:
-{json.dumps(schema.get('sample', []), ensure_ascii=False, indent=2)}
+{json.dumps(schema.get("sample", []), ensure_ascii=False, indent=2)}
 """
 
     funcs_block = ""
@@ -394,7 +483,7 @@ def _call_llm(system_prompt: str, user_prompt: str) -> str:
     import requests
 
     try:
-        from config import get_llm_config, get_api_url
+        from config import get_api_url, get_llm_config
     except ImportError:
         raise RuntimeError("Config module not available.")
 
@@ -465,7 +554,7 @@ def _clean_sql(raw: str) -> str:
     # Remove markdown code fences
     for fence in ("```sql", "```"):
         if text.startswith(fence):
-            text = text[len(fence):].strip()
+            text = text[len(fence) :].strip()
         if text.endswith("```"):
             text = text[:-3].strip()
     # Remove leading non-SQL text (find SELECT)
@@ -552,6 +641,7 @@ def prepare_context(table_name: str, question: str) -> dict:
 # ═══════════════════════════════════════════════════════════════════════
 # CLI
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def main():
     parser = argparse.ArgumentParser(description="Table query and traversal for ledger tables")

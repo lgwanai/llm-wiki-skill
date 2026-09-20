@@ -11,13 +11,15 @@ import scripts.config as config
 
 
 def test_new_model_config_is_primary():
-    cfg = config._normalize_config({
-        "model": {
-            "provider": "openai",
-            "model": "gpt-4o-mini",
-            "api_key": "sk-test",
+    cfg = config._normalize_config(
+        {
+            "model": {
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "api_key": "sk-test",
+            }
         }
-    })
+    )
 
     assert cfg["model"]["provider"] == "openai"
     assert cfg["model"]["model"] == "gpt-4o-mini"
@@ -25,10 +27,12 @@ def test_new_model_config_is_primary():
 
 
 def test_legacy_llm_ollama_merges_into_model():
-    cfg = config._normalize_config({
-        "llm": {"provider": "ollama"},
-        "ollama": {"model": "qwen2.5", "base_url": "http://localhost:11434"},
-    })
+    cfg = config._normalize_config(
+        {
+            "llm": {"provider": "ollama"},
+            "ollama": {"model": "qwen2.5", "base_url": "http://localhost:11434"},
+        }
+    )
 
     assert cfg["model"]["provider"] == "ollama"
     assert cfg["model"]["model"] == "qwen2.5"
@@ -36,32 +40,36 @@ def test_legacy_llm_ollama_merges_into_model():
 
 
 def test_legacy_llm_values_fill_default_model():
-    cfg = config._normalize_config({
-        "model": {
-            "provider": "deepseek",
-            "api_key": "",
-            "base_url": "https://api.deepseek.com",
-            "model": "deepseek-v4-flash",
-        },
-        "llm": {
-            "provider": "openai",
-            "api_key": "sk-old",
-            "model": "gpt-4o",
-        },
-    })
+    cfg = config._normalize_config(
+        {
+            "model": {
+                "provider": "deepseek",
+                "api_key": "",
+                "base_url": "https://api.deepseek.com",
+                "model": "deepseek-v4-flash",
+            },
+            "llm": {
+                "provider": "openai",
+                "api_key": "sk-old",
+                "model": "gpt-4o",
+            },
+        }
+    )
 
     assert cfg["model"]["provider"] == "openai"
     assert cfg["model"]["api_key"] == "sk-old"
 
 
 def test_legacy_ocr_backend_section_merges_into_options():
-    cfg = config._normalize_config({
-        "ocr_mode": "deepseek",
-        "deepseek_ocr": {
-            "model_path": "models/deepseek-ocr-v2/model",
-            "device": "mps",
-        },
-    })
+    cfg = config._normalize_config(
+        {
+            "ocr_mode": "deepseek",
+            "deepseek_ocr": {
+                "model_path": "models/deepseek-ocr-v2/model",
+                "device": "mps",
+            },
+        }
+    )
 
     assert cfg["ocr"]["backend"] == "deepseek"
     assert cfg["ocr"]["options"]["model_path"] == "models/deepseek-ocr-v2/model"
@@ -69,16 +77,18 @@ def test_legacy_ocr_backend_section_merges_into_options():
 
 
 def test_new_ocr_options_override_legacy_section():
-    cfg = config._normalize_config({
-        "ocr": {
-            "backend": "mineru",
-            "options": {"lang": "en"},
-        },
-        "mineru": {
-            "lang": "ch",
-            "formula": True,
-        },
-    })
+    cfg = config._normalize_config(
+        {
+            "ocr": {
+                "backend": "mineru",
+                "options": {"lang": "en"},
+            },
+            "mineru": {
+                "lang": "ch",
+                "formula": True,
+            },
+        }
+    )
 
     assert cfg["ocr"]["options"]["lang"] == "en"
     assert cfg["ocr"]["options"]["formula"] is True
@@ -157,7 +167,7 @@ def test_default_query_path_is_wiki_native(monkeypatch, tmp_path):
 
     assert config.get_config()["compile"]["mode"] == "agent"
     assert query["synthesis_mode"] == "agent"
-    assert query["search_streams"] == "metadata,bm25,graph,ledger"
+    assert query["search_streams"] == "raw,claim,metadata,bm25,graph,ledger"
     assert query["llm_query_expansion"] is False
     assert query["cross_language_expansion"] is True
     assert query["multi_hop_enabled"] is True

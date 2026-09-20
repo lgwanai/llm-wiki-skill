@@ -134,6 +134,11 @@
 ### Quality Standards for New Content
 
 - Every claim should cite at least one source
+- Queryable claims should preserve subject, predicate, exact value, modality,
+  conditions, exceptions, audience, jurisdiction, effective interval, and source
+  location when those qualifiers are present in the source
+- Tables retain original headers, rows, units, merged-header meaning, and bound footnotes
+- Source authority and document status are recorded only when known; never inferred from tone
 - Entity pages should use the appropriate template
 - Relationships should use the most specific type available (not just `related_to`)
 - Content should be consistent with existing wiki knowledge
@@ -171,6 +176,8 @@ Quality threshold for filing: confidence > 0.5 AND answer is non-trivial (>3 sen
   (article date, document effective date, paper date, log timestamp). Omit if the
   source has no identifiable publication date; never fabricate.
 - At least one paragraph of description
+- A `claims` extension or a Key Facts/table/key-value structure from which atomic
+  claims can be derived deterministically
 - At least one relationship (edge in the graph)
 - Quality score above 0.4
 

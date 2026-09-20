@@ -1,104 +1,111 @@
 #!/usr/bin/env python3
-"""Generate benchmark comparison chart: llm-wiki (wiki-native) vs Industry.
+"""Generate the PageIndex benchmark comparison used by project documentation."""
 
-Wiki-native pipeline: compile → BM25+metadata+graph → entity link → 3-signal rank → LLM synthesize.
-No embeddings, no chunks, no cross-encoders. 19 test cases, 3 domains.
-"""
 from pathlib import Path
+
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
-import numpy as np
 
-# ── Latest benchmark results (2026-06-11, wiki-native pipeline) ──
-# Full pipeline: compile_v2 → BM25+metadata+graph → entity linking → 3-signal rank → synthesize → LLM judge
+ROOT = Path(__file__).resolve().parent.parent
+DOCS = ROOT / "docs"
 
-metrics = ["faithfulness", "answer_relevancy", "context_precision", "context_recall", "answer_correctness"]
-labels = ["Faithfulness", "Answer\nRelevance", "Context\nPrecision", "Context\nRecall", "Answer\nCorrectness"]
+PAGEINDEX_REPRESENTATIVE = [
+    ("PageIndex\nLuna none", 85.5),
+    ("PageIndex\nLuna medium", 91.9),
+    ("PageIndex\nLuna high", 96.8),
+    ("PageIndex\nTerra medium", 98.4),
+    ("PageIndex\nTerra high", 100.0),
+    ("PageIndex\nSol medium", 100.0),
+]
 
-systems = {
-    "Naive RAG\n(chunk+embed)": {
-        "faithfulness": 0.72, "answer_relevancy": 0.78,
-        "context_precision": 0.65, "context_recall": 0.68, "answer_correctness": 0.65,
-    },
-    "RAG + Reranker": {
-        "faithfulness": 0.83, "answer_relevancy": 0.85,
-        "context_precision": 0.78, "context_recall": 0.76, "answer_correctness": 0.78,
-    },
-    "RAGFlow\n(estimated)": {
-        "faithfulness": 0.86, "answer_relevancy": 0.84,
-        "context_precision": 0.80, "context_recall": 0.79, "answer_correctness": 0.80,
-    },
-    "GraphRAG\n(Microsoft)": {
-        "faithfulness": 0.88, "answer_relevancy": 0.87,
-        "context_precision": 0.82, "context_recall": 0.84, "answer_correctness": 0.83,
-    },
-    "llm-wiki ★\n(wiki-native)": {
-        "faithfulness": 1.00, "answer_relevancy": 1.00,
-        "context_precision": 0.56, "context_recall": 0.94, "answer_correctness": 0.91,
-    },
-}
+LLM_WIKI_PROGRESS = [
+    ("Compiled wiki\nbaseline", 61.3),
+    ("Lossless source\nevidence", 74.2),
+    ("Retrieval and\ncontext tuning", 88.7),
+    ("Deterministic\nevidence", 100.0),
+]
 
-colors = ["#90CAF9", "#64B5F6", "#42A5F5", "#1E88E5", "#1565C0"]  # blue gradient
-n_systems = len(systems)
-n_metrics = len(metrics)
-x = np.arange(n_metrics)
-width = 0.15
 
-fig, ax = plt.subplots(figsize=(15, 7.5))
+def _label_bars(axis: plt.Axes, bars: object) -> None:
+    for bar in bars:
+        value = float(bar.get_height())
+        axis.text(
+            bar.get_x() + bar.get_width() / 2,
+            value + 1.2,
+            f"{value:.1f}%",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            fontweight="bold",
+        )
 
-for i, (name, scores) in enumerate(systems.items()):
-    vals = [scores.get(m, 0) for m in metrics]
-    is_llm_wiki = "llm-wiki" in name
-    bars = ax.bar(
-        x + (i - n_systems/2 + 0.5) * width, vals, width,
-        label=name, color=colors[i], edgecolor="white", linewidth=0.5,
-        zorder=3 if is_llm_wiki else 2,
-        alpha=1.0 if is_llm_wiki else 0.85,
+
+def generate() -> list[Path]:
+    """Render representative PageIndex accuracy and llm-wiki progress."""
+    fig, (comparison, progress) = plt.subplots(1, 2, figsize=(15, 7.2))
+
+    comparison_names = [name for name, _ in PAGEINDEX_REPRESENTATIVE]
+    comparison_scores = [score for _, score in PAGEINDEX_REPRESENTATIVE]
+    comparison_bars = comparison.bar(
+        range(len(comparison_names)),
+        comparison_scores,
+        color=["#94A3B8", "#78909C", "#607D8B", "#4F83A8", "#2563A6", "#174A7E"],
     )
+    comparison.set_title("PageIndex published results", fontweight="bold")
+    comparison.set_ylabel("Semantic-equivalence accuracy (%)")
+    comparison.set_xticks(range(len(comparison_names)))
+    comparison.set_xticklabels(comparison_names, fontsize=8)
+    comparison.set_ylim(55, 106)
+    comparison.grid(axis="y", alpha=0.22)
+    _label_bars(comparison, comparison_bars)
 
-# ── Style ──
-ax.set_ylabel("Score (0–1)", fontsize=13, fontweight="bold")
-ax.set_title(
-    "RAGAS Black-Box Evaluation: llm-wiki (wiki-native) vs Industry Baselines",
-    fontsize=16, fontweight="bold", pad=22,
-)
-ax.set_xticks(x)
-ax.set_xticklabels(labels, fontsize=11)
-ax.set_ylim(0, 1.12)
-ax.yaxis.set_major_formatter(mticker.FormatStrFormatter('%.2f'))
-ax.grid(axis="y", alpha=0.3, zorder=0)
-ax.legend(loc="lower right", framealpha=0.92, fontsize=8.5, ncol=1)
+    progress_names = [name for name, _ in LLM_WIKI_PROGRESS]
+    progress_scores = [score for _, score in LLM_WIKI_PROGRESS]
+    progress_bars = progress.bar(
+        range(len(progress_names)),
+        progress_scores,
+        color=["#D97706", "#F59E0B", "#38BDF8", "#0369A1"],
+    )
+    progress.plot(
+        range(len(progress_scores)),
+        progress_scores,
+        color="#0C4A6E",
+        marker="o",
+        linewidth=2,
+    )
+    progress.set_title("llm-wiki improvement on the same 62 questions", fontweight="bold")
+    progress.set_xticks(range(len(progress_names)))
+    progress.set_xticklabels(progress_names, fontsize=8)
+    progress.set_ylim(55, 106)
+    progress.grid(axis="y", alpha=0.22)
+    _label_bars(progress, progress_bars)
 
-# ── Value labels on llm-wiki bars ──
-for i, (name, scores) in enumerate(systems.items()):
-    vals = [scores.get(m, 0) for m in metrics]
-    for j, v in enumerate(vals):
-        if "llm-wiki" in name:
-            ax.text(
-                x[j] + (i - n_systems/2 + 0.5) * width, v + 0.025,
-                f"{v:.2f}", ha="center", va="bottom", fontsize=9,
-                fontweight="bold", color="#0D47A1",
-            )
+    fig.suptitle(
+        "PageIndex OSS Benchmark: 34 PDFs · 1,945 pages · 62 questions",
+        fontsize=16,
+        fontweight="bold",
+    )
+    fig.text(
+        0.5,
+        0.015,
+        "Same corpus and semantic-equivalence rubric. llm-wiki uses a configured "
+        "judge, so its score is directional rather than leaderboard-comparable.",
+        ha="center",
+        fontsize=9,
+        color="#475569",
+    )
+    fig.tight_layout(rect=(0, 0.06, 1, 0.93))
 
-# ── Highlight: wiki-native advantage ──
-ax.annotate(
-    "★ Wiki-native pipeline: no embeddings, no chunks, no cross-encoders\n"
-    "   4 of 5 metrics surpass GraphRAG (Microsoft) published results",
-    xy=(0.5, -0.16), xycoords="axes fraction",
-    ha="center", fontsize=10, color="#0D47A1", fontweight="bold",
-)
+    DOCS.mkdir(parents=True, exist_ok=True)
+    outputs = [DOCS / "pageindex_comparison.png", DOCS / "benchmark_chart.png"]
+    for output in outputs:
+        fig.savefig(output, dpi=160, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    return outputs
 
-ax.annotate(
-    "Full pipeline: compile_v2 → BM25+metadata+graph → entity link → 3-signal rank → LLM synthesize\n"
-    "19 test cases · tech/business/chinese domains · 41ms avg search latency · LLM-as-judge via RAGAS",
-    xy=(0.5, -0.22), xycoords="axes fraction",
-    ha="center", fontsize=9, color="#666",
-)
 
-plt.tight_layout()
-out = Path(__file__).parent.parent / "docs" / "benchmark_chart.png"
-out.parent.mkdir(parents=True, exist_ok=True)
-plt.savefig(str(out), dpi=150, bbox_inches="tight", facecolor="white")
-print(f"✓ Chart saved → {out}")
+if __name__ == "__main__":
+    for path in generate():
+        print(f"Chart saved: {path}")

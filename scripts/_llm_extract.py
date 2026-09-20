@@ -1,4 +1,3 @@
-from __future__ import annotations
 """_llm_extract.py — LLM-based entity and relationship extraction.
 
 Configuration: see ../wiki_config.yaml
@@ -7,19 +6,20 @@ Configuration: see ../wiki_config.yaml
 Entity types and relationship types are defined in .wiki/schema.md.
 """
 
+from __future__ import annotations
+
 import json
-import os
 import re
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Optional
 
 import requests
-import yaml
 
-sys.path.insert(0, str(Path(__file__).parent))
-from config import get_wiki_dir
+try:
+    from .config import get_wiki_dir
+except ImportError:
+    from config import get_wiki_dir
 
 CONFIG_PATH = Path(__file__).parent.parent / "wiki_config.yaml"
 WIKI_DIR = get_wiki_dir()
@@ -31,11 +31,25 @@ RELATIONSHIP_TYPES = []
 
 def _load_schema_types() -> tuple[list[str], list[str], dict[str, str], dict[str, str]]:
     """Parse entity types, relationship types, dir map, and descriptions from schema.md."""
-    defaults_entities = ["person", "project", "library", "concept", "file", "decision", "pattern", "tool"]
+    defaults_entities = [
+        "person",
+        "project",
+        "library",
+        "concept",
+        "file",
+        "decision",
+        "pattern",
+        "tool",
+    ]
     defaults_rels = ["uses", "variant_of", "extends", "related_to", "feeds_into"]
 
     if not SCHEMA_PATH.exists():
-        return (defaults_entities, defaults_rels, {}, {t: f"entities of type {t}" for t in defaults_entities})
+        return (
+            defaults_entities,
+            defaults_rels,
+            {},
+            {t: f"entities of type {t}" for t in defaults_entities},
+        )
 
     text = SCHEMA_PATH.read_text(encoding="utf-8")
     entity_types = []
@@ -93,14 +107,15 @@ def get_all_types() -> list[str]:
 def get_all_relationships() -> list[str]:
     return list(RELATIONSHIP_TYPES)
 
+
 # Build extraction prompt from schema types
 _type_lines = "\n".join(
-    f"- **{t}**: {ENTITY_DESCRIPTIONS.get(t, f'entities of type {t}')}"
-    for t in ENTITY_TYPES
+    f"- **{t}**: {ENTITY_DESCRIPTIONS.get(t, f'entities of type {t}')}" for t in ENTITY_TYPES
 )
 _rel_lines = "\n".join(f"- **{r}**: entity A {r} entity B" for r in RELATIONSHIP_TYPES)
 
-EXTRACTION_PROMPT = f"""You are building a knowledge wiki. Extract ONLY the most important entities and relationships.
+EXTRACTION_PROMPT = f"""You are building a knowledge wiki.
+Extract ONLY the most important entities and relationships.
 
 ## Entity Types
 {_type_lines}
@@ -114,14 +129,18 @@ EXTRACTION_PROMPT = f"""You are building a knowledge wiki. Extract ONLY the most
 **Normalize entity names to canonical forms. These are THE SAME entity:**
 - "DeepSeek-V3.2", "DeepSeek-V3-2", "deepseek-v3.2", "DeepSeek V3.2" → use `deepseek-v3.2`
 - "DeepSeek-V4-Pro", "deepseek-v4-pro", "DeepSeek V4 Pro" → use `deepseek-v4-pro`
-- "CSA", "Compressed Sparse Attention", "compressed-sparse-attention" → use `compressed-sparse-attention`
-- "mHC", "Manifold-Constrained Hyper-Connections", "manifold-constrained-hyper-connections" → use `manifold-constrained-hyper-connections`
+- "CSA", "Compressed Sparse Attention", "compressed-sparse-attention"
+  → use `compressed-sparse-attention`
+- "mHC", "Manifold-Constrained Hyper-Connections",
+  "manifold-constrained-hyper-connections"
+  → use `manifold-constrained-hyper-connections`
 
 **ID format**: lowercase-with-hyphens (e.g., `muon-optimizer`, `kv-cache`)
 **Name format**: Title Case (e.g., "Muon Optimizer", "KV Cache")
 
 ### 2. Entity Type Classification
-- `concept`: Core architecture/mechanism (attention mechanisms, compression, optimization algorithms)
+- `concept`: Core architecture/mechanism
+  (attention mechanisms, compression, optimization algorithms)
 - `model`: AI model series or variants (DeepSeek-V4, GPT-5.4, Gemini-3.1-Pro)
 - `technique`: Training methods (GRPO, on-policy distillation, QAT)
 - `benchmark`: Evaluation datasets (MMLU, GPQA, SimpleQA)
@@ -190,9 +209,10 @@ class LLMExtractor:
         self.max_tokens = max_tokens
 
     @classmethod
-    def from_config(cls, path: Path | None = None) -> "LLMExtractor":
+    def from_config(cls, path: Path | None = None) -> LLMExtractor:
         """Create instance from YAML config or environment variables."""
         import os as _os
+
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         from config import get_llm_config
 
@@ -200,7 +220,8 @@ class LLMExtractor:
 
         return cls(
             api_key=llm.get("api_key") or _os.environ.get("LLM_API_KEY", ""),
-            base_url=llm.get("base_url") or _os.environ.get("LLM_BASE_URL", "https://api.deepseek.com"),
+            base_url=llm.get("base_url")
+            or _os.environ.get("LLM_BASE_URL", "https://api.deepseek.com"),
             model=llm.get("model") or _os.environ.get("LLM_MODEL", "deepseek-v4-flash"),
             temperature=llm.get("temperature", 0.3),
         )
@@ -245,7 +266,7 @@ class LLMExtractor:
                 # If single paragraph exceeds max_chars, split it further
                 if len(p) > max_chars:
                     # Split by sentences for very long paragraphs
-                    sentences = re.split(r'(?<=[.!?])\s+', p)
+                    sentences = re.split(r"(?<=[.!?])\s+", p)
                     sub_chunk = ""
                     for s in sentences:
                         if len(sub_chunk) + len(s) < max_chars:
@@ -272,14 +293,14 @@ class LLMExtractor:
     def _normalize_entity_id(self, eid: str) -> str:
         """Normalize entity ID to canonical form (lowercase, consistent hyphens)."""
         normalized = eid.lower().strip()
-        normalized = re.sub(r'[\s_]+', '-', normalized)
-        normalized = re.sub(r'-+', '-', normalized)
-        normalized = normalized.strip('-')
+        normalized = re.sub(r"[\s_]+", "-", normalized)
+        normalized = re.sub(r"-+", "-", normalized)
+        normalized = normalized.strip("-")
 
         # Common normalization patterns
         patterns = {
-            r'v(\d+)-(\d+)': r'v\1.\2',  # v3-2 → v3.2
-            r'-(\d+)$': r'.\1',           # deepseek-v3-2 → deepseek-v3.2
+            r"v(\d+)-(\d+)": r"v\1.\2",  # v3-2 → v3.2
+            r"-(\d+)$": r".\1",  # deepseek-v3-2 → deepseek-v3.2
         }
         for pattern, replacement in patterns.items():
             normalized = re.sub(pattern, replacement, normalized)
@@ -298,9 +319,9 @@ class LLMExtractor:
             # Check for minor variations
             if abs(len(normalized) - len(existing_normalized)) <= 3:
                 # Levenshtein-like check for very similar names
-                if normalized.replace('-', '') == existing_normalized.replace('-', ''):
+                if normalized.replace("-", "") == existing_normalized.replace("-", ""):
                     return existing_id
-                if normalized.replace('.', '-') == existing_normalized.replace('.', '-'):
+                if normalized.replace(".", "-") == existing_normalized.replace(".", "-"):
                     return existing_id
 
         return None
@@ -329,7 +350,7 @@ class LLMExtractor:
 
         def extract_chunk(chunk_data: tuple[int, str]) -> dict:
             i, chunk = chunk_data
-            prompt = f"{EXTRACTION_PROMPT}Chunk {i+1}/{len(chunks)}\n\n{chunk[:30000]}"
+            prompt = f"{EXTRACTION_PROMPT}Chunk {i + 1}/{len(chunks)}\n\n{chunk[:30000]}"
             try:
                 response = self._call(
                     "You are a precise knowledge extraction system. Always output valid JSON.",
@@ -341,7 +362,10 @@ class LLMExtractor:
             except Exception as e:
                 return {"index": i, "error": str(e), "success": False}
 
-        print(f"    Processing {len(chunks)} chunks concurrently with {max_workers} workers ...", file=sys.stderr)
+        print(
+            f"    Processing {len(chunks)} chunks concurrently with {max_workers} workers ...",
+            file=sys.stderr,
+        )
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = [executor.submit(extract_chunk, (i, chunk)) for i, chunk in enumerate(chunks)]
@@ -352,18 +376,22 @@ class LLMExtractor:
 
                 if result_data["success"]:
                     result = result_data["result"]
-                    print(f"    Chunk {i+1}/{len(chunks)} ✓ ({len(chunks[i])} chars)", file=sys.stderr)
+                    print(
+                        f"    Chunk {i + 1}/{len(chunks)} ✓ ({len(chunks[i])} chars)",
+                        file=sys.stderr,
+                    )
                     for entity in result.get("entities", []):
                         eid = entity["id"]
                         similar_id = self._find_similar_entity(eid, entity_registry)
 
                         if similar_id:
-                            entity_registry[similar_id]['confidence'] = min(1.0,
-                                entity_registry[similar_id].get('confidence', 0.5) + 0.1)
-                            entity_registry[similar_id].setdefault('aliases', []).append(eid)
+                            entity_registry[similar_id]["confidence"] = min(
+                                1.0, entity_registry[similar_id].get("confidence", 0.5) + 0.1
+                            )
+                            entity_registry[similar_id].setdefault("aliases", []).append(eid)
                         else:
                             canonical_id = self._normalize_entity_id(eid)
-                            entity['id'] = canonical_id
+                            entity["id"] = canonical_id
                             entity_registry[canonical_id] = entity
                             all_entities.append(entity)
 
@@ -373,17 +401,34 @@ class LLMExtractor:
                         normalized_source = self._normalize_entity_id(source)
                         normalized_target = self._normalize_entity_id(target)
 
-                        if normalized_source in entity_registry or normalized_target in entity_registry:
+                        if (
+                            normalized_source in entity_registry
+                            or normalized_target in entity_registry
+                        ):
                             rel["source"] = normalized_source
                             rel["target"] = normalized_target
                             all_relationships.append(rel)
                 else:
-                    print(f"    Chunk {i+1}/{len(chunks)} ✗ Error: {result_data['error']}", file=sys.stderr)
+                    print(
+                        f"    Chunk {i + 1}/{len(chunks)} ✗ Error: {result_data['error']}",
+                        file=sys.stderr,
+                    )
 
-        main_entity_candidates = [e for e in all_entities if e.get("type") in ["model", "concept"]]
-        main_entity = main_entity_candidates[0]["id"] if main_entity_candidates else (all_entities[0]["id"] if all_entities else source_name)
+        main_entity_candidates = [
+            entity for entity in all_entities if entity.get("type") in ["model", "concept"]
+        ]
+        main_entity = (
+            main_entity_candidates[0]["id"]
+            if main_entity_candidates
+            else (all_entities[0]["id"] if all_entities else source_name)
+        )
 
-        print(f"    Extracted: {len(all_entities)} unique entities, {len(all_relationships)} relationships", file=sys.stderr)
+        print(
+            "    Extracted: "
+            f"{len(all_entities)} unique entities, "
+            f"{len(all_relationships)} relationships",
+            file=sys.stderr,
+        )
 
         return {
             "entities": all_entities,
@@ -402,7 +447,7 @@ class LLMExtractor:
         start = response.find("{")
         end = response.rfind("}")
         if start >= 0 and end > start:
-            response = response[start:end + 1]
+            response = response[start : end + 1]
 
         # Try direct parse
         try:
@@ -411,9 +456,9 @@ class LLMExtractor:
             pass
 
         # Fix common LLM JSON issues
-        response = re.sub(r',\s*}', '}', response)     # trailing commas
-        response = re.sub(r',\s*]', ']', response)     # trailing commas in arrays
-        response = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', response)  # control chars
+        response = re.sub(r",\s*}", "}", response)  # trailing commas
+        response = re.sub(r",\s*]", "]", response)  # trailing commas in arrays
+        response = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", response)  # control chars
 
         # Try to find and fix broken strings by completing them
         # If response ends in the middle of a string, try to close it
@@ -424,10 +469,10 @@ class LLMExtractor:
             error_pos = e.pos
             response_fixed = response[:error_pos]
             # Close any open structures
-            open_braces = response_fixed.count('{') - response_fixed.count('}')
-            open_brackets = response_fixed.count('[') - response_fixed.count(']')
-            response_fixed += ']' * open_brackets
-            response_fixed += '}' * open_braces
+            open_braces = response_fixed.count("{") - response_fixed.count("}")
+            open_brackets = response_fixed.count("[") - response_fixed.count("]")
+            response_fixed += "]" * open_brackets
+            response_fixed += "}" * open_braces
             try:
                 return json.loads(response_fixed)
             except json.JSONDecodeError:

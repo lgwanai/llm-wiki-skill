@@ -63,7 +63,7 @@ def _log_exc(msg: str = ""):
         print(f"  [WARN] {_tb.format_exc()}", file=sys.stderr)
 
 
-SENSITIVE_PATTERNS: list[tuple[str, str]] = [
+SECRET_PATTERNS: list[tuple[str, str]] = [
     (r"(?:sk|pk|rk)-(?:[a-zA-Z0-9]{20,})", "[REDACTED: API key]"),
     (r"(?:ghp|gho|ghu|ghs|ghr)_[a-zA-Z0-9]{36,}", "[REDACTED: GitHub token]"),
     (
@@ -71,8 +71,11 @@ SENSITIVE_PATTERNS: list[tuple[str, str]] = [
         "[REDACTED: Private key]",
     ),
     (r"password\s*[=:]\s*\S+", "password=[REDACTED]"),
+]
+CONTACT_PATTERNS: list[tuple[str, str]] = [
     (r"[\w\.-]+@[\w\.-]+\.\w{2,}", "[REDACTED: Email]"),
 ]
+SENSITIVE_PATTERNS = SECRET_PATTERNS + CONTACT_PATTERNS
 
 KEYWORD_RELATION_MAP = [
     # English patterns
@@ -736,6 +739,42 @@ def build_media_fidelity_guidance(lang: str) -> str:
 - Study-material pages require `## Source Traceability` with the source filename, one or more pages/a page range, a verbatim excerpt, and the corresponding image when present. Knowledge boundaries may cross pages. If the exact location is uncertain, record a candidate range and `needs verification`; never discard knowledge merely because page provenance is uncertain."""
 
 
+def build_temporal_applicability_guidance(lang: str) -> str:
+    """Return effective-time rules for policies, regulations, and dated rules."""
+    if lang == "zh":
+        return """## 规则时效与生效区间（强制）
+- 对法规、制度、政策、促销规则、费率、SLA 等时效性内容，区分公布/编译时间与实际生效时间；不得把 `timestamp`、发布日期或 `stale_after` 当作生效日期。
+- 原文明示时，在 frontmatter 写 `effective_from`（含该时点）和 `effective_until`（到该时点起不再适用），使用 ISO 8601 日期或带时区时间；原文未说明时不得猜测。
+- 新规则替代旧规则时分别保留两个概念，通过 `supersedes: [/旧规则.md]` 与 `superseded_by: [/新规则.md]` 关联。新规则未来才生效时，旧规则在其 `effective_from` 之前仍然有效，不得提前标为失效或覆盖删除。
+- 正文关键事实必须逐字保留“公布日、通过日、生效日、过渡期、失效日”的区别，以及地区、对象、例外和条件。
+- 同一主题的历史版、现行版、未来版不能因内容冲突而盲目融合；冲突若可由适用时点解释，应保留为时间版本。"""
+    return """## Rule applicability and effective intervals (mandatory)
+- For regulations, policies, promotions, rates, and SLAs, distinguish publication/compile time from legal or business effective time. Never treat `timestamp`, publication date, or `stale_after` as an effective date.
+- When the source states them, write `effective_from` (inclusive) and `effective_until` (exclusive) in frontmatter using ISO 8601 dates or offset datetimes. Never invent a missing boundary.
+- Keep old and replacement rules as separate concepts linked with `supersedes: [/old-rule.md]` and `superseded_by: [/new-rule.md]`. A future replacement does not invalidate the old rule before the replacement's `effective_from`.
+- Preserve publication, approval, effective, transition, and expiry dates as distinct facts, together with jurisdiction, audience, exceptions, and conditions.
+- Do not blindly fuse historical, current, and future versions whose apparent conflict is explained by their applicability intervals."""
+
+
+def build_claim_extraction_guidance(lang: str) -> str:
+    """Return mandatory claim, scope, authority, table, and footnote rules."""
+    if lang == "zh":
+        return """## 原子事实与适用条件（强制）
+- 每个页面的 frontmatter 必须输出 `claims` 列表。每项至少包含 `subject`、`predicate`、`value`；原文明示时再填写 `modality`、`conditions`、`exceptions`、`audience`、`jurisdiction`、`effective_from`、`effective_until` 和 `source`。
+- `modality` 只能根据原文明确措辞区分 `must`、`must_not`、`may`、`should`、`entitlement`、`definition`、`procedure` 或 `fact`，不得把建议改写为强制要求。
+- 条件、例外、适用对象、地区和脚注属于事实本身，禁止脱离主张单独概括或在合并时丢失。
+- 表格必须保持表头、行、列、合并表头含义与脚注绑定；同时把每个可独立查询的关键行写成 claim，但不得用 claim 替代正文原表。
+- 原文明示文档性质时写 `document_status`（如 official/approved/draft/meeting-note）和 `source_authority`（0 到 1）。无法确认权威性时省略，禁止猜测。
+- `source` 应包含可获得的页码、章节、表格行或原文定位。解释性归纳与原文事实必须分开。"""
+    return """## Atomic claims and applicability qualifiers (mandatory)
+- Every page frontmatter must contain a `claims` list. Each item requires `subject`, `predicate`, and `value`; add `modality`, `conditions`, `exceptions`, `audience`, `jurisdiction`, `effective_from`, `effective_until`, and `source` only when stated by the source.
+- Infer `modality` only from explicit wording: `must`, `must_not`, `may`, `should`, `entitlement`, `definition`, `procedure`, or `fact`. Never strengthen a recommendation into a requirement.
+- Conditions, exceptions, audience, jurisdiction, and footnotes are part of a claim. Never detach or discard them during summarization or fusion.
+- Preserve table headers, rows, merged-header meaning, and footnote bindings. Also emit each independently queryable key row as a claim, without replacing the original table.
+- When the source explicitly establishes it, add `document_status` (for example official/approved/draft/meeting-note) and `source_authority` (0 to 1). Omit unknown authority; never guess it.
+- `source` should contain available page, section, table-row, or verbatim-location information. Keep interpretive synthesis separate from source facts."""
+
+
 IMAGE_ANALYSIS_PROMPT = """Analyze this image for knowledge-base ingestion and retrieval.
 
 Return clean markdown in Chinese when the image contains Chinese; otherwise use the image's main language.
@@ -806,6 +845,13 @@ Avoid generic descriptions like "this is an image of a diagram" — be specific 
 
 def strip_sensitive(content: str) -> str:
     for pattern, replacement in SENSITIVE_PATTERNS:
+        content = re.sub(pattern, replacement, content, flags=re.DOTALL)
+    return content
+
+
+def strip_secrets(content: str) -> str:
+    """Remove credentials while retaining source facts such as public contacts."""
+    for pattern, replacement in SECRET_PATTERNS:
         content = re.sub(pattern, replacement, content, flags=re.DOTALL)
     return content
 
@@ -1039,7 +1085,7 @@ def _attach_rendered_pages_to_ocr(content: str, page_images: list[Path]) -> str:
             rf"^##\s+Page\s+{page_number}\s*$",
             flags=re.MULTILINE | re.IGNORECASE,
         )
-        replacement = f"## Page {page_number}\n\n" f"![Page {page_number}]({image_path.resolve()})"
+        replacement = f"## Page {page_number}\n\n![Page {page_number}]({image_path.resolve()})"
         enriched, count = heading.subn(replacement, enriched, count=1)
         if count == 0:
             enriched += f"\n\n{replacement}\n\n[No OCR text extracted for this page.]"
@@ -1803,7 +1849,7 @@ def _render_pdf_pages_to_images(pdf_path: Path, output_dir: Path) -> list[Path]:
 
 def _convert_office_to_pdf(source_path: Path, output_dir: Path) -> Path:
     """Convert Word/PowerPoint files to PDF using LibreOffice."""
-    converter = shutil.which("soffice") or shutil.which("libreoffice")
+    converter = _find_libreoffice_converter()
     if not converter:
         raise RuntimeError(
             "LibreOffice/soffice is not installed; cannot render Word/PowerPoint pages to images."
@@ -1827,6 +1873,91 @@ def _convert_office_to_pdf(source_path: Path, output_dir: Path) -> Path:
         message = (result.stderr or result.stdout or "").strip()
         raise RuntimeError(f"LibreOffice conversion failed: {message}")
     return candidates[0]
+
+
+def _find_libreoffice_converter() -> str | None:
+    """Find a LibreOffice CLI, including its standard macOS app location."""
+    converter = shutil.which("soffice") or shutil.which("libreoffice")
+    if converter:
+        return converter
+    macos_converter = Path("/Applications/LibreOffice.app/Contents/MacOS/soffice")
+    return str(macos_converter) if macos_converter.is_file() else None
+
+
+def _convert_legacy_doc_to_docx(source_path: Path, output_dir: Path) -> tuple[Path, str]:
+    """Convert a legacy binary ``.doc`` into OOXML without touching the source.
+
+    LibreOffice is preferred for cross-platform fidelity. macOS ``textutil`` is
+    a fast built-in fallback, which keeps legacy Word ingestion usable without a
+    separate office-suite installation.
+    """
+    if source_path.suffix.lower() != ".doc":
+        raise ValueError(f"Legacy Word conversion requires a .doc source: {source_path}")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    errors: list[str] = []
+    converter = _find_libreoffice_converter()
+    if converter:
+        before = set(output_dir.glob("*.docx"))
+        command = [
+            converter,
+            "--headless",
+            "--convert-to",
+            "docx",
+            "--outdir",
+            str(output_dir),
+            str(source_path),
+        ]
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=120,
+            )
+            after = set(output_dir.glob("*.docx"))
+            candidates = sorted(after - before) or sorted(
+                output_dir.glob(f"{source_path.stem}*.docx")
+            )
+            if result.returncode == 0 and candidates and candidates[0].stat().st_size > 0:
+                return candidates[0], "libreoffice-doc-to-docx"
+            message = (result.stderr or result.stdout or "no DOCX output").strip()
+            errors.append(f"LibreOffice: {message}")
+        except (OSError, subprocess.SubprocessError) as exc:
+            errors.append(f"LibreOffice: {exc}")
+
+    textutil = shutil.which("textutil")
+    if textutil:
+        target = output_dir / f"{source_path.stem}.docx"
+        command = [
+            textutil,
+            "-convert",
+            "docx",
+            "-output",
+            str(target),
+            str(source_path),
+        ]
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=120,
+            )
+            if result.returncode == 0 and target.is_file() and target.stat().st_size > 0:
+                return target, "textutil-doc-to-docx"
+            message = (result.stderr or result.stdout or "no DOCX output").strip()
+            errors.append(f"textutil: {message}")
+        except (OSError, subprocess.SubprocessError) as exc:
+            errors.append(f"textutil: {exc}")
+
+    detail = "; ".join(errors) if errors else "no supported converter found"
+    raise RuntimeError(
+        "Could not convert legacy .doc to .docx. Install LibreOffice, or use macOS "
+        f"textutil. Conversion attempts: {detail}"
+    )
 
 
 def _render_paginated_document_to_images(
@@ -1941,6 +2072,43 @@ def _rendered_page_markdown(image_path: Path, page_number: int, body: str, label
     ]
 
 
+def _read_pdf_text_layer_for_compile(source_path: Path) -> str:
+    """Read every PDF page from its native text layer without OCR.
+
+    This explicit path is intended for text-native benchmark and bulk corpora.
+    It preserves one-based page boundaries and fails closed when the document
+    has no meaningful text, allowing the normal render/OCR path to take over.
+    """
+    import fitz
+
+    sections = [
+        f"# Document Source: {source_path.name}",
+        "",
+        f"> **Original**: `{source_path.resolve()}`",
+        "> **Extraction mode**: native PDF text layer (no OCR)",
+        "> **Page guarantee**: every PDF page is represented below.",
+        "",
+    ]
+    extracted_chars = 0
+    with fitz.open(source_path) as document:
+        if len(document) == 0:
+            raise RuntimeError("PDF contains zero pages")
+        for page_number, page in enumerate(document, start=1):
+            text = page.get_text("text", sort=True).strip()
+            extracted_chars += len(re.sub(r"\s+", "", text))
+            sections.extend(
+                [
+                    f"## Page {page_number}",
+                    "",
+                    text if text else "[No native text on this page.]",
+                    "",
+                ]
+            )
+    if extracted_chars < 20:
+        raise RuntimeError("PDF native text layer is empty or not meaningful")
+    return "\n".join(sections).strip() + "\n"
+
+
 def _read_paginated_document_for_compile(source_path: Path) -> str:
     """Read a PDF/Word/PowerPoint document with page-preserving fallbacks.
 
@@ -1952,6 +2120,21 @@ def _read_paginated_document_for_compile(source_path: Path) -> str:
     No page may disappear silently: every rendered page gets a heading, image link, and
     either extracted text or an explicit Agent instruction.
     """
+    use_native_pdf_text = os.environ.get("LLM_WIKI_PDF_TEXT_LAYER", "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if source_path.suffix.lower() == ".pdf" and use_native_pdf_text:
+        try:
+            return _read_pdf_text_layer_for_compile(source_path)
+        except Exception as native_error:
+            print(
+                f"Native PDF text extraction failed, falling back to OCR: {native_error}",
+                file=sys.stderr,
+            )
+
     sections = [
         f"# Document Source: {source_path.name}",
         "",
@@ -1971,6 +2154,10 @@ def _read_paginated_document_for_compile(source_path: Path) -> str:
     except Exception as render_error:
         direct_ocr_text = ""
         direct_ocr_error: Exception | None = None
+        legacy_doc_text = ""
+        legacy_doc_pipeline = ""
+        legacy_doc_path: Path | None = None
+        legacy_doc_error: Exception | None = None
         if source_path.suffix.lower() == ".pdf" and _ocr_backend_available():
             try:
                 with _readonly_working_copy(source_path) as work_path:
@@ -1997,7 +2184,14 @@ def _read_paginated_document_for_compile(source_path: Path) -> str:
             )
             return "\n".join(sections).strip() + "\n"
 
-        markitdown_text = _markitdown_to_markdown(source_path)
+        if source_path.suffix.lower() == ".doc":
+            try:
+                legacy_doc_text, legacy_doc_pipeline, legacy_doc_path = _legacy_doc_to_markdown(
+                    source_path
+                )
+            except Exception as exc:
+                legacy_doc_error = exc
+
         sections.extend(
             [
                 "## Rendering Failed",
@@ -2006,6 +2200,23 @@ def _read_paginated_document_for_compile(source_path: Path) -> str:
                 "",
             ]
         )
+        if legacy_doc_text and legacy_doc_path is not None:
+            sections.extend(
+                [
+                    "## Legacy DOC Conversion Succeeded",
+                    "",
+                    f"> **Conversion pipeline**: `{legacy_doc_pipeline} -> MarkItDown`",
+                    f"> **Cached DOCX**: `{legacy_doc_path.resolve()}`",
+                    "> The binary Word file was converted to DOCX before extraction. "
+                    "The text and document structure below are compile-ready; fixed page "
+                    "numbers are unavailable because page rendering failed.",
+                    "",
+                    legacy_doc_text.strip(),
+                    "",
+                ]
+            )
+            return "\n".join(sections).strip() + "\n"
+
         if direct_ocr_error is not None:
             sections.extend(
                 [
@@ -2015,6 +2226,22 @@ def _read_paginated_document_for_compile(source_path: Path) -> str:
                     "",
                 ]
             )
+        if legacy_doc_error is not None:
+            sections.extend(
+                [
+                    "## Legacy DOC Conversion Failed",
+                    "",
+                    f"{legacy_doc_error}",
+                    "",
+                ]
+            )
+
+        # Raw legacy .doc is intentionally never sent to MarkItDown: it does
+        # not support the old binary format. The dedicated DOCX bridge above
+        # is both faster and more reliable.
+        markitdown_text = (
+            "" if source_path.suffix.lower() == ".doc" else _markitdown_to_markdown(source_path)
+        )
         if markitdown_text:
             sections.extend(
                 [
@@ -2029,13 +2256,19 @@ def _read_paginated_document_for_compile(source_path: Path) -> str:
                 ]
             )
         else:
+            converter_hint = (
+                " Install LibreOffice (all platforms) or use macOS textutil to enable "
+                "automatic .doc conversion."
+                if source_path.suffix.lower() == ".doc"
+                else ""
+            )
             sections.extend(
                 [
                     "## Agent Action Required",
                     "",
                     "No page images could be rendered and MarkItDown did not return content. "
                     "The Agent must inspect the immutable source snapshot directly; if it cannot, ask the user "
-                    "for a PDF/image export with every page or slide.",
+                    f"for a PDF/image export with every page or slide.{converter_hint}",
                     "",
                 ]
             )
@@ -2049,6 +2282,47 @@ def _read_paginated_document_for_compile(source_path: Path) -> str:
             "",
         ]
     )
+
+    # A legacy binary Word file has a better native-text route than OCR. Keep
+    # the complete page renders for visual verification, but compile from the
+    # converted DOCX so headings, lists, and tables survive without OCR noise.
+    if source_path.suffix.lower() == ".doc":
+        try:
+            legacy_text, legacy_pipeline, legacy_path = _legacy_doc_to_markdown(source_path)
+            sections.extend(
+                [
+                    "## Extraction Mode",
+                    "",
+                    "Native Word structure via a converted DOCX; rendered pages are retained "
+                    "as the complete visual reference.",
+                    "",
+                    f"> **Conversion pipeline**: `{legacy_pipeline} -> MarkItDown`",
+                    f"> **Cached DOCX**: `{legacy_path.resolve()}`",
+                    "",
+                ]
+            )
+            for page_number, image_path in enumerate(page_images, start=1):
+                sections.extend(
+                    _rendered_page_markdown(
+                        image_path,
+                        page_number,
+                        "Visual reference for the converted Word content below.",
+                        "Page",
+                    )
+                )
+            sections.extend(["## Converted Word Content", "", legacy_text.strip(), ""])
+            return "\n".join(sections).strip() + "\n"
+        except Exception as legacy_error:
+            sections.extend(
+                [
+                    "## Native DOC Extraction Failed",
+                    "",
+                    f"{legacy_error}",
+                    "",
+                    "Falling back to OCR/vision while retaining every rendered page image.",
+                    "",
+                ]
+            )
 
     if not page_images:
         sections.extend(
@@ -2083,9 +2357,7 @@ def _read_paginated_document_for_compile(source_path: Path) -> str:
                 with _readonly_working_copy(ovis_source) as work_path:
                     ovis_markdown = _ocr_pdf_with_config(work_path)
                 if not _has_meaningful_ocr_text(ovis_markdown):
-                    raise RuntimeError(
-                        f"{backend_label} returned only empty/header-like content"
-                    )
+                    raise RuntimeError(f"{backend_label} returned only empty/header-like content")
                 sections.extend(
                     [
                         "## Extraction Mode",
@@ -2166,14 +2438,56 @@ def _read_paginated_document_for_compile(source_path: Path) -> str:
     return "\n".join(sections).strip() + "\n"
 
 
-def _markitdown_to_markdown(source_path: Path) -> str:
-    """Use MarkItDown for non-paginated document fallback when installed."""
-    try:
-        from markitdown import MarkItDown
+def _run_markitdown(source_path: Path) -> str:
+    """Run MarkItDown against an isolated copy of a supported source."""
+    from markitdown import MarkItDown
 
+    with _readonly_working_copy(source_path) as work_path:
+        result = MarkItDown().convert(str(work_path))
+    return (getattr(result, "text_content", "") or "").strip()
+
+
+def _legacy_doc_to_markdown(source_path: Path) -> tuple[str, str, Path]:
+    """Convert legacy Word to cached DOCX, then extract structured Markdown."""
+    digest = _file_sha256(source_path)
+    cache_dir = WIKI_DIR / "source" / "converted_documents" / digest[:16]
+    cached_docx = cache_dir / f"{source_path.stem}.docx"
+    pipeline = "cached-docx"
+
+    if not cached_docx.is_file() or cached_docx.stat().st_size == 0:
+        cache_dir.mkdir(parents=True, exist_ok=True)
         with _readonly_working_copy(source_path) as work_path:
-            result = MarkItDown().convert(str(work_path))
-        return (getattr(result, "text_content", "") or "").strip()
+            with tempfile.TemporaryDirectory(prefix="llm-wiki-doc-convert-") as tmpdir:
+                converted_docx, pipeline = _convert_legacy_doc_to_docx(
+                    work_path,
+                    Path(tmpdir),
+                )
+                fd, staging_name = tempfile.mkstemp(
+                    prefix=f".{source_path.stem}-",
+                    suffix=".docx.tmp",
+                    dir=cache_dir,
+                )
+                os.close(fd)
+                staging_path = Path(staging_name)
+                try:
+                    shutil.copy2(converted_docx, staging_path)
+                    staging_path.replace(cached_docx)
+                finally:
+                    staging_path.unlink(missing_ok=True)
+
+    content = _run_markitdown(cached_docx)
+    if not content:
+        raise RuntimeError(f"MarkItDown returned no content for converted DOCX: {cached_docx}")
+    return content, pipeline, cached_docx
+
+
+def _markitdown_to_markdown(source_path: Path) -> str:
+    """Use MarkItDown, bridging legacy binary Word through a cached DOCX."""
+    try:
+        if source_path.suffix.lower() == ".doc":
+            content, _pipeline, _converted_path = _legacy_doc_to_markdown(source_path)
+            return content
+        return _run_markitdown(source_path)
     except Exception as exc:
         print(f"  WARNING: MarkItDown failed for {source_path}: {exc}", file=sys.stderr)
         return ""
@@ -2604,6 +2918,7 @@ def create_agent_compile_task(
         "failed": [],
     }
 
+    raw_evidence_manifest: dict[str, Any] | None = None
     if path.is_dir():
         try:
             sources = iter_source_files(path, max_depth=depth)
@@ -2655,6 +2970,14 @@ def create_agent_compile_task(
                 # OvisOCR2 may add absolute bbox crop references. Persist them
                 # into pages/assets just like the captured source page images.
                 content = _persist_source_image_references(content, path)
+        if readable and content and not dry_run:
+            from raw_evidence import persist_raw_evidence
+
+            raw_evidence_manifest = persist_raw_evidence(
+                strip_secrets(content),
+                source_name=path.name,
+                wiki_dir=WIKI_DIR,
+            )
         readable_content = strip_sensitive(content) if readable else ""
         source_entries = f"- `{task_source_path}`"
         source_name = path.name
@@ -2818,7 +3141,7 @@ Agent cannot read it, ask the user to provide a text export or summary.
   native visual recognition for these successfully processed images.
 - Complete a task only after all OCR text, formulas, tables, captions, and referenced
   crops are represented in the output. This run contains
-  {sum(int(item.get('image_count', 0)) for item in todo_items)} persisted image asset(s).
+  {sum(int(item.get("image_count", 0)) for item in todo_items)} persisted image asset(s).
 
 """
         else:
@@ -2827,7 +3150,7 @@ Agent cannot read it, ask the user to provide a text export or summary.
 - This run contains image-backed source tasks. Each such todo item has
   `requires_image_inspection=true` and concrete absolute `image_paths`.
 - For every path in `image_paths`, run the configured `{configured_ocr_backend}`
-  backend ({configured_ocr_label}) through `{Path(__file__).resolve().parent / 'ocr.py'}`
+  backend ({configured_ocr_label}) through `{Path(__file__).resolve().parent / "ocr.py"}`
   before any visual skill. Use its Markdown as the primary extraction and retain all
   generated crop references. Do not invoke vision-skill when OCR succeeds.
 - vision-skill is permitted only for a specific image after its OCR command fails or
@@ -2837,7 +3160,7 @@ Agent cannot read it, ask the user to provide a text export or summary.
 - Do not substitute, deduplicate away, or mark failed merely because another PDF or
   source URL appears similar. Compile this source and preserve its own provenance.
 - A task may be completed only after every listed image has been read and represented
-  in its output pages. This run contains {sum(int(item.get('image_count', 0)) for item in todo_items)} image(s).
+  in its output pages. This run contains {sum(int(item.get("image_count", 0)) for item in todo_items)} image(s).
 
 """
 
@@ -2948,6 +3271,18 @@ This task was generated in Agent mode. Do not call the configured LLM API.
   non-empty `type` field.
 - Use OKF fields directly: `type`, `title`, `description`, optional `resource`,
   `tags`, and ISO 8601 `timestamp`. Use `provenance` only for the source identity.
+- For time-sensitive rules, preserve explicit applicability with ISO 8601
+  `effective_from` (inclusive) and `effective_until` (exclusive), plus
+  `supersedes` / `superseded_by` concept links. Never infer effectiveness from
+  `timestamp`, publication time, or `stale_after`. A future replacement does not
+  invalidate the old rule before the replacement becomes effective.
+- Add a frontmatter `claims` list of atomic facts. Each claim requires
+  `subject`, `predicate`, and `value`; preserve explicit modality, conditions,
+  exceptions, audience, jurisdiction, effective interval, source page/section,
+  table coordinates, and footnotes. Do not strengthen or weaken normative text.
+- Preserve source authority only when stated: `document_status` describes
+  official/approved/draft/meeting-note status and `source_authority` is a 0..1
+  score. Omit unknown authority instead of guessing.
 - Do not store legacy `id`, `name`, `summary`, `keywords`, `created_at`, or
   `published_at` fields. Concept ID is the bundle-relative file path without `.md`.
 - Use structural Markdown suited to the matched domain. `# Schema`, `# Examples`,
@@ -2988,6 +3323,7 @@ This task was generated in Agent mode. Do not call the configured LLM API.
         "pages_created": 0,
         "pages_updated": 0,
         "dry_run": dry_run,
+        "raw_evidence": raw_evidence_manifest,
         "message": (
             "Agent compile task created. The current Agent should execute this task; "
             "no configured LLM was called."
@@ -3152,13 +3488,38 @@ def _okf_page_from_model(page_content: str, source_name: str) -> tuple[str, dict
         or datetime.now(timezone.utc).isoformat(),
         "provenance": source_name,
     }
-    for extension_key in ("aliases", "keywords", "questions"):
+    for extension_key in (
+        "aliases",
+        "keywords",
+        "questions",
+        "claims",
+        "audience",
+        "applies_to",
+        "jurisdiction",
+        "document_status",
+        "source_type",
+        "source_authority",
+        "effective_from",
+        "effective_until",
+        "valid_from",
+        "valid_until",
+        "announced_at",
+        "supersedes",
+        "superseded_by",
+        "status",
+        "stale_after",
+    ):
         if raw.get(extension_key):
             metadata[extension_key] = raw[extension_key]
     if raw.get("resource"):
         metadata["resource"] = raw["resource"]
     metadata = {key: value for key, value in metadata.items() if value not in (None, "", [])}
     body = match.group(2).lstrip()
+    from knowledge_claims import extract_claims
+
+    claims = extract_claims(metadata, body, concept_identifier)
+    if claims:
+        metadata["claims"] = claims
     normalized = (
         "---\n"
         + yaml.safe_dump(metadata, allow_unicode=True, sort_keys=False).strip()
@@ -3177,6 +3538,27 @@ def _usable_identity_key(value: str) -> bool:
     """Reject short ASCII fragments that would cause unsafe semantic merges."""
     has_cjk = bool(re.search(r"[\u4e00-\u9fff]", value))
     return len(value) >= (2 if has_cjk else 4)
+
+
+def _identity_similarity(left: str, right: str) -> float:
+    """Score conservative spelling/spacing variants without semantic guessing."""
+    from difflib import SequenceMatcher
+
+    left_key = _identity_key(left)
+    right_key = _identity_key(right)
+    if not _usable_identity_key(left_key) or not _usable_identity_key(right_key):
+        return 0.0
+    if left_key == right_key:
+        return 1.0
+    ratio = SequenceMatcher(None, left_key, right_key).ratio()
+    left_tokens = set(re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]", left.casefold()))
+    right_tokens = set(re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]", right.casefold()))
+    token_score = (
+        len(left_tokens & right_tokens) / len(left_tokens | right_tokens)
+        if left_tokens and right_tokens
+        else 0.0
+    )
+    return max(ratio, token_score)
 
 
 def _metadata_names(metadata: dict) -> set[str]:
@@ -3219,7 +3601,12 @@ def _resolve_existing_concept(
     incoming_id: str,
     catalog: list[dict[str, Any]] | None = None,
 ) -> tuple[str, Path] | None:
-    """Resolve exact title/alias variants to a canonical existing concept."""
+    """Resolve an unambiguous title/alias variant to a canonical concept.
+
+    Exact aliases remain authoritative. Fuzzy spelling resolution is restricted
+    to the same entity type, long names, a high threshold, and a clear margin;
+    ambiguous candidates intentionally remain separate.
+    """
     if str(metadata.get("type", "")).lower() not in CONCEPT_LIKE_TYPES:
         return None
     incoming_keys = {
@@ -3227,6 +3614,9 @@ def _resolve_existing_concept(
     }
     if not incoming_keys:
         return None
+    candidates: list[tuple[float, dict[str, Any]]] = []
+    incoming_names = _metadata_names(metadata)
+    incoming_type = str(metadata.get("type", "")).casefold()
     for item in catalog if catalog is not None else _existing_concept_catalog():
         if str(item.get("type", "")).lower() not in CONCEPT_LIKE_TYPES:
             continue
@@ -3234,7 +3624,27 @@ def _resolve_existing_concept(
             existing_id = str(item["id"])
             if existing_id != incoming_id:
                 return existing_id, Path(item["path"])
-    return None
+            continue
+        item_type = str(item.get("type", "")).casefold()
+        if incoming_type and item_type and incoming_type != item_type:
+            continue
+        score = max(
+            (
+                _identity_similarity(incoming_name, existing_name)
+                for incoming_name in incoming_names
+                for existing_name in item.get("names", set())
+            ),
+            default=0.0,
+        )
+        if score >= 0.90 and str(item["id"]) != incoming_id:
+            candidates.append((score, item))
+    candidates.sort(key=lambda pair: pair[0], reverse=True)
+    if not candidates:
+        return None
+    if len(candidates) > 1 and candidates[0][0] - candidates[1][0] < 0.04:
+        return None
+    best = candidates[0][1]
+    return str(best["id"]), Path(best["path"])
 
 
 def _related_existing_knowledge(
@@ -3247,9 +3657,7 @@ def _related_existing_knowledge(
     scored: list[tuple[int, dict[str, Any]]] = []
     for item in catalog if catalog is not None else _existing_concept_catalog():
         matched = [
-            key
-            for key in item["keys"]
-            if _usable_identity_key(key) and key in normalized_content
+            key for key in item["keys"] if _usable_identity_key(key) and key in normalized_content
         ]
         if not matched:
             continue
@@ -3274,12 +3682,8 @@ def _related_existing_knowledge(
 
 def _deterministic_fusion(existing_content: str, incoming_content: str) -> str:
     """Losslessly retain both bodies when semantic fusion is unavailable."""
-    existing_match = re.match(
-        r"^---\s*\n(.*?)\n---\s*\n?(.*)$", existing_content, flags=re.DOTALL
-    )
-    incoming_match = re.match(
-        r"^---\s*\n(.*?)\n---\s*\n?(.*)$", incoming_content, flags=re.DOTALL
-    )
+    existing_match = re.match(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", existing_content, flags=re.DOTALL)
+    incoming_match = re.match(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", incoming_content, flags=re.DOTALL)
     if not existing_match or not incoming_match:
         return existing_content.rstrip() + "\n\n## 新增来源补充\n\n" + incoming_content.lstrip()
     existing_body = existing_match.group(2).rstrip()
@@ -3321,14 +3725,85 @@ def _preserve_fusion_evidence(fused_body: str, source_bodies: tuple[str, str]) -
     return fused_body.rstrip() + "\n\n## 融合保留证据\n\n" + "\n".join(protected) + "\n"
 
 
+def _refresh_fused_metadata(content: str, incoming_content: str, page_id: str) -> str:
+    """Merge safe extension metadata and rebuild claims after page fusion."""
+    content_match = re.match(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", content, re.DOTALL)
+    incoming_match = re.match(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", incoming_content, re.DOTALL)
+    if not content_match:
+        return content
+    try:
+        metadata = yaml.safe_load(content_match.group(1)) or {}
+        incoming = yaml.safe_load(incoming_match.group(1)) or {} if incoming_match else {}
+    except yaml.YAMLError:
+        return content
+    if not isinstance(metadata, dict) or not isinstance(incoming, dict):
+        return content
+    for field in (
+        "tags",
+        "aliases",
+        "keywords",
+        "questions",
+        "supersedes",
+        "superseded_by",
+    ):
+        existing_values = metadata.get(field, [])
+        incoming_values = incoming.get(field, [])
+        if not isinstance(existing_values, list):
+            existing_values = [existing_values]
+        if not isinstance(incoming_values, list):
+            incoming_values = [incoming_values]
+        merged = list(
+            dict.fromkeys(
+                str(value) for value in existing_values + incoming_values if str(value).strip()
+            )
+        )
+        if merged:
+            metadata[field] = merged
+    for field in (
+        "audience",
+        "applies_to",
+        "jurisdiction",
+        "document_status",
+        "source_type",
+        "effective_from",
+        "effective_until",
+        "valid_from",
+        "valid_until",
+    ):
+        if metadata.get(field) in (None, "", []) and incoming.get(field) not in (None, "", []):
+            metadata[field] = incoming[field]
+    authorities = []
+    for value in (metadata.get("source_authority"), incoming.get("source_authority")):
+        try:
+            authorities.append(float(value))
+        except (TypeError, ValueError):
+            continue
+    if authorities:
+        metadata["source_authority"] = min(max(max(authorities), 0.0), 1.0)
+    explicit_claims = []
+    for source in (metadata.get("claims", []), incoming.get("claims", [])):
+        if isinstance(source, list):
+            explicit_claims.extend(item for item in source if isinstance(item, dict))
+    if explicit_claims:
+        metadata["claims"] = explicit_claims
+    from knowledge_claims import extract_claims
+
+    body = content_match.group(2).lstrip()
+    claims = extract_claims(metadata, body, page_id)
+    if claims:
+        metadata["claims"] = claims
+    return (
+        "---\n"
+        + yaml.safe_dump(metadata, allow_unicode=True, sort_keys=False).strip()
+        + "\n---\n\n"
+        + body
+    )
+
+
 def _fuse_page_content(existing_content: str, incoming_content: str, page_id: str) -> str:
     """Semantically merge page bodies with a deterministic lossless fallback."""
-    existing_match = re.match(
-        r"^---\s*\n(.*?)\n---\s*\n?(.*)$", existing_content, flags=re.DOTALL
-    )
-    incoming_match = re.match(
-        r"^---\s*\n(.*?)\n---\s*\n?(.*)$", incoming_content, flags=re.DOTALL
-    )
+    existing_match = re.match(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", existing_content, flags=re.DOTALL)
+    incoming_match = re.match(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", incoming_content, flags=re.DOTALL)
     if existing_match and incoming_match:
         fused = llm_fuse_pages(existing_match.group(2), incoming_match.group(2), page_id)
         if fused:
@@ -3336,8 +3811,10 @@ def _fuse_page_content(existing_content: str, incoming_content: str, page_id: st
                 fused.strip(),
                 (existing_match.group(2), incoming_match.group(2)),
             )
-            return "---\n" + existing_match.group(1) + "\n---\n\n" + fused_body.strip() + "\n"
-    return _deterministic_fusion(existing_content, incoming_content)
+            combined = "---\n" + existing_match.group(1) + "\n---\n\n" + fused_body.strip() + "\n"
+            return _refresh_fused_metadata(combined, incoming_content, page_id)
+    combined = _deterministic_fusion(existing_content, incoming_content)
+    return _refresh_fused_metadata(combined, incoming_content, page_id)
 
 
 def _reconcile_compiled_pages(
@@ -3519,6 +3996,24 @@ def write_audit(operation: str, details: dict):
 
 
 def detect_contradictions(page_id: str, new_content: str, existing_content: str) -> list:
+    from knowledge_claims import detect_claim_conflicts, extract_claims
+
+    def page_claims(content: str) -> list[dict[str, Any]]:
+        match = re.match(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", content, re.DOTALL)
+        if not match:
+            return []
+        try:
+            metadata = yaml.safe_load(match.group(1)) or {}
+        except yaml.YAMLError:
+            metadata = {}
+        return extract_claims(
+            metadata if isinstance(metadata, dict) else {}, match.group(2), page_id
+        )
+
+    deterministic = detect_claim_conflicts(
+        page_claims(existing_content),
+        page_claims(new_content),
+    )
     system_prompt = """You are a contradiction detector for wiki pages.
 Compare existing content with new content and identify contradictions.
 
@@ -3549,10 +4044,13 @@ Find contradictions between existing and new content."""
 
     try:
         response = call_llm(system_prompt, user_prompt)
-        return json.loads(response)
+        model_conflicts = json.loads(response)
+        if not isinstance(model_conflicts, list):
+            model_conflicts = []
+        return deterministic + model_conflicts
     except Exception:
         _log_exc("contradiction detection failed")
-        return []
+        return deterministic
 
 
 def auto_resolve_contradictions(page_id: str, contradictions: list[dict]) -> list[dict]:
@@ -3745,6 +4243,17 @@ def _split_by_headings(content: str, max_tokens: int, lang: str = "en") -> list[
     if current:
         merged.append(current)
 
+    # Avoid a tiny orphan tail when a document only slightly exceeds the cap.
+    # Such tails often contain references or closing boilerplate and cannot
+    # produce a standalone knowledge page, while the combined chunk remains
+    # comfortably inside the model's context window.
+    if len(merged) > 1:
+        tail_tokens = _estimate_tokens(merged[-1], lang)
+        combined_tail = merged[-2] + "\n\n" + merged[-1]
+        combined_tokens = _estimate_tokens(combined_tail, lang)
+        if tail_tokens < max_tokens * 0.25 and combined_tokens <= max_tokens * 1.25:
+            merged[-2:] = [combined_tail]
+
     result = merged if merged else [content]
     if len(result) > 1 and _source_page_numbers(content):
         return _add_cross_page_overlap(result)
@@ -3847,9 +4356,23 @@ def _merge_cross_chunk_page(existing: dict, incoming: dict) -> None:
         fused_body = fused_body.rstrip() + "\n\n## 跨页来源图片\n\n" + "\n\n".join(missing_images)
 
     merged_content = "---\n" + existing_match.group(1) + "\n---\n" + fused_body.lstrip()
+    merged_content = _refresh_fused_metadata(
+        merged_content,
+        incoming_content,
+        str(existing.get("id", "")),
+    )
     existing["_content"] = merged_content
     existing["facts"], existing["relationships"] = _count_facts(merged_content)
     existing["merged_chunks"] = int(existing.get("merged_chunks", 1)) + 1
+
+
+def _compile_chunk_threshold(estimated_tokens: int) -> int:
+    """Apply the explicit cap only beyond the model's normal chunk threshold."""
+    default_threshold = get_chunk_threshold()
+    raw = os.environ.get("LLM_WIKI_CHUNK_TOKENS", "").strip()
+    if not raw or estimated_tokens <= default_threshold:
+        return default_threshold
+    return min(default_threshold, max(4_000, int(raw)))
 
 
 def _compile_chunked(
@@ -4093,6 +4616,8 @@ def _compile_single_chunk(
     source_abbr = _re.sub(r"[^\u4e00-\u9fff\w]", "", trace_source_name)[:8].lower() or "doc"
     domain_guidance = build_domain_expert_guidance(chunk_content, chunk_name)
     media_guidance = build_media_fidelity_guidance(lang)
+    temporal_guidance = build_temporal_applicability_guidance(lang)
+    claim_guidance = build_claim_extraction_guidance(lang)
     study_material = any(
         expert["id"] == "study_material"
         for expert in match_domain_experts(chunk_content, trace_source_name)
@@ -4109,6 +4634,10 @@ def _compile_single_chunk(
 {domain_guidance}
 
 {media_guidance}
+
+{temporal_guidance}
+
+{claim_guidance}
 
 ## 数据保真（最高优先级，不可妥协）
 内容中涉及的任何数据——数字、日期、金额、百分比、阈值、配置参数、表格单元格、统计值、单位、名称——必须**逐字原样保留**，不得有任何篡改、省略、改写、四舍五入、单位换算或"联想补全"。
@@ -4273,6 +4802,10 @@ provenance: source-name
 
 {media_guidance}
 
+{temporal_guidance}
+
+{claim_guidance}
+
 ## Data Fidelity (highest priority — non-negotiable)
 Any data in the source — numbers, dates, amounts, percentages, thresholds, config
 parameters, table cells, statistics, units, and names — must be preserved
@@ -4311,6 +4844,23 @@ Karpathy's wiki design distinguishes two page types:
 
 ## Output Format
 ===PAGE_END=== separated. YAML frontmatter required.
+
+Every page MUST start with this parseable YAML block. Do not wrap it in a code
+fence, do not omit the opening or closing `---`, and do not output an `id` field:
+
+---
+type: concept
+title: Exact page title
+description: One-sentence summary
+tags: [keyword-1, keyword-2]
+timestamp: {datetime.now(timezone.utc).isoformat()}
+provenance: {trace_source_name}
+claims:
+  - subject: Exact subject
+    predicate: exact predicate
+    value: Exact value from the source
+    source: Page or section when available
+---
 
 Page structure (⚠️ MUST follow this order!):
 # [Title]
@@ -4553,11 +5103,22 @@ def compile_source(
     # full-page images generated for PDF, Word, and PowerPoint documents.
     if not dry_run:
         content = _persist_source_image_references(content, source_file)
+    raw_evidence_manifest: dict[str, Any] | None = None
+    if not dry_run:
+        from raw_evidence import persist_raw_evidence
+
+        raw_evidence_manifest = persist_raw_evidence(
+            strip_secrets(content),
+            source_name=source_name,
+            wiki_dir=WIKI_DIR,
+        )
     content = strip_sensitive(content)
 
     lang = detect_language(content)
     domain_guidance = build_domain_expert_guidance(content, source_name)
     media_guidance = build_media_fidelity_guidance(lang)
+    temporal_guidance = build_temporal_applicability_guidance(lang)
+    claim_guidance = build_claim_extraction_guidance(lang)
     study_material = any(
         expert["id"] == "study_material" for expert in match_domain_experts(content, source_name)
     )
@@ -4576,8 +5137,8 @@ def compile_source(
     print(f"  Focus: {', '.join(focus_types)} — {focus_desc}", file=sys.stderr)
 
     # ── Large document chunking (model-context-aware) ──
-    chunk_threshold = get_chunk_threshold()
     est_tokens = _estimate_tokens(content, lang)
+    chunk_threshold = _compile_chunk_threshold(est_tokens)
     if est_tokens > chunk_threshold:
         chunks = _split_by_headings(content, chunk_threshold, lang)
         if len(chunks) > 1:
@@ -4588,7 +5149,7 @@ def compile_source(
                 f"splitting into {len(chunks)} chunks...",
                 file=sys.stderr,
             )
-            return _compile_chunked(
+            result = _compile_chunked(
                 chunks,
                 source_name,
                 source_type,
@@ -4602,6 +5163,8 @@ def compile_source(
                 focus_desc,
                 entity_type_str,
             )
+            result["raw_evidence"] = raw_evidence_manifest
+            return result
 
     if lang == "zh":
         # Derive a short source abbreviation for ID prefix
@@ -4613,6 +5176,10 @@ def compile_source(
 {domain_guidance}
 
 {media_guidance}
+
+{temporal_guidance}
+
+{claim_guidance}
 
 ## 数据保真（最高优先级，不可妥协）
 内容中涉及的任何数据——数字、日期、金额、百分比、阈值、配置参数、表格单元格、统计值、单位、名称——必须**逐字原样保留**，不得有任何篡改、省略、改写、四舍五入、单位换算或"联想补全"。
@@ -4745,6 +5312,10 @@ provenance: source-name
 {domain_guidance}
 
 {media_guidance}
+
+{temporal_guidance}
+
+{claim_guidance}
 
 ## Data Fidelity (highest priority — non-negotiable)
 Any data in the source — numbers, dates, amounts, percentages, thresholds, config
@@ -5135,6 +5706,7 @@ Output pages separated by ===PAGE_END==="""
                 "pages": [],
                 "output_ids": output_ids,
                 "coverage_complete": True,
+                "raw_evidence": raw_evidence_manifest,
             }
         print(
             "  ERROR: No pages parsed from LLM response! Raw output (500 chars):", file=sys.stderr
@@ -5325,6 +5897,7 @@ provenance: 跨文档聚合
         "pages": all_pages,
         "output_ids": sorted(new_page_ids),
         "coverage_complete": True,
+        "raw_evidence": raw_evidence_manifest,
         "contradictions_found": contradictions_found,
     }
 
@@ -5752,12 +6325,27 @@ def main():
     parser.add_argument(
         "-j", "--jobs", type=int, default=None, help="Max concurrent LLM calls (default: 1, cap: 4)"
     )
+    parser.add_argument(
+        "--pdf-text-layer",
+        action="store_true",
+        help="Prefer the native PDF text layer and preserve page boundaries without OCR",
+    )
+    parser.add_argument(
+        "--chunk-tokens",
+        type=int,
+        default=None,
+        help="Override the long-document chunk size in estimated tokens (minimum 4000)",
+    )
     args = parser.parse_args()
 
     if args.jobs is not None:
         import os as _os
 
         _os.environ["LLM_WIKI_COMPILE_WORKERS"] = str(max(1, args.jobs))
+    if args.pdf_text_layer:
+        os.environ["LLM_WIKI_PDF_TEXT_LAYER"] = "1"
+    if args.chunk_tokens is not None:
+        os.environ["LLM_WIKI_CHUNK_TOKENS"] = str(max(4_000, args.chunk_tokens))
     config_mode = get_config().get("compile", {}).get("mode", "agent")
     mode = args.mode or config_mode or "agent"
 

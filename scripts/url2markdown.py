@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-from __future__ import annotations
 """url2markdown.py — Convert URL content to Markdown via Lightpanda + ReaderLM.
 
 Workflow:
@@ -13,6 +12,8 @@ Command-line flags override config file values.
 Usage:
     python scripts/url2markdown.py <url> [--output file.md]
 """
+
+from __future__ import annotations
 
 import argparse
 import json
@@ -33,6 +34,7 @@ def _load_config() -> dict:
         return {}
     try:
         import yaml
+
         return yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     except Exception:
         return {}
@@ -41,7 +43,9 @@ def _load_config() -> dict:
 CONFIG = _load_config()
 READERLM = CONFIG.get("readerlm", {})
 
-LLM_API_BASE = READERLM.get("api_base", os.environ.get("READERLM_API_BASE", "http://127.0.0.1:12345"))
+LLM_API_BASE = READERLM.get(
+    "api_base", os.environ.get("READERLM_API_BASE", "http://127.0.0.1:12345")
+)
 LLM_MODEL = READERLM.get("model", os.environ.get("READERLM_MODEL", "jinaai-ReaderLM-v2"))
 
 
@@ -92,9 +96,12 @@ def fetch_html_with_lightpanda(url: str, timeout: int = 30000) -> str:
     cmd = [
         lightpanda_path,
         "fetch",
-        "--dump", "html",
-        "--wait-ms", str(timeout),
-        "--wait-until", "done",
+        "--dump",
+        "html",
+        "--wait-ms",
+        str(timeout),
+        "--wait-until",
+        "done",
         url,
     ]
 
@@ -234,26 +241,17 @@ def _main() -> None:
         description="Convert URL content to Markdown using lightpanda + ReaderLM"
     )
     parser.add_argument("url", help="URL to fetch and convert")
-    parser.add_argument(
-        "--output", "-o",
-        help="Output file path (default: stdout)"
-    )
+    parser.add_argument("--output", "-o", help="Output file path (default: stdout)")
     parser.add_argument(
         "--timeout",
         type=int,
         default=30000,
-        help="Timeout for lightpanda in milliseconds (default: 30000)"
+        help="Timeout for lightpanda in milliseconds (default: 30000)",
     )
     parser.add_argument(
-        "--api-base",
-        default=None,
-        help="LLM API base URL (from config or env if omitted)"
+        "--api-base", default=None, help="LLM API base URL (from config or env if omitted)"
     )
-    parser.add_argument(
-        "--model",
-        default=LLM_MODEL,
-        help=f"LLM model name (default: {LLM_MODEL})"
-    )
+    parser.add_argument("--model", default=LLM_MODEL, help=f"LLM model name (default: {LLM_MODEL})")
 
     args = parser.parse_args()
 

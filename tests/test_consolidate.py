@@ -5,8 +5,6 @@ import math
 import os
 from pathlib import Path
 
-import pytest
-
 import consolidate
 
 
@@ -51,14 +49,16 @@ class TestPromoteWorkingToEpisodic:
         try:
             obs = []
             for i in range(5):
-                obs.append({
-                    "id": f"obs-{i}",
-                    "content": f"Observation {i}",
-                    "source": "test",
-                    "entity_ids": ["test-entity"],
-                    "timestamp": "2024-04-01T10:00:00Z",
-                    "confidence": 0.5,
-                })
+                obs.append(
+                    {
+                        "id": f"obs-{i}",
+                        "content": f"Observation {i}",
+                        "source": "test",
+                        "entity_ids": ["test-entity"],
+                        "timestamp": "2024-04-01T10:00:00Z",
+                        "confidence": 0.5,
+                    }
+                )
             working_path = Path(".wiki") / "memory" / "working.json"
             working_path.write_text(json.dumps(obs))
 
@@ -78,17 +78,19 @@ class TestApplyRetentionDecay:
         old = os.getcwd()
         os.chdir(wiki_dir)
         try:
-            semantic = [{
-                "id": "fact-old",
-                "claim": "Old claim",
-                "entity_id": "old-bug",
-                "confidence": 0.3,
-                "sources": ["ep-1"],
-                "last_confirmed": "2020-01-01T00:00:00Z",
-                "reinforcements": 0,
-                "contradictions": [],
-                "status": "active",
-            }]
+            semantic = [
+                {
+                    "id": "fact-old",
+                    "claim": "Old claim",
+                    "entity_id": "old-bug",
+                    "confidence": 0.3,
+                    "sources": ["ep-1"],
+                    "last_confirmed": "2020-01-01T00:00:00Z",
+                    "reinforcements": 0,
+                    "contradictions": [],
+                    "status": "active",
+                }
+            ]
             sem_path = Path(".wiki") / "memory" / "semantic.json"
             sem_path.write_text(json.dumps(semantic))
 
@@ -102,18 +104,21 @@ class TestApplyRetentionDecay:
         os.chdir(wiki_dir)
         try:
             from datetime import datetime, timezone
+
             recent = datetime.now(timezone.utc).isoformat()
-            semantic = [{
-                "id": "fact-recent",
-                "claim": "Recent claim",
-                "entity_id": "recent-arch",
-                "confidence": 0.9,
-                "sources": ["ep-2"],
-                "last_confirmed": recent,
-                "reinforcements": 0,
-                "contradictions": [],
-                "status": "active",
-            }]
+            semantic = [
+                {
+                    "id": "fact-recent",
+                    "claim": "Recent claim",
+                    "entity_id": "recent-arch",
+                    "confidence": 0.9,
+                    "sources": ["ep-2"],
+                    "last_confirmed": recent,
+                    "reinforcements": 0,
+                    "contradictions": [],
+                    "status": "active",
+                }
+            ]
             sem_path = Path(".wiki") / "memory" / "semantic.json"
             sem_path.write_text(json.dumps(semantic))
 

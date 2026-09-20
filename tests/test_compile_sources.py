@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -17,12 +18,122 @@ import scripts.compile_v2 as compile_v2
 
 def test_compile_import_path_prefers_real_ocr_package() -> None:
     project_root = Path(__file__).resolve().parent.parent
-    scripts_dir = project_root / "scripts"
+    code = (
+        "import json, pathlib, sys; "
+        "import scripts.compile_v2; import ocr; "
+        "print(json.dumps({'root': sys.path.index(str(pathlib.Path.cwd())), "
+        "'scripts': sys.path.index(str(pathlib.Path.cwd() / 'scripts')), "
+        "'ocr': str(pathlib.Path(ocr.__file__).resolve())}))"
+    )
 
-    assert sys.path.index(str(project_root)) < sys.path.index(str(scripts_dir))
-    import ocr
+    completed = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    payload = json.loads(completed.stdout)
 
-    assert Path(ocr.__file__).resolve() == project_root / "ocr" / "__init__.py"
+    assert payload["root"] < payload["scripts"]
+    assert Path(payload["ocr"]) == project_root / "ocr" / "__init__.py"
+
+
+def test_native_pdf_text_layer_preserves_every_page_without_ocr(tmp_path, monkeypatch) -> None:
+    fitz = pytest.importorskip("fitz")
+    source = tmp_path / "native.pdf"
+    with fitz.open() as document:
+        first = document.new_page()
+        first.insert_text((72, 72), "First page policy effective January 1, 2027.")
+        second = document.new_page()
+        second.insert_text((72, 72), "Second page implementation detail.")
+        document.save(source)
+
+    monkeypatch.setenv("LLM_WIKI_PDF_TEXT_LAYER", "1")
+    monkeypatch.setattr(
+        compile_v2,
+        "_render_paginated_document_to_images",
+        lambda *_args, **_kwargs: pytest.fail("native text mode must not render or OCR"),
+    )
+
+    content = compile_v2._read_paginated_document_for_compile(source)
+
+    assert "native PDF text layer (no OCR)" in content
+    assert "## Page 1" in content
+    assert "## Page 2" in content
+    assert "First page policy effective January 1, 2027." in content
+    assert "Second page implementation detail." in content
+
+
+def test_compile_chunk_threshold_accepts_safe_override(monkeypatch) -> None:
+    monkeypatch.setenv("LLM_WIKI_CHUNK_TOKENS", "24000")
+    monkeypatch.setattr(compile_v2, "get_chunk_threshold", lambda override=None: override or 76000)
+    assert compile_v2._compile_chunk_threshold(25_000) == 76_000
+    assert compile_v2._compile_chunk_threshold(100_000) == 24_000
+
+    monkeypatch.setenv("LLM_WIKI_CHUNK_TOKENS", "100")
+    assert compile_v2._compile_chunk_threshold(100_000) == 4_000
+
+
+def test_source_evidence_redaction_keeps_contacts_but_removes_credentials() -> None:
+    content = "Contact public@example.org; password=hunter2; sk-" + "a" * 24
+
+    evidence = compile_v2.strip_secrets(content)
+    model_input = compile_v2.strip_sensitive(content)
+
+    assert "public@example.org" in evidence
+    assert "hunter2" not in evidence
+    assert "sk-" + "a" * 24 not in evidence
+    assert "public@example.org" not in model_input
+
+
+def test_english_chunk_prompt_requires_parseable_okf_frontmatter(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    def fake_call(system_prompt: str, user_prompt: str) -> str:
+        captured["system"] = system_prompt
+        captured["user"] = user_prompt
+        return """---
+type: concept
+title: Retry Policy
+description: Retry behavior.
+tags: [retry]
+provenance: manual.pdf
+claims:
+  - subject: Retry Policy
+    predicate: attempts
+    value: three
+---
+# Retry Policy
+
+## Key Facts
+| Attribute | Value |
+|---|---|
+| attempts | three |
+"""
+
+    monkeypatch.setattr(compile_v2, "call_llm", fake_call)
+    result = compile_v2._compile_single_chunk(
+        "The retry policy allows three attempts.",
+        "manual.pdf [part 1/1]",
+        "pdf",
+        False,
+        True,
+        "en",
+        [],
+        "concept",
+        "relates_to",
+        [],
+        "retry behavior",
+        "concept",
+        "manual.pdf",
+        [],
+    )
+
+    assert result["created_pages"]
+    assert "Every page MUST start with this parseable YAML block" in captured["system"]
+    assert "claims:" in captured["system"]
+    assert "provenance: manual.pdf" in captured["system"]
 
 
 def test_ovis_image_uses_managed_temporary_document_route(monkeypatch) -> None:
@@ -240,6 +351,154 @@ def test_paginated_documents_are_supported_sources(tmp_path):
     assert compile_v2.is_paginated_document_source(docx)
 
 
+def test_legacy_doc_conversion_falls_back_to_macos_textutil(tmp_path, monkeypatch):
+    source = tmp_path / "handbook.doc"
+    original = b"legacy-word-binary" * 100
+    source.write_bytes(original)
+    output_dir = tmp_path / "converted"
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(compile_v2, "_find_libreoffice_converter", lambda: "/fake/soffice")
+    monkeypatch.setattr(
+        compile_v2.shutil,
+        "which",
+        lambda command: "/usr/bin/textutil" if command == "textutil" else None,
+    )
+
+    def fake_run(command, **_kwargs):
+        calls.append(command)
+        if command[0] == "/fake/soffice":
+            return compile_v2.subprocess.CompletedProcess(
+                command,
+                1,
+                stdout="",
+                stderr="LibreOffice import failed",
+            )
+        target = Path(command[command.index("-output") + 1])
+        target.write_bytes(b"converted-docx")
+        return compile_v2.subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(compile_v2.subprocess, "run", fake_run)
+
+    converted, pipeline = compile_v2._convert_legacy_doc_to_docx(source, output_dir)
+
+    assert pipeline == "textutil-doc-to-docx"
+    assert converted.read_bytes() == b"converted-docx"
+    assert [command[0] for command in calls] == ["/fake/soffice", "/usr/bin/textutil"]
+    assert source.read_bytes() == original
+
+
+def test_legacy_doc_markdown_conversion_is_cached_by_source_hash(tmp_path, monkeypatch):
+    source = tmp_path / "handbook.doc"
+    source.write_bytes(b"legacy-word-binary")
+    wiki = tmp_path / ".wiki"
+    conversion_calls: list[Path] = []
+    monkeypatch.setattr(compile_v2, "WIKI_DIR", wiki)
+
+    def fake_convert(work_path: Path, output_dir: Path):
+        assert work_path != source
+        assert work_path.read_bytes() == source.read_bytes()
+        conversion_calls.append(work_path)
+        converted = output_dir / "handbook.docx"
+        converted.write_bytes(b"converted-docx")
+        return converted, "textutil-doc-to-docx"
+
+    monkeypatch.setattr(compile_v2, "_convert_legacy_doc_to_docx", fake_convert)
+    monkeypatch.setattr(
+        compile_v2,
+        "_run_markitdown",
+        lambda path: f"# Converted handbook\n\nDOCX bytes: {path.stat().st_size}",
+    )
+
+    first_text, first_pipeline, first_path = compile_v2._legacy_doc_to_markdown(source)
+    second_text, second_pipeline, second_path = compile_v2._legacy_doc_to_markdown(source)
+
+    assert first_pipeline == "textutil-doc-to-docx"
+    assert second_pipeline == "cached-docx"
+    assert first_text == second_text
+    assert first_path == second_path
+    assert first_path.read_bytes() == b"converted-docx"
+    assert len(conversion_calls) == 1
+
+
+def test_legacy_doc_render_failure_uses_compile_ready_docx_bridge(tmp_path, monkeypatch):
+    source = tmp_path / "handbook.doc"
+    original = b"legacy-word-binary" * 100
+    source.write_bytes(original)
+    cached = tmp_path / ".wiki" / "source" / "converted_documents" / "hash" / "handbook.docx"
+    cached.parent.mkdir(parents=True)
+    cached.write_bytes(b"converted-docx")
+
+    monkeypatch.setattr(
+        compile_v2,
+        "_render_paginated_document_to_images",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("LibreOffice unavailable")),
+    )
+    monkeypatch.setattr(
+        compile_v2,
+        "_legacy_doc_to_markdown",
+        lambda _path: (
+            "# Employee handbook\n\nAll policies converted.",
+            "textutil-doc-to-docx",
+            cached,
+        ),
+    )
+    monkeypatch.setattr(
+        compile_v2,
+        "_markitdown_to_markdown",
+        lambda _path: pytest.fail("Raw .doc must never be passed to MarkItDown"),
+    )
+
+    content = compile_v2._read_paginated_document_for_compile(source)
+
+    assert "Legacy DOC Conversion Succeeded" in content
+    assert "textutil-doc-to-docx -> MarkItDown" in content
+    assert "compile-ready" in content
+    assert "All policies converted" in content
+    assert "MarkItDown Partial Evidence" not in content
+    assert source.read_bytes() == original
+
+
+def test_legacy_doc_prefers_native_docx_text_and_retains_all_page_images(tmp_path, monkeypatch):
+    source = tmp_path / "handbook.doc"
+    source.write_bytes(b"legacy-word-binary")
+    wiki = tmp_path / ".wiki"
+    pages = [tmp_path / "page-001.png", tmp_path / "page-002.png"]
+    for page in pages:
+        page.write_bytes(b"rendered-page")
+    cached = wiki / "source" / "converted_documents" / "hash" / "handbook.docx"
+    cached.parent.mkdir(parents=True)
+    cached.write_bytes(b"converted-docx")
+    monkeypatch.setattr(compile_v2, "WIKI_DIR", wiki)
+    monkeypatch.setattr(
+        compile_v2,
+        "_render_paginated_document_to_images",
+        lambda *_args, **_kwargs: (pages, "word-via-pdf"),
+    )
+    monkeypatch.setattr(
+        compile_v2,
+        "_legacy_doc_to_markdown",
+        lambda _path: (
+            "# Native heading\n\n- preserved list item",
+            "libreoffice-doc-to-docx",
+            cached,
+        ),
+    )
+    monkeypatch.setattr(
+        compile_v2,
+        "_ocr_backend_available",
+        lambda: pytest.fail("Native DOCX extraction must run before OCR"),
+    )
+
+    content = compile_v2._read_paginated_document_for_compile(source)
+
+    assert "Native Word structure via a converted DOCX" in content
+    assert "## Converted Word Content" in content
+    assert "# Native heading" in content
+    assert f"![Page 1]({pages[0].resolve()})" in content
+    assert f"![Page 2]({pages[1].resolve()})" in content
+
+
 def test_epub_converts_spine_to_markdown_and_extracts_images(tmp_path, monkeypatch):
     source = tmp_path / "physics.epub"
     diagram = _write_test_epub(source)
@@ -304,9 +563,7 @@ def test_cited_epub_section_image_is_attached_to_compiled_page(tmp_path):
         f"![速度图像]({image.resolve()})\n"
     )
     page_content = (
-        "# 速度\n\n## 来源追溯\n\n"
-        "- 原始资料：`physics.epub`\n"
-        "- EPUB章节定位：EPUB Section 1\n"
+        "# 速度\n\n## 来源追溯\n\n- 原始资料：`physics.epub`\n- EPUB章节定位：EPUB Section 1\n"
     )
 
     rendered = compile_v2._attach_source_media(page_content, source_content, page_path)
@@ -318,7 +575,7 @@ def test_cited_epub_section_image_is_attached_to_compiled_page(tmp_path):
 
 def test_epub_traceability_uses_section_when_fixed_pages_do_not_exist():
     source_content = (
-        "## EPUB Section 2: 机械运动\n\n" "> EPUB locator: `OEBPS/Text/motion.xhtml`\n\n正文。\n"
+        "## EPUB Section 2: 机械运动\n\n> EPUB locator: `OEBPS/Text/motion.xhtml`\n\n正文。\n"
     )
     page_content = "# 速度\n\n内容。\n\n- EPUB Section 2\n"
 
@@ -409,8 +666,7 @@ def test_mineru_v2_content_list_restores_page_boundaries(tmp_path):
     image.parent.mkdir()
     image.write_bytes(b"map")
     source.write_text(
-        "# 天气与气候\n\n天气符号。\n\n"
-        "![](images/weather-map.png)\n\n# 世界气候\n\n气候分布。\n",
+        "# 天气与气候\n\n天气符号。\n\n![](images/weather-map.png)\n\n# 世界气候\n\n气候分布。\n",
         encoding="utf-8",
     )
     source.with_name("geography_content_list_v2.json").write_text(
@@ -509,9 +765,7 @@ def test_image_backed_markdown_creates_page_tasks_with_concrete_image_paths(tmp_
     monkeypatch.setattr(compile_v2, "WIKI_DIR", wiki)
     monkeypatch.setattr(compile_v2, "PAGES_DIR", pages)
     monkeypatch.setattr(compile_v2, "SCHEMA_PATH", wiki / "schema.md")
-    monkeypatch.setattr(
-        compile_v2, "get_ocr_config", lambda: {"backend": "paddlevl"}
-    )
+    monkeypatch.setattr(compile_v2, "get_ocr_config", lambda: {"backend": "paddlevl"})
     monkeypatch.setattr(compile_v2, "_ocr_backend_available", lambda: True)
     ocr_calls: list[str] = []
 
@@ -574,9 +828,7 @@ def test_cited_source_page_image_is_attached_to_compiled_page(tmp_path):
         f"## Page {page_number}\n\n![Page {page_number}]({image.resolve()})\n\n正文。"
         for page_number, image in zip((11, 12, 13), images)
     )
-    page_content = (
-        "# 密度\n\n## 来源追溯\n\n" "- 原始资料：`八年级物理课本.pdf`\n- 页码：第 12 页\n"
-    )
+    page_content = "# 密度\n\n## 来源追溯\n\n- 原始资料：`八年级物理课本.pdf`\n- 页码：第 12 页\n"
 
     rendered = compile_v2._attach_source_media(page_content, source_content, page_path)
 
@@ -588,7 +840,7 @@ def test_cited_source_page_image_is_attached_to_compiled_page(tmp_path):
 
 
 def test_material_id_digits_are_not_mistaken_for_cited_pages():
-    content = "## 来源追溯\n\n" "- 主要页码：`mat-中图版-七年级上册-2024秋版--e032993b#p89-98`\n"
+    content = "## 来源追溯\n\n- 主要页码：`mat-中图版-七年级上册-2024秋版--e032993b#p89-98`\n"
 
     assert compile_v2._extract_cited_pages(content) == list(range(89, 99))
 
@@ -654,13 +906,23 @@ def test_paginated_chunking_overlaps_previous_page_context():
     assert "## Page 2" in chunks[1]
 
 
+def test_chunking_merges_small_orphan_tail_with_soft_cap():
+    content = "## Page 1\n\n" + ("main body " * 5) + "\n\n## Page 2\n\nshort tail"
+
+    chunks = compile_v2._split_by_headings(content, max_tokens=20, lang="en")
+
+    assert len(chunks) == 1
+    assert "## Page 1" in chunks[0]
+    assert "## Page 2" in chunks[0]
+
+
 def test_same_knowledge_point_across_chunks_is_merged_without_losing_sources(monkeypatch):
     existing = {
         "id": "concepts/density",
         "facts": 1,
         "relationships": 0,
         "_content": (
-            "---\ntype: concept\ntitle: 密度\n---\n# 密度\n\n" "## 来源追溯\n\n- 页码：第 10 页\n"
+            "---\ntype: concept\ntitle: 密度\n---\n# 密度\n\n## 来源追溯\n\n- 页码：第 10 页\n"
         ),
     }
     incoming = {
@@ -668,7 +930,7 @@ def test_same_knowledge_point_across_chunks_is_merged_without_losing_sources(mon
         "facts": 1,
         "relationships": 0,
         "_content": (
-            "---\ntype: concept\ntitle: 密度\n---\n# 密度\n\n" "## 来源追溯\n\n- 页码：第 11 页\n"
+            "---\ntype: concept\ntitle: 密度\n---\n# 密度\n\n## 来源追溯\n\n- 页码：第 11 页\n"
         ),
     }
     monkeypatch.setattr(
@@ -786,9 +1048,9 @@ def test_study_questions_and_knowledge_points_gain_bidirectional_links(tmp_path,
         *report["touched_pages"],
     ]
     compile_v2.update_graph(graph_pages, "期末试卷.pdf")
-    edges = json.loads(
-        (tmp_path / ".wiki" / "graph" / "edges.json").read_text(encoding="utf-8")
-    )["edges"]
+    edges = json.loads((tmp_path / ".wiki" / "graph" / "edges.json").read_text(encoding="utf-8"))[
+        "edges"
+    ]
     pairs = {(edge["source"], edge["target"]) for edge in edges}
     assert ("entities/exam-question-1", "concepts/density") in pairs
     assert ("concepts/density", "entities/exam-question-1") in pairs
@@ -1060,9 +1322,7 @@ def test_agent_mode_image_uses_paddlevl_without_invoking_vision(tmp_path, monkey
 
     images_dir = tmp_path / "source" / "images"
     monkeypatch.setattr(compile_v2, "SOURCE_IMAGES_DIR", images_dir)
-    monkeypatch.setattr(
-        compile_v2, "get_ocr_config", lambda: {"backend": "paddlevl"}
-    )
+    monkeypatch.setattr(compile_v2, "get_ocr_config", lambda: {"backend": "paddlevl"})
     monkeypatch.setattr(
         compile_v2,
         "get_vision_skill_config",
