@@ -11,9 +11,11 @@
   <img src="docs/benchmark_chart.png" alt="PageIndex benchmark: llm-wiki comparison" width="100%">
 </p>
 
-> **62/62 on the same 34-PDF, 1,945-page PageIndex OSS benchmark material**, up from
-> 38/62 before lossless evidence retrieval. The score is directional because the answer and judge
-> models differ from PageIndex's published matrix. [Methodology and comparison →](docs/BENCHMARK.md)
+> **62/62 on the same 34-PDF, 1,945-page PageIndex OSS benchmark material.** PageIndex-level
+> document QA is built into a local, multi-format knowledge system with typed graphs, lossless
+> evidence, temporal policy reasoning, structured ledgers, and lifecycle repair. The score is
+> directional because the answer and judge models differ from PageIndex's published matrix.
+> [Benchmark and capability comparison →](docs/BENCHMARK.md)
 
 ---
 
@@ -274,12 +276,13 @@ same material as PageIndex OSS Benchmark.
 | PageIndex · gpt-5.6-sol/medium | **62/62** | **100.0%** |
 | **llm-wiki · directional run** | **62/62** | **100.0%** |
 
-llm-wiki improved from 61.3% to 100% through lossless page evidence, temporal applicability,
-multi-stream retrieval, adjacent-page context, and deterministic exact-value extraction. Because
-the model and judge configurations differ, this demonstrates the same measured ceiling rather than
-a strict model-for-model win.
+The benchmark demonstrates PageIndex-level document-QA accuracy. llm-wiki then extends that
+foundation into a living knowledge system: local OCR and multi-format ingestion, lossless evidence,
+typed graphs, temporal policy applicability, DuckDB ledgers, and repairable lifecycle management.
+Because the model and judge configurations differ, the score shows the same measured ceiling rather
+than a strict model-for-model win.
 
-→ [Full benchmark report with per-case breakdown](docs/BENCHMARK.md)
+→ [Benchmark, capability comparison, and reproducibility details](docs/BENCHMARK.md)
 
 ## OCR Backends
 

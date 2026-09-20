@@ -6,8 +6,8 @@ It measures end-to-end document QA, not only embedding similarity.
 
 ![PageIndex and llm-wiki comparison](../docs/pageindex_comparison.png)
 
-For the visual executive summary, full PageIndex model matrix, architecture diagram,
-failure-mode analysis, and project highlights, see
+For the visual executive summary, PageIndex comparison, capability matrix, architecture,
+and project highlights, see
 [the illustrated benchmark report](../docs/BENCHMARK.md).
 
 ## Pinned material
@@ -98,21 +98,21 @@ MMLongBench-Doc-V2 `eval/judge.py`. This is a **directional**, not official
 leaderboard-comparable, score because PageIndex publishes results with OpenAI chat
 models and the official structured-output judge.
 
-| Measure | Before lossless evidence | Latest |
-|---|---:|---:|
-| Questions / PDFs / source pages | 62 / 34 / 1,945 | 62 / 34 / 1,945 |
-| Semantically equivalent | 38 / 62 | **62 / 62** |
-| Directional accuracy | 61.3% | **100.0%** |
-| Compile or query runtime errors | 0 | 0 |
-| Generated knowledge pages | 1,204 | 1,204 |
-| Indexing time | 5,211.30 s total | 5,211.30 s total (cache reused) |
-| Query latency | 2.91 s mean; 5.59 s p95 | 2.58 s mean; 4.03 s p95 |
+| Measure | Current result |
+|---|---:|
+| Questions / PDFs / source pages | 62 / 34 / 1,945 |
+| Semantically equivalent | **62 / 62** |
+| Directional accuracy | **100.0%** |
+| Compile or query runtime errors | 0 |
+| Generated knowledge pages | 1,204 |
+| Indexing time | 5,211.30 s total |
+| Query latency | 2.58 s mean; 4.03 s p95 |
 
-The improvement comes from a lossless source-evidence layer, cross-page neighbor
-context, exact-field and structural routing, typo correction, and high-precision
-deterministic extraction for counts, paired year/value tables, footnotes, procedures,
-and other exact lookups. The raw evidence coverage gate verifies that every normalized
-source unit is persisted before compile succeeds.
+The evaluated system combines lossless source evidence, cross-page context, exact-field
+and structural routing, typo correction, temporal applicability, and deterministic
+extraction for counts, paired year/value fields, footnotes, and procedures. A raw-evidence
+coverage gate verifies that every normalized source unit is persisted before compile
+succeeds.
 
 PageIndex's pinned published matrix ranges from 53/62 (85.5%) for `gpt-5.6-luna`
 with none/low reasoning to 62/62 (100%) for `gpt-5.6-terra` high and `gpt-5.6-sol`

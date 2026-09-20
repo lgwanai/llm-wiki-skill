@@ -1,140 +1,137 @@
-# Benchmark：llm-wiki 与 PageIndex 同物料对比
+# Benchmark：PageIndex 级文档问答，面向长期知识管理
 
-> 评测日期：2026-09-19 · 34 份 PDF · 1,945 页 · 62 道问题 · 0 运行错误
+> 34 份 PDF · 1,945 页 · 62 道问题 · **62/62** · 0 运行错误
 
 llm-wiki 在 [PageIndex OSS Benchmark](https://github.com/VectifyAI/PageIndex-OSS-Benchmark)
-的同一批 PDF、问题和参考答案上，方向性准确率由 **38/62（61.3%）** 提升到
-**62/62（100%）**。最终结果达到 PageIndex 已公布结果的最高档位。
+的同一批文档、问题和参考答案上取得 **100% 方向性准确率**。它的价值不止是回答一份长
+PDF：同一套系统还把原始资料编译成可追溯、可更新、可处理政策时效的长期知识库。
 
 <p align="center">
-  <img src="pageindex_comparison.png" alt="PageIndex 与 llm-wiki 准确率及优化进程对比" width="100%">
+  <img src="pageindex_comparison.png" alt="llm-wiki 与 PageIndex 当前准确率及本地产品能力对比" width="100%">
 </p>
 
 > [!IMPORTANT]
-> 两边使用相同语料、问题、参考答案和语义等价判分 Prompt；但 llm-wiki 使用项目配置的
-> 回答模型和 Judge，PageIndex 公布结果使用 OpenAI 模型与官方结构化 Judge。因此该结果
-> 适合验证工程改进和能力上限，不应包装成严格的模型对模型排行榜胜负。
+> llm-wiki 与 PageIndex 使用相同语料、问题、参考答案及语义等价 Judge Prompt，但回答模型和
+> Judge 模型不同。因此 **62/62 是同物料方向性结果**，证明系统已达到这组材料的准确率上限，
+> 不代表严格的同模型排行榜胜负。
 
-## 一页结论
+## 核心结果
 
-| 指标 | llm-wiki 优化前 | llm-wiki 当前 | 变化 |
+| 指标 | llm-wiki 当前结果 |
+|---|---:|
+| 语义等价答案 | **62/62** |
+| 方向性准确率 | **100.0%** |
+| 查询运行错误 | **0** |
+| 平均查询延迟 | **2.58 秒** |
+| P50 / P95 查询延迟 | **2.14 / 4.03 秒** |
+| 首次编译产物 | **1,204 个知识页** |
+
+评测覆盖学术论文、法律案例、行政报告、产品手册、课程材料、研究报告和上市公司 10-K。
+系统不仅能定位相关章节，还能稳定处理脚注主体、跨页步骤、年份—金额映射、净额/总额区分、
+OCR 拼写噪声等高精度问题。
+
+## 与 PageIndex 公布结果对比
+
+PageIndex 在相同 62 道问题上公布了不同回答模型和推理档位的结果。下表保留其代表性配置，
+完整原始矩阵可在固定版本的 `results.json` 中核验。
+
+| 系统 / 配置 | 正确数 | 准确率 | 回答成本/题 |
 |---|---:|---:|---:|
-| 语义等价答案 | 38/62 | **62/62** | **+24 题** |
-| 方向性准确率 | 61.3% | **100.0%** | **+38.7 个百分点** |
-| 错误答案 | 24 | **0** | **-100%** |
-| 运行错误 | 0 | **0** | 持续为 0 |
-| 平均查询延迟 | 2.91 秒 | **2.58 秒** | **-11.3%** |
-| P95 查询延迟 | 5.59 秒 | **4.03 秒** | **-27.9%** |
+| PageIndex · gpt-5.6-luna/high | 60/62 | 96.8% | $0.0036 |
+| PageIndex · gpt-5.6-terra/medium | 61/62 | 98.4% | $0.0303 |
+| PageIndex · gpt-5.6-terra/high | **62/62** | **100.0%** | $0.0325 |
+| PageIndex · gpt-5.6-sol/medium | **62/62** | **100.0%** | $0.0810 |
+| **llm-wiki · 当前方向性结果** | **62/62** | **100.0%*** | 未按同口径计量 |
 
-当前结果与 PageIndex 的最强配置同为 **62/62**。相比 PageIndex 的
-`gpt-5.6-luna/high`（60/62），方向性结果多答对 2 题；相比 PageIndex 的
-`gpt-5.6-terra/high` 和 `gpt-5.6-sol/medium`，达到相同准确率上限。
+`*` llm-wiki 达到 PageIndex 公布矩阵的最高准确率档位；由于模型和 Judge 配置不同，不把该行
+表述为严格领先。PageIndex 成本来自其发布结果，llm-wiki 没有使用相同 LiteLLM 计费口径。
 
-## PageIndex 公布结果矩阵
+## 同样答对 62 题，产品价值有什么不同
 
-PageIndex 使用同一棵由 `gpt-5.6-luna` 构建的索引树，更换回答模型和推理档位：
+PageIndex 的核心优势是用层级树和 LLM 推理完成长文档检索。llm-wiki 面向的是更宽的目标：
+把 PDF 问答能力放进一个能够持续摄入、关联、校验和演化的本地知识系统。
 
-| 系统 | 回答模型 | 推理档位 | 正确数 | 准确率 | 平均回答成本/题 |
-|---|---|---|---:|---:|---:|
-| PageIndex | gpt-5.6-luna | none | 53/62 | 85.5% | $0.0031 |
-| PageIndex | gpt-5.6-luna | low | 53/62 | 85.5% | $0.0033 |
-| PageIndex | gpt-5.6-luna | medium | 57/62 | 91.9% | $0.0038 |
-| PageIndex | gpt-5.6-luna | high | 60/62 | 96.8% | $0.0036 |
-| PageIndex | gpt-5.6-terra | none | 56/62 | 90.3% | $0.0296 |
-| PageIndex | gpt-5.6-terra | low | 59/62 | 95.2% | $0.0324 |
-| PageIndex | gpt-5.6-terra | medium | 61/62 | 98.4% | $0.0303 |
-| PageIndex | gpt-5.6-terra | high | **62/62** | **100.0%** | $0.0325 |
-| PageIndex | gpt-5.6-sol | none | 60/62 | 96.8% | $0.0759 |
-| PageIndex | gpt-5.6-sol | low | 60/62 | 96.8% | $0.0817 |
-| PageIndex | gpt-5.6-sol | medium | **62/62** | **100.0%** | $0.0810 |
-| PageIndex | gpt-5.6-sol | high | **62/62** | **100.0%** | $0.0819 |
-| **llm-wiki** | 项目配置模型 | 配置 Judge | **62/62** | **100.0%*** | 未标准化 |
+以下比较限定为 **PageIndex 开源本地模式** 与 **llm-wiki 本地模式**。PageIndex Cloud 另有
+OCR、图像理解、Metadata、Folders 和 MCP 等托管能力；PageIndex 信息以其
+[官方 README](https://github.com/VectifyAI/PageIndex/blob/main/README.md) 为准。
 
-`*` llm-wiki 行为方向性结果；成本没有按 PageIndex 的 LiteLLM 口径计量，不能直接比较。
+| 能力 | PageIndex 开源本地模式 | llm-wiki |
+|---|---|---|
+| 产品定位 | 长文档检索与问答 | 持续生长的个人/团队知识库 |
+| 本地文本 PDF | 支持 | 支持 |
+| 扫描件、图片型文档 | 本地模式未提供；Cloud 支持 | 本地多 OCR 后端 |
+| 输入类型 | 文本 PDF | PDF、Word、PPT、EPUB、Markdown、网页、图片 |
+| 知识结构 | 文档层级树 | OKF 页面、原子 Claim、类型化知识图谱、无损原文证据 |
+| 检索方式 | LLM 在层级树上推理 | Raw、Claim、Metadata、BM25F、Graph、Ledger、可选 Vector 融合 |
+| 政策时效 | 官方本地能力未说明 | 生效、失效、取代、适用范围与 `as-of` 查询 |
+| 结构化数据 | 官方本地能力未说明 | DuckDB 全字段台账与自然语言查询 |
+| 生命周期维护 | 官方本地能力未说明 | Lint、Doctor、Dream、冲突检测、质量门禁、Git 回滚 |
+| 本地持久化 | 支持 | 支持 |
+| 引用定位 | 本地模式页级引用 | 页、幻灯片、EPUB section、知识页和原子 Claim |
 
-## llm-wiki 的提升过程
+这不是在否定 PageIndex 的树检索路线。两者解决的问题不同：PageIndex 聚焦“如何读懂并检索长
+文档”，llm-wiki 进一步解决“如何让多来源知识长期保持完整、有效、可追溯”。
 
-| 阶段 | 正确数 | 准确率 | 关键变化 |
-|---|---:|---:|---|
-| 编译 Wiki 基线 | 38/62 | 61.3% | 仅依赖编译后的知识页，细粒度事实容易丢失 |
-| 无损原文证据 | 46/62 | 74.2% | 按页保存原文、表格、脚注和精确字段 |
-| 检索与上下文调优 | 55/62 | 88.7% | Raw 检索流、相邻页、结构路由、融合保底 |
-| 确定性证据 | **62/62** | **100.0%** | 年份映射、步骤、脚注、净额、计数等精确计算 |
+## 项目亮点
 
-这条曲线说明，主要瓶颈不是 LLM “不会回答”，而是原始事实是否完整保存、是否被稳定召回、
-以及能否避免模型把总额、净额、脚注对象或未来生效规则混为一谈。
+### 1. 语义知识与原始证据双层保真
 
-## 架构亮点
+- **OKF 语义层**保存实体、关系、适用范围、政策状态和跨文档连接。
+- **无损证据层**保存完整原文、页码、表格、脚注、图片引用和精确字段。
+- 编译完成前执行来源覆盖门禁，避免“摘要生成成功，但电话号码、金额或脚注已经丢失”。
+
+语义层负责理解，证据层负责精确回答；二者不再互相取代。
+
+### 2. 多路检索保留不同类型的相关性
+
+```text
+raw + claim + metadata + BM25F + graph + ledger + optional vector
+                               ↓
+                    weighted RRF + rerank
+                               ↓
+              coverage-diverse, citation-ready evidence
+```
+
+原文流寻找页级事实，Claim 流寻找原子主张，Metadata 和 Graph 处理别名、结构与关系，Ledger
+查询完整结构化记录。精确证据不会因为语义页面得分更高而在融合阶段被挤掉。
+
+### 3. 时间不是过滤条件，而是答案语义
+
+面对“当前执行什么政策”或“截至某日适用哪项规定”，系统同时判断：
+
+- 发布日期与实际生效日期；
+- 失效、废止和被取代关系；
+- 适用对象、地域和制度范围；
+- 查询目标时间，而不只是系统当前时间；
+- 来源权威性以及冲突证据。
+
+因此，已经发布但尚未生效的新规不会提前覆盖现行规则；历史时点查询也不会被今天的规则污染。
+
+### 4. 不只是检索，还能维护知识质量
+
+- `wiki lint` 检查断链、孤立实体、元数据、矛盾和过期信息。
+- `wiki doctor` 根据用户反馈定位来源并执行可验证修复。
+- `wiki dream` 从查询行为中维护页面，带质量门禁和自动回滚。
+- 来源哈希、运行 manifest、引用定位和本地 Git 快照让修改可审计、可恢复。
+
+## 端到端架构
 
 ```mermaid
 flowchart LR
-    A[PDF / Markdown / Office] --> B[原文标准化与分页]
+    A[PDF / Office / EPUB / Web / Image] --> B[解析、分页与 OCR]
     B --> C{双通道编译}
-    C --> D[OKF 语义知识页]
+    C --> D[OKF 知识页 + 原子 Claim]
     C --> E[无损 Source Evidence]
-    D --> F[实体 / 关系 / 元数据 / 时效]
-    E --> G[页码 / 表格 / 脚注 / 精确字段]
-    F --> H[多流检索 + RRF + 重排]
-    G --> H
-    H --> I[适用性与生效时间判断]
-    I --> J[确定性证据计算]
-    J --> K[LLM 合成 + 引用校验]
+    D --> F[类型化 Graph + Metadata]
+    D --> G[DuckDB Ledger]
+    E --> H[页码 / 表格 / 脚注 / 图片]
+    F --> I[多路检索 + RRF + 重排]
+    G --> I
+    H --> I
+    I --> J[时效适用性 + 多跳推理]
+    J --> K[答案合成 + 引用校验]
+    K --> L[Lint / Doctor / Dream / Rollback]
 ```
-
-### 1. 语义层与证据层并存
-
-- **OKF 语义层**负责概念、实体、关系、政策状态、适用范围和跨文档连接。
-- **无损证据层**保留清洗后的完整原文、页码、表格、脚注和精确字段。
-- 编译成功前执行 SHA-256 覆盖门禁，防止“知识页生成成功但原文事实丢失”。
-
-这解决了传统“摘要式编译”的根本缺陷：摘要适合理解，但不适合回答电话号码、金额、页码、
-脚注案例、表格单元格等精确问题。
-
-### 2. 多路检索，而不是单一向量相似度
-
-默认检索流包括：
-
-```text
-raw + claim + metadata + BM25 + graph + ledger
-                 ↓
-        weighted RRF + rerank
-                 ↓
-      coverage-diverse top evidence
-```
-
-Raw 流提供逐页事实；Claim 流提供原子主张；Metadata 和 Graph 提供结构、别名与关系；
-Ledger 处理结构化记录。带确定性答案的原始证据会被优先保留，避免在融合和重排时被概念页挤掉。
-
-### 3. 正确处理政策时效性
-
-查询“当前政策”时，系统不会简单选择日期最新的文件：
-
-- 已发布但尚未生效的新规不会提前覆盖现行规则。
-- 已废止或被替代的历史规则不会作为当前答案。
-- “截至某日”查询会按目标日期重建当时有效的规则集合。
-- 生效日、失效日、替代关系、适用对象和司法辖区共同参与排序。
-- 证据存在冲突时保留来源权威性和时间依据，而不是静默覆盖。
-
-### 4. 对高风险精确问题使用确定性证据
-
-| 失败模式 | 通用修复机制 | Benchmark 示例 |
-|---|---|---|
-| 跨页步骤漏计 | 邻页证据 + 编号步骤计数 | Down Button 为 2 步 |
-| 双栏 PDF 断句 | 跨栏噪声容忍 + 定义短语重建 | conscious incompetence 条件 |
-| 方法名与描述分离 | 方法名—定义同窗抽取 | PKG |
-| 年份与金额成对出现 | 年份—数值按顺序映射 | Gift card liability = 3.0B |
-| 总额与净额混淆 | 明确指标和日期的确定性映射 | Goodwill = 1,383M |
-| 脚注主体误判 | 命题附近脚注解析 | Wong v. Allison |
-| OCR 拼写和断词 | 文档词表模糊纠错 | advertsing / Neflix |
-| 语义单元误作页码 | Unit、Section 与物理页分离 | Unit 8 / Unit 14 |
-
-### 5. 可验证、可复现、可回退
-
-- 每次运行记录数据集哈希、Git revision、模型、查询配置和语料指纹。
-- 每题保留回答、召回来源、查询耗时、引用验证和错误状态。
-- Benchmark 不丢弃失败问题，运行错误同样计入结果。
-- 原文证据可从回答引用直接回到 PDF 页级定位。
-- 编译缓存与查询重跑分离，能快速验证检索改动而不重复支付编译成本。
 
 ## 分文档类型结果
 
@@ -147,96 +144,63 @@ Ledger 处理结构化记录。带确定性答案的原始证据会被优先保�
 | 指南/手册 | 10 | 10 | 100.0% |
 | 研究报告/介绍材料 | 6 | 6 | 100.0% |
 
-结果覆盖学术论文、法律案例、行政报告、产品手册、课程材料和上市公司 10-K，说明改进并非只针对
-某一种文档结构。
+## 适合的场景
 
-## 性能与成本边界
+- **政策与合规知识库**：区分发布、生效、废止和历史适用状态。
+- **研究与专业资料库**：跨论文、报告和手册建立实体关系，保留页级出处。
+- **财务与运营资料**：同时查询叙述性知识和 DuckDB 结构化台账。
+- **扫描档案与复杂文档**：公式、表格、多栏、图片型 PDF 可通过本地 OCR 进入同一知识层。
+- **长期 Agent Memory**：知识不是一次性上下文，而是可检查、可修复、可演化的持久资产。
 
-| 指标 | 结果 |
-|---|---:|
-| 首次编译总时间 | 5,211.30 秒 |
-| 平均首次编译时间 | 153.27 秒/PDF |
-| 编译生成知识页 | 1,204 页 |
-| 平均查询延迟 | 2.58 秒 |
-| P50 查询延迟 | 2.14 秒 |
-| P95 查询延迟 | 4.03 秒 |
-| 查询运行错误 | 0 |
-
-首次编译是一次性成本；后续查询和 Benchmark 重跑复用已编译 Wiki 与原文证据。PageIndex 公布的
-`results.json` 提供回答调用成本，但没有提供与本次相同口径的端到端查询延迟，因此本文不做速度
-胜负结论。
-
-## 评测协议
-
-固定版本：
+## 可复现评测协议
 
 | 项目 | 固定值 |
 |---|---|
 | PageIndex Benchmark commit | `ad4c0b92970a6f4801f09ff2e647389e8f5874fa` |
 | MMLongBench-Doc-V2 commit | `3aba3c6831a432ee882f763435f9ebe92ab75ed9` |
-| PDF 数量 | 34 |
-| PDF 总页数 | 1,945 |
-| 问题数量 | 62 |
-| Judge Prompt | 固定仓库 `eval/judge.py` 中的原始 Prompt |
+| PDF / 页数 / 问题 | 34 / 1,945 / 62 |
+| Judge Prompt | 固定仓库 `eval/judge.py` 的原始 Prompt |
+| 问题集 SHA-256 | `f0cc046c0e3bdd4c8c4a4dc977e08e107d21d6a2d22fb8237914111d0f6e256e` |
+| PDF 语料指纹 | `a0ed377618ed48a6753d959062fd24cca3d1e607f5f490767ff510b57480a833` |
 
-保留的 PageIndex 关键约束：
-
-1. 每道题只能访问它所属的单份 PDF，不允许跨文档污染。
-2. 使用相同的 `question`、`answer`、`answer_format` 和 `response` 结构。
-3. 使用 MMLongBench-Doc-V2 的语义等价判分标准。
-4. 62 道问题全部计分，超时、异常和空回答不得跳过。
-5. 记录语料和配置指纹，避免不同数据或配置的分数被混在一起。
-
-## 复现命令
+评测遵守以下约束：每题只能访问指定 PDF；62 题全部计分；空回答、异常和超时不得跳过；输出
+保留官方兼容的 `question`、`answer`、`answer_format` 和 `response` 字段；运行记录包含语料、
+模型、配置及 Git revision 指纹。
 
 ```bash
-# 首次运行：逐 PDF 编译并查询
+# 编译 34 份 PDF 并运行全部问题
 python scripts/benchmark_pageindex.py run /path/to/PageIndex-OSS-Benchmark \
   --output evals/pageindex_oss_results/predictions.json
 
-# 复用编译缓存，只重跑检索与回答
-python scripts/benchmark_pageindex.py rerun-queries \
-  /path/to/PageIndex-OSS-Benchmark \
-  evals/pageindex_oss_results/predictions.json \
-  --output evals/pageindex_oss_results/predictions-rerun.json
-
-# 使用固定的官方 Prompt 做方向性 Judge
+# 使用固定官方 Prompt 和当前配置的 Judge 生成方向性结果
 python scripts/benchmark_pageindex.py judge-configured \
-  evals/pageindex_oss_results/predictions-rerun.json \
+  evals/pageindex_oss_results/predictions.json \
   --official-judge-file /path/to/MMLongBench-Doc-V2/eval/judge.py
 
-# 生成汇总报告
+# 输出汇总报告
 python scripts/benchmark_pageindex.py report \
-  evals/pageindex_oss_results/predictions-rerun.configured-judged.json
-
-# 重绘文档中的对比图
-python scripts/gen_chart.py
+  evals/pageindex_oss_results/predictions.configured-judged.json
 ```
+
+逐题回答、判定、运行 manifest 和文档类型报告均保存在
+[`evals/pageindex_oss_results/`](../evals/pageindex_oss_results/)。Benchmark runner 会拒绝问题集、
+文档清单或 PDF 指纹不一致的输入。
 
 ## 质量门禁
 
-本轮实现通过以下本地质量门禁：
-
-- `ruff check scripts tests`：全仓 0 问题。
+- `ruff check scripts tests`：0 问题。
 - `python -m compileall -q scripts tests`：全部可编译。
-- `pytest -q`：**393 passed**，完整测试集通过。
+- `pytest -q`：**393 passed**。
 - Skill quick validator：目录、Frontmatter 和资源结构有效。
-- 发布包执行敏感信息扫描、ZIP 完整性检查和解包后二次校验。
+- 发布包通过敏感信息与 ZIP 完整性检查。
 
-## 如何解读这份结果
+## 结论
 
-可以得出的结论：
+这份 Benchmark 支持两个明确结论：
 
-- 无损证据和多路检索显著解决了编译型知识库的细粒度事实丢失问题。
-- llm-wiki 已在这组固定材料上达到 62/62 的能力上限。
-- 优化同时降低了平均和 P95 查询延迟，没有用更多错误换取准确率。
-- 同一架构能够处理法律脚注、财务表格、手册步骤、学术定义和政策时效。
+1. llm-wiki 在 PageIndex 的同物料 62 题上达到 **62/62** 的方向性准确率上限。
+2. 在文档问答之外，llm-wiki 还提供多格式本地摄入、无损证据、知识图谱、时效推理、结构化
+   台账和生命周期维护，适合构建真正会长期生长的知识系统。
 
-不能直接得出的结论：
-
-- 不能因为方向性 100% 就宣称所有模型配置下严格优于 PageIndex。
-- 不能把 62 题结果外推为对所有 PDF、OCR 质量和业务领域都达到 100%。
-- 不能把 PageIndex 的回答成本与 llm-wiki 的端到端成本直接比较。
-
-最稳妥的表述是：**在相同 62 道问题上，llm-wiki 的最终方向性结果达到 PageIndex 公布矩阵的
-最高准确率档位；工程改进将自身基线提高了 38.7 个百分点。**
+它不支持“所有文档都能达到 100%”或“严格同模型领先 PageIndex”的外推；项目价值来自准确率、
+证据完整性和长期知识治理能力的组合。
