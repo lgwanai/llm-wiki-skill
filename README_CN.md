@@ -38,28 +38,26 @@
 ```bash
 pip install -e .
 wiki config --init        # 创建配置文件
-vim wiki_config.yaml      # 设置 API key
 wiki init                 # 初始化 .wiki/
 wiki compile paper.md     # Agent 读取来源 → 结构化页面
 wiki query "什么是Transformer?"  # 搜索 → 合成 → 带引用的答案
 ```
 
-**一篇文档 → 15+ 个结构化页面 + 类型化关系：**
+默认 Agent 编译和查询不需要模型 API。只有显式使用 `--mode llm` 时才需要配置模型服务。
+
+**典型使用指令：**
 
 ```bash
-$ wiki compile deepseek-v4.md
-Compiling deepseek-v4.md (262,658 chars)...
-  Created: deepseek-v4.md (model)
-  Created: multi-head-latent-attention.md (technique)
-  Created: deepseek-moe.md (technique)
-  Created: mmlu.md (benchmark)
-  ... 15 个页面, 84 条关系边 (uses, improves_upon, relates_to) ...
-
-$ wiki query "DeepSeek-V4 如何降低推理内存？"
-**Answer**: 使用多头潜在注意力(MLA)将KV-cache压缩8倍，配合
-DeepSeekMoE的256个专家(每token激活8个)，实现37B激活参数。
-**Sources**: [[multi-head-latent-attention]], [[deepseek-moe]]
+wiki compile ./documents/policy.pdf
+wiki compile ./documents/project-plan.pdf
+wiki compile ./knowledge-sources/ --depth 1
+wiki query "当前有效的报销政策是什么？"
+wiki query "甘特图中开发任务依赖哪个里程碑？"
+wiki query "审批泳道图中哪个步骤移交给财务？" --debug-search
 ```
+
+完整的场景说明和可复制指令见 [使用指南](docs/USAGE.md)。文档只提供用途说明与命令，
+不展示预设运行结果。
 
 ## 安装为 Claude Code Skill
 
@@ -67,7 +65,7 @@ llm-wiki 既可以独立使用，也可以作为 Claude Code skill 实现自动�
 
 ```bash
 # 1. 克隆并安装
-git clone https://github.com/anthropics/llm-wiki-skill.git ~/.claude/skills/llm-wiki
+git clone https://github.com/lgwanai/llm-wiki-skill.git ~/.claude/skills/llm-wiki
 cd ~/.claude/skills/llm-wiki
 pip install -e .
 
@@ -133,7 +131,7 @@ Benchmark 的相同 PDF、问题和参考答案。
 | **llm-wiki · 方向性结果** | **62/62** | **100.0%** |
 
 这组结果证明 llm-wiki 已达到 PageIndex 级文档问答准确率。在此基础上，它进一步提供本地 OCR、
-多格式摄入、无损证据、类型化知识图谱、政策时效、DuckDB 台账和可修复的知识生命周期。
+Agent 原生多模态图表解读、多格式摄入、无损证据、类型化知识图谱、政策时效、DuckDB 台账和可修复的知识生命周期。
 由于回答模型和 Judge 配置不同，这代表达到相同评测上限，而不是严格的模型对模型胜负。
 
 → [Benchmark、产品能力对比与复现细节](docs/BENCHMARK.md)
@@ -143,7 +141,8 @@ Benchmark 的相同 PDF、问题和参考答案。
 | 能力 | 说明 |
 |------|------|
 | **编译** | Agent 读取来源、判断文档类型、写入符合 schema 的 wiki 页面和图谱 |
-| **查询** | Wiki 原生检索（元数据+BM25+图谱+台账）+ 实体链接 + 三信号排序 → Agent 合成答案 |
+| **查询** | Wiki 原生检索（元数据+BM25+视觉证据+图谱+台账）+ 实体链接 → Agent 合成答案 |
+| **多模态配图** | OCR 提取文字，Agent 解读图表/流程图/泳道图/甘特图结构；独立索引并在答案中返回命中原图 |
 | **检查** | 健康扫描+自愈：矛盾、过期、孤立页面、断链 |
 | **生命周期** | 艾宾浩斯遗忘曲线、置信度评分、矛盾检测、取代 |
 | **记忆层级** | 工作→情景→语义→程序，自动整合提升 |
@@ -157,12 +156,10 @@ Benchmark 的相同 PDF、问题和参考答案。
 
 | 文档 | 内容 |
 |------|------|
-| [安装与离线部署](docs/INSTALL.md) | pip 安装、Windows 注意事项、离线打包 |
-| [配置指南](docs/CONFIGURATION.md) | LLM、Embedding、OCR、查询等配置 |
+| [使用指南](docs/USAGE.md) | 初始化、编译、图表检索、时效查询、维护、OKF、台账和评测指令 |
+| [配置指南](CONFIGURATION.md) | LLM、Embedding、OCR、查询等配置 |
 | [架构与生命周期](docs/ARCHITECTURE.md) | 三层设计、知识生命周期 |
 | [评测详情](docs/BENCHMARK.md) | PageIndex 同物料对比、架构亮点、完整结果 |
-| [台账管理](docs/LEDGER.md) | 结构化表格、CSV 导入、NL→SQL |
-| [OCR 后端](docs/OCR.md) | OvisOCR2（默认）、MinerU、DeepSeek-OCR、Logics、PaddleOCR |
 | [CLI 参考](docs/CLI.md) | 完整命令参考 |
 
 ## 项目结构
@@ -173,7 +170,7 @@ llm-wiki-skill/
 │   ├── wiki.py        # 统一 CLI 入口
 │   ├── compile_v2.py  # LLM 源→Wiki 编译器
 │   ├── query.py       # Wiki 原生搜索 + 答案合成
-│   ├── search.py      # 元数据/BM25/图谱搜索；向量路径为可选项
+│   ├── search.py      # 元数据/BM25/视觉/图谱搜索；向量路径为可选项
 │   ├── lint.py        # 健康扫描 + 自愈
 │   ├── dream.py       # 自循环维护（4阶段，自动模式）
 │   ├── doctor.py       # 用户反馈诊断 + 自动修复
@@ -185,7 +182,7 @@ llm-wiki-skill/
 │   ├── ledger/        # ledger.duckdb 数据库
 │   └── source/        # 原始源文件（不可变）
 ├── .claude/hooks/     # 自动化钩子（可选启用）
-├── tests/             # 测试套件（180 测试）
+├── tests/             # 测试套件（400 测试）
 ├── templates/         # 页面模板
 └── references/        # 深度参考资料
 ```

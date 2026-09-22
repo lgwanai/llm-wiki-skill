@@ -46,23 +46,20 @@ wiki query "What is X?"   # search → synthesize → answer with citations
 Agent compile/query mode is the default and does not require an API key. Configure a
 provider only when you explicitly want the optional `--mode llm` path.
 
-**One source → 15+ structured pages with typed relationships:**
+**Typical commands:**
 
 ```bash
-$ wiki compile deepseek-v4.md
-Compiling deepseek-v4.md (262,658 chars)...
-  Created: deepseek-v4.md (model)
-  Created: multi-head-latent-attention.md (technique)
-  Created: deepseek-moe.md (technique)
-  Created: mmlu.md (benchmark)
-  ... 15 pages, 84 typed edges (uses, improves_upon, relates_to) ...
-
-$ wiki query "How does DeepSeek-V4 reduce inference memory?"
-**Answer**: Uses Multi-head Latent Attention (MLA) to compress KV-cache 8x and
-DeepSeekMoE with 256 experts (8 active per token), achieving 37B active params.
-**Sources**: [Multi-head Latent Attention](/concepts/multi-head-latent-attention.md),
-[DeepSeekMoE](/concepts/deepseek-moe.md)
+wiki compile ./documents/policy.pdf
+wiki compile ./documents/project-plan.pdf
+wiki compile ./knowledge-sources/ --depth 1
+wiki query "Which reimbursement policy is currently effective?"
+wiki query "Which milestone blocks implementation in the Gantt chart?"
+wiki query "Which swimlane step hands work to Finance?" --debug-search
 ```
+
+See the task-oriented [usage guide](docs/USAGE.md) for initialization, multimodal
+compilation, temporal queries, visual retrieval, maintenance, OKF, ledger, and benchmark commands.
+It contains explanations and commands without fabricated command output.
 
 ## Install as Claude Code Skill
 
@@ -70,7 +67,7 @@ llm-wiki works standalone **and** as a Claude Code skill for hands-free knowledg
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/anthropics/llm-wiki-skill.git ~/.claude/skills/llm-wiki
+git clone https://github.com/lgwanai/llm-wiki-skill.git ~/.claude/skills/llm-wiki
 cd ~/.claude/skills/llm-wiki
 pip install -e .
 
@@ -107,8 +104,9 @@ conditions, exceptions, audience, jurisdiction, effective interval, source locat
 source authority. Query parses these same dimensions into a structured retrieval plan.
 
 Query uses claim-level retrieval plus field-weighted BM25F over Concept ID, title, tags, description,
-key facts, headings, and body. Claims, metadata, BM25F, graph, ledger, and optional vector results are
-combined with intent-aware weighted reciprocal-rank fusion. Each stream over-fetches
+key facts, headings, and body. A dedicated visual stream indexes multimodal descriptions of axes,
+series, nodes, edges, lanes, handoffs, timelines, tasks, and dependencies. Claims, metadata, BM25F,
+visual, graph, ledger, and optional vector results are combined with intent-aware weighted reciprocal-rank fusion. Each stream over-fetches
 candidates before scope/status filtering, so filtering does not silently starve the
 final result count. Evidence-driven multi-hop retrieval decomposes compound questions into
 answer subgoals, follows only the most relevant concept links, tracks path confidence, and
@@ -152,7 +150,7 @@ Optional local semantic retrieval and reranking:
 query:
   max_results: 8
   parallel_search: true
-  search_streams: raw,claim,metadata,bm25,graph,ledger,vector
+  search_streams: raw,claim,metadata,bm25,visual,graph,ledger,vector
   cross_language_expansion: true
   multi_hop_enabled: true
   multi_hop_max_hops: 3
@@ -337,8 +335,11 @@ content-list path, referenced images, and elapsed time. Agents should use this f
 as the success contract. Use `--json` when machine-readable command output is needed.
 
 Local images referenced by OCR Markdown are copied into `.wiki/pages/assets/` during
-compile. Compiled pages retain the relevant image links, and query results return the
-resolved images together with their source concept. OvisOCR2 crop tags are normalized
+compile. OCR remains the text extractor; the Agent independently inspects charts,
+flowcharts, swimlanes, Gantt charts, architecture/sequence diagrams, timelines, maps,
+and matrices with native multimodal capability. Compile stores a type-specific `visuals`
+record and the exact original asset. Visual retrieval searches that structure and query
+results return the matched original image together with its source concept. OvisOCR2 crop tags are normalized
 to Markdown images and its adapter emits `*_content_list.json`; when that Markdown is
 compiled, llm-wiki restores `## Page N` boundaries and source image captions for
 page-accurate provenance. Agent-mode task completion then attaches images from the
@@ -382,7 +383,7 @@ llm:
 query:
   max_results: 8
   parallel_search: true
-  search_streams: raw,claim,metadata,bm25,graph,ledger
+  search_streams: raw,claim,metadata,bm25,visual,graph,ledger
   multi_hop_enabled: true
   multi_hop_max_hops: 3
   verify_answers: true
@@ -413,7 +414,8 @@ with `ocr use` and `ocr config` so the same default is used inside and outside a
 |-----------|-------------|
 | **Compile** | Agent reads sources, decides source type, writes schema-compliant wiki pages and graph |
 | **Domain Experts** | Content-driven multi-expert compilation for legal, finance, operations, product, academic, training, and other domains |
-| **Query** | BM25F + metadata + graph + complete DuckDB ledger search + optional Zvec/reranker → evidence-selected Agent synthesis |
+| **Query** | BM25F + metadata + structured visual evidence + graph + complete DuckDB ledger search + optional Zvec/reranker → evidence-selected Agent synthesis |
+| **Multimodal figures** | OCR text + Agent-native chart/diagram interpretation + searchable structure + original-image answer display |
 | **Native OKF v0.1** | Compile, store, search, validate, merge, migrate, and distribute one canonical OKF bundle |
 | **Lint** | Health scanning + auto-heal: contradictions, stale claims, orphans, broken links |
 | **Lifecycle** | Ebbinghaus decay, confidence scoring, contradiction detection, supersession |
@@ -428,6 +430,8 @@ with `ocr use` and `ocr config` so the same default is used inside and outside a
 
 | Document | Content |
 |----------|---------|
+| [Usage Guide](docs/USAGE.md) | Task-oriented commands for compile, query, visual evidence, temporal rules, maintenance, OKF, ledgers, and benchmarks |
+| [Configuration](CONFIGURATION.md) | LLM, retrieval, OCR, embeddings, and reranker settings |
 | [Architecture & Lifecycle](docs/ARCHITECTURE.md) | 3-layer design, 10-stage knowledge lifecycle |
 | [Benchmark Details](docs/BENCHMARK.md) | PageIndex same-material comparison, architecture, results |
 | [CLI Reference](docs/CLI.md) | Complete command reference |
@@ -441,7 +445,7 @@ llm-wiki-skill/
 │   ├── wiki.py        # Unified CLI
 │   ├── compile_v2.py  # LLM source → wiki compiler
 │   ├── query.py       # Wiki-native search + answer synthesis
-│   ├── search.py      # Metadata/BM25F/graph search and weighted fusion
+│   ├── search.py      # Metadata/BM25F/visual/graph search and weighted fusion
 │   ├── zvec_backend.py # Optional embedded vector index over OKF concepts
 │   ├── rerank.py      # Optional cross-encoder reranking
 │   ├── lint.py        # Health scan + auto-heal
@@ -456,7 +460,7 @@ llm-wiki-skill/
 │   ├── ledger/        # ledger.duckdb database
 │   └── source/        # Original source files (immutable)
 ├── .claude/hooks/     # Automation hooks (optional)
-├── tests/             # Test suite (206 tests)
+├── tests/             # Test suite (400 tests)
 ├── templates/         # Page templates
 └── references/        # Deep-dive docs
 ```

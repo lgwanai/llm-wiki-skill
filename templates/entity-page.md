@@ -24,6 +24,18 @@ published_at: ""                 # source content's own publication date (YYYY-M
 #     conditions: []
 #     exceptions: []
 #     source: {section: "...", page: 1}
+# visuals:                       # required for every retained information-bearing figure
+#   - id: approval-swimlane-p12
+#     kind: swimlane
+#     title: 订单审批泳道图
+#     image: ../assets/source/page-012.png
+#     source_locator: Page 12
+#     summary: 申请人提交后由主管审批，超额订单转财务复核。
+#     keywords: [订单审批, 主管, 财务复核]
+#     entities: [申请人, 主管, 财务]
+#     lanes: [申请人, 主管, 财务]
+#     nodes: []
+#     edges: []
 last_confirmed: [YYYY-MM-DD]
 reinforcements: 0
 contradictions: []
@@ -48,6 +60,12 @@ owner: [agent-id or username]
 ## Details
 
 <!-- Fill in relevant sections based on entity type. Delete unused sections. -->
+
+## Visual Evidence
+
+<!-- For every `visuals` record, embed the exact original image and explain the
+     visually encoded relationships, direction, ownership, scale, values, and
+     uncertainty. Delete this section only when the source has no useful figure. -->
 
 ### For `person` entities
 - **Role**: [Their role in the project]

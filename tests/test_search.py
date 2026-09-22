@@ -331,6 +331,83 @@ tags:
         assert result["metadata_items"] == 1
 
 
+class TestVisualSearch:
+    def test_indexes_structured_gantt_and_returns_original_asset(self, tmp_path):
+        wiki = tmp_path / ".wiki"
+        page_dir = wiki / "pages" / "concepts"
+        asset_dir = wiki / "pages" / "assets" / "plan"
+        page_dir.mkdir(parents=True)
+        asset_dir.mkdir(parents=True)
+        image = asset_dir / "delivery-gantt.png"
+        image.write_bytes(b"gantt")
+        page = page_dir / "delivery-plan.md"
+        page.write_text(
+            """---
+type: concept
+title: Delivery Plan
+visuals:
+  - id: delivery-gantt-p8
+    kind: gantt
+    title: Delivery Gantt
+    image: ../assets/plan/delivery-gantt.png
+    source_locator: Page 8
+    summary: Implementation depends on design review approval.
+    keywords: [design review, dependency, implementation]
+    entities: [Design Review, Implementation]
+    timescale: week
+    tasks:
+      - id: review
+        label: Design Review
+        milestone: true
+      - id: build
+        label: Implementation
+        depends_on: [review]
+---
+# Delivery Plan
+
+## Visual Evidence
+
+![Delivery Gantt](../assets/plan/delivery-gantt.png)
+""",
+            encoding="utf-8",
+        )
+
+        results = search.visual_search(
+            "implementation design review dependency",
+            wiki / "pages",
+            limit=5,
+        )
+
+        assert results
+        assert results[0]["file"] == "concepts/delivery-plan"
+        hit = results[0]["visual_hits"][0]
+        assert hit["id"] == "delivery-gantt-p8"
+        assert hit["kind"] == "gantt"
+        assert hit["image_path"] == str(image.resolve())
+        cache = wiki / "graph" / ".visual_index.json"
+        assert cache.is_file()
+        payload = json.loads(cache.read_text(encoding="utf-8"))
+        assert payload["records"][0]["data"]["tasks"][1]["depends_on"] == ["review"]
+
+    def test_rrf_preserves_visual_hits_when_page_matches_other_streams(self):
+        visual_hit = {"id": "flow-p3", "kind": "flowchart"}
+        fused = search.reciprocal_rank_fusion(
+            [
+                [{"file": "concepts/flow", "stream": "bm25", "score": 2.0}],
+                [
+                    {
+                        "file": "concepts/flow",
+                        "stream": "visual",
+                        "score": 3.0,
+                        "visual_hits": [visual_hit],
+                    }
+                ],
+            ]
+        )
+
+        assert fused[0]["visual_hits"] == [visual_hit]
+
+
 class TestSearchDoctor:
     def test_doctor_reports_missing_pages(self, tmp_path, monkeypatch):
         wiki = tmp_path / ".wiki"

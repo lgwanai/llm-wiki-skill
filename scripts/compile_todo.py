@@ -226,12 +226,27 @@ def _finalize_agent_task_media(
             local_path = compile_v2._local_image_path(target, output_path.parent)
             if local_path is not None and not local_path.is_file():
                 raise ValueError(f"{output_path}: compiled image target is missing: {target}")
+        visual_records, visual_errors = compile_v2.validate_compiled_visual_evidence(
+            enriched,
+            output_path,
+            image_targets,
+        )
+        if visual_errors:
+            raise ValueError(
+                f"{output_path}: visual evidence validation failed: " + "; ".join(visual_errors)
+            )
         records.append(
             {
                 "output": str(output),
                 "output_path": str(output_path),
                 "output_sha256": sha256_file(output_path),
                 "image_targets": image_targets,
+                "visual_count": len(visual_records),
+                "visual_ids": [
+                    str(record.get("id", ""))
+                    for record in visual_records
+                    if str(record.get("id", "")).strip()
+                ],
             }
         )
     return records

@@ -106,6 +106,25 @@ def test_rewrite_query_adds_hyphen_variant():
     assert "order-approval" in variants
 
 
+def test_reciprocal_rank_merge_keeps_visual_hits_from_query_variants():
+    merged = query.reciprocal_rank_merge(
+        [
+            {
+                "path": "/concept.md",
+                "score": 2.0,
+                "visual_hits": [{"id": "chart-a"}],
+            },
+            {
+                "path": "/concept.md",
+                "score": 1.5,
+                "visual_hits": [{"id": "chart-b"}],
+            },
+        ]
+    )
+
+    assert [hit["id"] for hit in merged[0]["visual_hits"]] == ["chart-a", "chart-b"]
+
+
 def test_default_search_streams_are_wiki_native(monkeypatch):
     monkeypatch.delenv("LLM_WIKI_SEARCH_STREAMS", raising=False)
     monkeypatch.setattr(
@@ -119,6 +138,7 @@ def test_default_search_streams_are_wiki_native(monkeypatch):
         "claim",
         "metadata",
         "bm25",
+        "visual",
         "graph",
         "ledger",
     }
@@ -505,6 +525,106 @@ def test_query_returns_referenced_images_with_search_result(monkeypatch, tmp_pat
     assert result["source_details"][0]["images"], "source detail missing images"
     assert result["source_details"][0]["images"][0]["alt"] == "密度测量装置"
     assert f"![密度测量装置]({image.resolve()})" in result["answer"]
+
+
+def test_query_returns_only_query_matched_original_visual(monkeypatch, tmp_path):
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    gantt = assets / "delivery-gantt.png"
+    unrelated = assets / "org-chart.png"
+    gantt.write_bytes(b"gantt")
+    unrelated.write_bytes(b"org")
+    page = tmp_path / "project.md"
+    page.write_text(
+        """---
+type: concept
+title: 交付计划
+visuals:
+  - id: delivery-gantt
+    kind: gantt
+    title: 交付甘特图
+    image: assets/delivery-gantt.png
+    source_locator: Page 8
+    summary: 开发依赖设计评审完成
+    keywords: [设计评审, 依赖]
+    entities: [开发, 设计评审]
+    timescale: week
+    tasks:
+      - {id: build, label: 开发, depends_on: [review]}
+---
+# 交付计划
+
+## 图表与视觉证据
+
+![交付甘特图](assets/delivery-gantt.png)
+![组织架构图](assets/org-chart.png)
+""",
+        encoding="utf-8",
+    )
+    visual_hit = {
+        "id": "delivery-gantt",
+        "kind": "gantt",
+        "title": "交付甘特图",
+        "image": str(gantt.resolve()),
+        "image_path": str(gantt.resolve()),
+        "source_locator": "Page 8",
+        "summary": "开发依赖设计评审完成",
+        "data": {"timescale": "week", "tasks": [{"id": "build"}]},
+    }
+    monkeypatch.setattr(
+        query,
+        "search_wiki",
+        lambda *_args, **_kwargs: [
+            {
+                "id": "concepts/project",
+                "type": "Concept",
+                "path": str(page),
+                "score": 1.0,
+                "visual_hits": [visual_hit],
+            }
+        ],
+    )
+
+    result = query.query_wiki("开发依赖哪个评审", synthesis=False)
+
+    assert [item["path"] for item in result["images"]] == [str(gantt.resolve())]
+    assert result["visuals"][0]["id"] == "delivery-gantt"
+    assert f"![交付甘特图]({gantt.resolve()})" in result["answer"]
+    assert str(unrelated.resolve()) not in result["answer"]
+
+
+def test_synthesis_context_includes_type_specific_visual_structure(tmp_path):
+    page = tmp_path / "project.md"
+    page.write_text("# 交付计划\n\n计划正文。\n", encoding="utf-8")
+    context = query._format_page_context(
+        {
+            "id": "concepts/project",
+            "type": "concept",
+            "name": "交付计划",
+            "path": str(page),
+            "visual_hits": [
+                {
+                    "id": "delivery-gantt",
+                    "kind": "gantt",
+                    "title": "交付甘特图",
+                    "source_locator": "Page 8",
+                    "summary": "开发依赖设计评审",
+                    "data": {
+                        "timescale": "week",
+                        "tasks": [{"id": "build", "depends_on": ["review"]}],
+                        "critical_path": ["review", "build"],
+                    },
+                }
+            ],
+        },
+        1,
+        "开发依赖哪个评审",
+    )
+
+    assert "Matched Visual Evidence" in context
+    assert 'timescale: "week"' in context
+    assert '"depends_on": ["review"]' in context
+    assert 'critical_path: ["review", "build"]' in context
 
 
 def test_query_wiki_llm_mode_calls_configured_llm(monkeypatch, tmp_path):

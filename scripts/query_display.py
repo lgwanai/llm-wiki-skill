@@ -138,6 +138,7 @@ def source_detail(page: dict, query: str) -> dict:
         "temporal": page.get("temporal", {}),
         "matched_claim": page.get("matched_claim", {}),
         "claim_hits": page.get("claim_hits", []),
+        "visual_hits": page.get("visual_hits", []),
         "source_authority": page.get("source_authority", 0.6),
         "applicability_reasons": page.get("applicability_reasons", []),
         "images": page.get("images", []),

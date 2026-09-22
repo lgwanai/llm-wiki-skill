@@ -138,6 +138,16 @@
   conditions, exceptions, audience, jurisdiction, effective interval, and source
   location when those qualifiers are present in the source
 - Tables retain original headers, rows, units, merged-header meaning, and bound footnotes
+- OCR-derived text never substitutes for multimodal interpretation of an information-bearing
+  figure. Each retained chart, flowchart, swimlane, Gantt chart, architecture/sequence diagram,
+  timeline, map, or matrix has a frontmatter `visuals` record linked to its exact original image.
+- Every visual record includes `id`, `kind`, `title`, `image`, `source_locator`, `summary`,
+  `keywords`, and `entities`. Charts add `axes` and `series`; flow/architecture/sequence diagrams
+  add `nodes` and directed labelled `edges`; swimlanes add `lanes`, ownership, and handoffs;
+  Gantt charts add `timescale`, tasks, dependencies, milestones, and critical path when visible.
+- Visual facts distinguish directly readable content from inference and explicitly mark unreadable
+  labels, uncertain values, and ambiguous connectors. The body embeds the original asset under
+  `## 图表与视觉证据` / `## Visual Evidence` so query answers can display it.
 - Source authority and document status are recorded only when known; never inferred from tone
 - Entity pages should use the appropriate template
 - Relationships should use the most specific type available (not just `related_to`)

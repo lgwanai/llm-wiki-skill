@@ -49,7 +49,7 @@ def _log_exc(msg: str = ""):
 WIKI_DIR = get_wiki_dir()
 PAGES_DIR = WIKI_DIR / "pages"
 
-DEFAULT_SEARCH_STREAMS = ["raw", "claim", "metadata", "bm25", "graph", "ledger"]
+DEFAULT_SEARCH_STREAMS = ["raw", "claim", "metadata", "bm25", "visual", "graph", "ledger"]
 
 
 def enabled_search_streams() -> set[str]:
@@ -136,19 +136,19 @@ def plan_query(query: str) -> dict:
     plan = understand_query(query)
     intent = plan["intent"]
     preferred_by_intent = {
-        "exact_lookup": ["raw", "claim", "bm25", "metadata", "ledger", "graph"],
-        "structural_lookup": ["raw", "bm25", "claim", "metadata", "ledger", "graph"],
+        "exact_lookup": ["raw", "claim", "bm25", "visual", "metadata", "ledger", "graph"],
+        "structural_lookup": ["raw", "visual", "bm25", "claim", "metadata", "ledger", "graph"],
         "ledger_filter": ["ledger", "claim", "metadata", "bm25", "graph"],
         "aggregation": ["ledger", "claim", "metadata", "bm25", "graph"],
         "relationship": ["graph", "claim", "metadata", "bm25", "ledger"],
-        "comparison": ["claim", "bm25", "metadata", "graph", "ledger"],
-        "procedure": ["claim", "bm25", "metadata", "graph", "ledger"],
+        "comparison": ["claim", "visual", "bm25", "metadata", "graph", "ledger"],
+        "procedure": ["visual", "claim", "bm25", "metadata", "graph", "ledger"],
         "definition": ["claim", "metadata", "bm25", "graph", "ledger"],
         "temporal_current": ["claim", "metadata", "bm25", "graph", "ledger"],
         "temporal_as_of": ["claim", "metadata", "bm25", "graph", "ledger"],
     }
     plan["preferred_streams"] = preferred_by_intent.get(
-        intent, ["claim", "raw", "metadata", "bm25", "graph", "ledger"]
+        intent, ["claim", "raw", "visual", "metadata", "bm25", "graph", "ledger"]
     )
     return plan
 
@@ -160,6 +160,7 @@ def _stream_weights(plan: dict) -> dict[str, float]:
         "raw": 1.35,
         "metadata": 1.2,
         "bm25": 1.2,
+        "visual": 1.35,
         "graph": 1.0,
         "ledger": 1.0,
         "vector": 1.0,
@@ -904,6 +905,16 @@ def reciprocal_rank_merge(results: list[dict], limit: int = 10) -> list[dict]:
         if key not in merged:
             merged[key] = dict(item)
             merged[key]["variant_score"] = 0.0
+        elif item.get("visual_hits"):
+            existing_hits = merged[key].setdefault("visual_hits", [])
+            existing_ids = {
+                str(hit.get("id", "")) for hit in existing_hits if isinstance(hit, dict)
+            }
+            existing_hits.extend(
+                hit
+                for hit in item["visual_hits"]
+                if isinstance(hit, dict) and str(hit.get("id", "")) not in existing_ids
+            )
         merged[key]["variant_score"] += 1.0 / (60 + rank)
         merged[key]["score"] = max(float(merged[key].get("score", 0)), float(item.get("score", 0)))
     sorted_items = sorted(
@@ -1117,7 +1128,31 @@ def search_wiki(
             trace["streams"]["bm25_error"] = str(e)
             _log_exc("stream failed")
 
-    # Stream 3: Graph entity search (symbolic name matching + traversal)
+    # Stream 3: Multimodally interpreted charts, diagrams, timelines, and figures.
+    if "visual" in enabled_streams:
+        try:
+            from search import visual_search
+
+            visual_results = _lexical_candidates(
+                lambda variant, fetch_limit: visual_search(
+                    variant,
+                    str(PAGES_DIR),
+                    limit=fetch_limit,
+                ),
+                query_variants,
+                candidate_limit,
+                limit,
+                scope_filter,
+                status_filter,
+            )
+            trace["streams"]["visual"] = visual_results
+            if visual_results:
+                all_streams.append(visual_results)
+        except Exception as e:
+            trace["streams"]["visual_error"] = str(e)
+            _log_exc("visual evidence stream failed")
+
+    # Stream 4: Graph entity search (symbolic name matching + traversal)
     if "graph" in enabled_streams:
         try:
             if "graph" in futures:
@@ -1157,7 +1192,7 @@ def search_wiki(
             trace["streams"]["graph_error"] = str(e)
             _log_exc("stream failed")
 
-    # Stream 4: Ledger search (structured tables)
+    # Stream 5: Ledger search (structured tables)
     if "ledger" in enabled_streams:
         try:
             if "ledger" in futures:
@@ -1190,7 +1225,7 @@ def search_wiki(
             trace["streams"]["ledger_error"] = str(e)
             _log_exc("stream failed")
 
-    # Stream 5: Optional Zvec semantic search over compiled OKF concepts
+    # Stream 6: Optional Zvec semantic search over compiled OKF concepts
     if "vector" in enabled_streams:
         try:
             if "vector" in futures:
@@ -1255,6 +1290,7 @@ def search_wiki(
                             "table_name": f.get("table_name", ""),
                             "matched_claim": f.get("matched_claim", {}),
                             "claim_hits": f.get("claim_hits", []),
+                            "visual_hits": f.get("visual_hits", []),
                             "source_authority": f.get("source_authority", 0.6),
                             "evidence_excerpt": f.get("evidence_excerpt", ""),
                             "source_name": f.get("source_name", ""),
@@ -1324,6 +1360,7 @@ def search_wiki(
                         "table_name": r.get("table_name", ""),
                         "matched_claim": r.get("matched_claim", {}),
                         "claim_hits": r.get("claim_hits", []),
+                        "visual_hits": r.get("visual_hits", []),
                         "source_authority": r.get("source_authority", 0.6),
                         "evidence_excerpt": r.get("evidence_excerpt", ""),
                         "source_name": r.get("source_name", ""),
@@ -1448,16 +1485,15 @@ def _strip_image_title(target: str) -> str:
 
 
 def extract_page_images(page_path: str) -> list[dict[str, str]]:
-    """Return every image referenced by a compiled page with resolved local paths."""
+    """Return body images and structured visual assets with resolved local paths."""
     path = Path(page_path)
     content = read_page_content(page_path)
-    if not content:
+    if not content and not path.is_file():
         return []
     images: list[dict[str, str]] = []
     seen: set[str] = set()
-    for match in MARKDOWN_IMAGE_RE.finditer(content):
-        alt = match.group("alt").strip()
-        target = _strip_image_title(match.group("target").strip())
+
+    def add_image(target: str, alt: str, visual: dict | None = None) -> None:
         lowered = target.lower()
         local_path = ""
         display_url = target
@@ -1470,26 +1506,84 @@ def extract_page_images(page_path: str) -> list[dict[str, str]]:
                 local_path = str(candidate)
                 display_url = local_path
         identity = local_path or display_url
-        if identity in seen:
-            continue
+        if not identity or identity in seen:
+            return
         seen.add(identity)
-        images.append(
-            {
-                "alt": alt,
-                "url": display_url,
-                "path": local_path,
-                "markdown": f"![{alt}]({display_url})",
-            }
-        )
+        item = {
+            "alt": alt,
+            "url": display_url,
+            "path": local_path,
+            "markdown": f"![{alt}]({display_url})",
+        }
+        if visual:
+            item.update(
+                {
+                    "visual_id": str(visual.get("id") or ""),
+                    "kind": str(visual.get("kind") or "visual"),
+                    "summary": str(visual.get("summary") or ""),
+                    "source_locator": str(visual.get("source_locator") or ""),
+                }
+            )
+        images.append(item)
+
+    # Structured visual metadata is authoritative and searchable even when an
+    # Agent keeps the original chart only in frontmatter.
+    try:
+        from okf import read_markdown
+
+        metadata, _, _ = read_markdown(path)
+        visuals = metadata.get("visuals", [])
+        if isinstance(visuals, dict):
+            visuals = [visuals]
+        if isinstance(visuals, list):
+            for visual in visuals:
+                if not isinstance(visual, dict):
+                    continue
+                target = str(visual.get("image") or visual.get("source_image") or "").strip()
+                if not target:
+                    continue
+                alt = str(
+                    visual.get("title")
+                    or visual.get("summary")
+                    or visual.get("kind")
+                    or "Source visual"
+                )
+                add_image(target, alt, visual)
+    except (OSError, UnicodeError, ValueError):
+        pass
+
+    for match in MARKDOWN_IMAGE_RE.finditer(content):
+        alt = match.group("alt").strip()
+        target = _strip_image_title(match.group("target").strip())
+        add_image(target, alt)
     return images
 
 
 def _attach_page_images(pages: list[dict]) -> list[dict]:
-    """Annotate retrieved pages with their image evidence."""
+    """Annotate pages, preferring original assets for query-matched visuals."""
     annotated: list[dict] = []
     for page in pages:
         item = dict(page)
-        item["images"] = extract_page_images(str(item.get("path", "")))
+        images = extract_page_images(str(item.get("path", "")))
+        visual_hits = item.get("visual_hits", [])
+        if visual_hits:
+            matched_ids = {str(hit.get("id", "")) for hit in visual_hits if str(hit.get("id", ""))}
+            matched_assets = {
+                str(hit.get(field, ""))
+                for hit in visual_hits
+                for field in ("image_path", "image")
+                if str(hit.get(field, ""))
+            }
+            matched_images = [
+                image
+                for image in images
+                if str(image.get("visual_id", "")) in matched_ids
+                or str(image.get("path", "")) in matched_assets
+                or str(image.get("url", "")) in matched_assets
+            ]
+            if matched_images:
+                images = matched_images
+        item["images"] = images
         annotated.append(item)
     return annotated
 
@@ -1506,6 +1600,21 @@ def _collect_retrieved_images(pages: list[dict]) -> list[dict[str, str]]:
             seen.add(identity)
             images.append({**image, "source_id": str(page.get("id", "unknown"))})
     return images
+
+
+def _collect_retrieved_visuals(pages: list[dict]) -> list[dict]:
+    """Deduplicate the structured visuals that directly matched the query."""
+    visuals: list[dict] = []
+    seen: set[str] = set()
+    for page in pages:
+        for visual in page.get("visual_hits", []):
+            visual_id = str(visual.get("id") or "")
+            identity = visual_id or f"{visual.get('path', '')}:{visual.get('image', '')}"
+            if not identity or identity in seen:
+                continue
+            seen.add(identity)
+            visuals.append({**visual, "source_id": str(page.get("id", "unknown"))})
+    return visuals
 
 
 def select_evidence_sections(content: str, query: str, max_chars: int = 2800) -> str:
@@ -1691,6 +1800,45 @@ def _format_page_context(page: dict, index: int, query: str = "") -> str:
                 claim_block += f" ({'; '.join(qualifiers)})"
             claim_block += "\n"
 
+    visual_block = ""
+    visual_hits = page.get("visual_hits", [])
+    if visual_hits:
+        visual_block = "\n\n### Matched Visual Evidence\n"
+        for visual in visual_hits[:5]:
+            if not isinstance(visual, dict):
+                continue
+            data = visual.get("data", {})
+            visual_block += (
+                f"- **{visual.get('title', visual.get('id', 'visual'))}** "
+                f"({visual.get('kind', 'visual')}, "
+                f"{visual.get('source_locator', 'source locator unavailable')}): "
+                f"{visual.get('summary', '')}\n"
+            )
+            if isinstance(data, dict):
+                for field in (
+                    "axes",
+                    "series",
+                    "legend",
+                    "values",
+                    "trends",
+                    "nodes",
+                    "edges",
+                    "lanes",
+                    "handoffs",
+                    "timeline",
+                    "timescale",
+                    "tasks",
+                    "dependencies",
+                    "milestones",
+                    "critical_path",
+                    "uncertainty",
+                ):
+                    value = data.get(field)
+                    if value not in (None, "", [], {}):
+                        visual_block += (
+                            f"  - {field}: {json.dumps(value, ensure_ascii=False, default=str)}\n"
+                        )
+
     temporal_block = ""
     temporal = page.get("temporal")
     if isinstance(temporal, dict):
@@ -1713,6 +1861,7 @@ def _format_page_context(page: dict, index: int, query: str = "") -> str:
         f"**Type**: {ptype} | **ID**: {pid}{temporal_block}\n\n"
         f"{reordered}"
         f"{claim_block}"
+        f"{visual_block}"
         f"{ledger_block}"
         f"{image_block}"
     )
@@ -2666,6 +2815,7 @@ def query_wiki(
         }
     pages = _attach_page_images(pages)
     retrieved_images = _collect_retrieved_images(pages)
+    retrieved_visuals = _collect_retrieved_visuals(pages)
     try:
         from query_multihop import retrieval_evidence_status
 
@@ -2743,6 +2893,7 @@ def query_wiki(
             "sources": [p.get("id", "unknown") for p in pages],
             "source_details": source_details,
             "images": retrieved_images,
+            "visuals": retrieved_visuals,
             "debug_search": trace if debug_search else {},
             "retrieval_strategy": "multi_hop" if use_multi_hop else "single_hop",
             "max_hops": configured_hops if use_multi_hop else 1,
@@ -2777,7 +2928,7 @@ def query_wiki(
     if pages and not answer.strip():
         raise ValueError("模型未返回答案，请重新生成")
     answer_text = answer
-    if retrieved_images and synthesis_mode == "llm" and fmt != "json":
+    if retrieved_images and fmt != "json":
         gallery = "\n\n## 引用原图\n\n" + "\n\n".join(
             image["markdown"] for image in retrieved_images
         )
@@ -2794,6 +2945,7 @@ def query_wiki(
         "sources": [p.get("id", "unknown") for p in pages],
         "source_details": source_details,
         "images": retrieved_images,
+        "visuals": retrieved_visuals,
         "retrieval_strategy": "multi_hop" if use_multi_hop else "single_hop",
         "max_hops": configured_hops if use_multi_hop else 1,
         "retrieval_evidence": retrieval_evidence,

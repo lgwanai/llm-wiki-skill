@@ -802,9 +802,13 @@ def test_image_backed_markdown_creates_page_tasks_with_concrete_image_paths(tmp_
     assert len(ocr_calls) == 3
     assert all(item["ocr_backend"] == "paddlevl" for item in manifest["items"])
     assert all(item["ocr_status"] == "success" for item in manifest["items"])
-    assert all(item["vision_fallback_allowed"] is False for item in manifest["items"])
+    assert all(item["requires_multimodal_analysis"] is True for item in manifest["items"])
+    assert all(item["native_multimodal_required"] is True for item in manifest["items"])
+    assert all(item["external_vision_fallback_allowed"] is False for item in manifest["items"])
+    assert all(item["visual_schema_version"] == 1 for item in manifest["items"])
     assert "`PaddleOCR-VL-1.6` has already processed every source image" in task
-    assert "vision_fallback_allowed=false" in task
+    assert "native multimodal capability" in task
+    assert "OCR success does not describe spatial" in task
     assert "vision_cli.py" not in task
     assert "Fallback precedence" not in task
     for item in manifest["items"]:
@@ -1315,8 +1319,8 @@ def test_llm_mode_image_without_vision_or_ocr_hands_off(tmp_path, monkeypatch):
     assert str((images_dir / "diagram.png").resolve()) in content
 
 
-def test_agent_mode_image_uses_paddlevl_without_invoking_vision(tmp_path, monkeypatch):
-    """Agent mode: successful document OCR is primary and blocks vision routing."""
+def test_agent_mode_image_combines_paddlevl_with_native_multimodal(tmp_path, monkeypatch):
+    """Successful OCR remains textual evidence while visual inspection is mandatory."""
     image = tmp_path / "diagram.png"
     image.write_bytes(b"fake image bytes")
 
@@ -1344,7 +1348,8 @@ def test_agent_mode_image_uses_paddlevl_without_invoking_vision(tmp_path, monkey
     assert readable is True
     assert "Required path completed: PaddleOCR-VL-1.6 OCR" in content
     assert "PaddleOCR-VL-1.6 OCR Markdown (primary)" in content
-    assert "Do not invoke vision-skill" in content
+    assert "native multimodal capability" in content
+    assert "OCR success never permits skipping" in content
     assert "PaddleOCR-VL-1.6 extracted complete exam text" in content
     assert "vision_cli.py" not in content
     assert "vision-skill (preferred)" not in content
@@ -1352,8 +1357,8 @@ def test_agent_mode_image_uses_paddlevl_without_invoking_vision(tmp_path, monkey
     assert f"![{image.stem}]" in content
 
 
-def test_agent_mode_image_without_ocr_keeps_native_fallback(tmp_path, monkeypatch):
-    """Agent mode permits vision-skill only after OCR is unavailable."""
+def test_agent_mode_image_without_ocr_uses_native_then_external_fallback(tmp_path, monkeypatch):
+    """Agent mode uses native multimodal reading before an external vision fallback."""
     image = tmp_path / "photo.jpg"
     image.write_bytes(b"fake image bytes")
 
@@ -1370,8 +1375,8 @@ def test_agent_mode_image_without_ocr_keeps_native_fallback(tmp_path, monkeypatc
 
     assert readable is True
     assert "OCR was unavailable or insufficient" in content
-    assert "vision-skill (OCR fallback only)" in content
-    assert "Native capability" in content
+    assert "vision-skill (external fallback only)" in content
+    assert "Native multimodal capability (required)" in content
     assert "did not return usable document text" in content
     # No scripts_path → no CLI command, but the skill is still referenced by name.
     assert "vision_cli.py" not in content

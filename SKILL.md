@@ -46,36 +46,38 @@ When the user asks a question about Wiki knowledge, immediately run
 Never write a temporary program, shell pipeline, SQL query, grep command, or manual
 filesystem scan to retrieve Wiki content. Never inspect `.wiki/pages` as a substitute
 for the official query command. The query pipeline already performs access filtering,
-BM25/metadata/graph/ledger fusion, multi-hop traversal, and evidence selection.
+BM25/metadata/visual/graph/ledger fusion, multi-hop traversal, and evidence selection.
 After it returns an Agent synthesis task, answer only from that task's retrieved evidence.
 
 ## Dependencies
 
-### PaddleOCR-VL-1.6 first; `vision-skill` is fallback only
+### OCR extracts text; the Agent interprets visual semantics
 
-Image-source compilation (`python scripts/compile_v2.py exam.png`) recognizes images with
-this precedence:
+Image-source compilation (`python scripts/compile_v2.py exam.png`) uses two complementary
+tracks. OCR and multimodal inspection are not substitutes:
 
-1. **Configured OCR (required first)** — PaddleOCR-VL-1.6 is the default. Exam pages,
+1. **Configured OCR (required text extractor)** — PaddleOCR-VL-1.6 is the default. Exam pages,
    worksheets, textbook screenshots, scanned documents, and image-backed Markdown
-   pages must use PaddleOCR-VL-1.6 before any visual skill. Successful OCR Markdown and its
-   figure crops are authoritative extraction evidence; do not invoke vision-skill
-   afterward.
+   pages use it for words, formulas, tables, captions, and crop references. Successful OCR
+   remains authoritative text-extraction evidence, but it does not explain layout,
+   direction, ownership, dependencies, axes, trends, or a time scale.
 
-2. **vision-skill (OCR failure fallback only)** — use it only for an individual
-   image after PaddleOCR-VL-1.6 is unavailable, exits with an error, or returns insufficient
-   document text. If `vision_skill.scripts_path` is set, the fallback command is:
+2. **Agent native multimodal inspection (required visual interpreter)** — inspect every
+   information-bearing chart, flowchart, swimlane, Gantt chart, architecture/sequence
+   diagram, timeline, map, matrix, and similar figure, even when OCR succeeds. Save both
+   a prose explanation and a type-specific structured `visuals` record linked to the
+   exact original image. See [Visual Evidence Compilation](references/visual-evidence.md).
+
+3. **vision-skill (external fallback only)** — use it only for an individual image
+   when OCR fails for text or native multimodal inspection remains insufficient. If
+   `vision_skill.scripts_path` is set, the fallback command is:
 
    ```bash
    python <vision_skill.scripts_path>/vision_cli.py recognize \
      "<image>" --format markdown_note --wait
    ```
 
-   Record the OCR failure before invoking this fallback. When `scripts_path` is
-   empty, invoke the skill by name only.
-
-3. **Agent native capability** — if neither OCR nor vision fallback is available, the Agent reads the
-   image directly with its own image-parsing capability.
+   Record the fallback reason. When `scripts_path` is empty, invoke the skill by name only.
 
 The Python-side `image_analysis` vision API is **not** used in agent mode — it
 is reserved for `--mode llm`, where no Agent is in the loop to invoke a skill.
@@ -106,8 +108,8 @@ the compile standard. No configured model/API key is required.
 python scripts/compile_v2.py source.md
 python scripts/compile_v2.py docs/                 # recursively compile supported files
 python scripts/compile_v2.py docs/ --depth 1       # only direct files + one directory level
-python scripts/compile_v2.py exam.png              # PaddleOCR-VL-1.6 → vision fallback → Agent native
-python scripts/compile_v2.py handbook.pdf          # every page rendered; OCR/vision/Agent fallback
+python scripts/compile_v2.py exam.png              # OCR text + Agent multimodal visual semantics
+python scripts/compile_v2.py handbook.pdf          # every page rendered; OCR + multimodal inspection
 python scripts/compile_v2.py handbook.doc           # legacy Word → PDF, or cached DOCX fast fallback
 python scripts/compile_v2.py handbook.docx         # Word pages rendered through PDF, with page provenance
 python scripts/compile_v2.py slides.pptx           # every slide rendered; never first-slide-only
@@ -136,13 +138,16 @@ current Agent must continue immediately:
    complete semantic knowledge blocks rather than arbitrary chunk summaries.
    Image-backed Markdown captures are split by their `Page N` / `第 N 页`
    headings. Each todo item carries concrete absolute `image_paths`; open every
-   listed image and treat the pixels as the source. Missing pre-extracted OCR text
-   is never a valid reason to fail, skip, deduplicate, or substitute another PDF.
+   listed image and treat the pixels as the source. For information-bearing figures,
+   record type-specific structure in frontmatter `visuals` and embed the exact original
+   image under `## 图表与视觉证据` / `## Visual Evidence`. Missing pre-extracted OCR
+   text is never a valid reason to fail, skip, deduplicate, or substitute another PDF.
 4. Mark a task `completed` only after recording every affected Concept ID as an
    output. Reading or summarizing a chunk is not sufficient. For image-bearing
    study materials, `complete` requires exact page/EPUB-section citations and
    deterministically attaches the cited and adjacent source images to those pages;
-   missing citations or missing image files fail the task instead of degrading to text.
+   missing citations, missing image files, or missing structured visual records fail
+   the task instead of degrading to OCR-only text.
 5. If one task is too large for the current context, recursively run
    `compile_v2.py` on that immutable task artifact, finish its child todo, then
    resume the parent. Never silently truncate or skip forward.
@@ -230,6 +235,8 @@ compilation is forced to run sequentially for deterministic coverage.
     image for visual verification but prefer native DOCX structure over slower/noisier
     OCR. Never send raw `.doc` to MarkItDown.
   - If OCR is installed/configured, OCR each page image in order
+  - Independently inspect information-bearing figures with Agent multimodal capability;
+    OCR success never removes this requirement
   - If page rendering fails for a PDF, run the configured backend
     (PaddleOCR-VL-1.6 by default) against the complete PDF before trying MarkItDown
   - MarkItDown output from a scanned PDF is partial evidence only; short,
@@ -284,12 +291,13 @@ compilation is forced to run sequentially for deterministic coverage.
 
 ### `/wiki-query <question>` — Search & Answer
 
-Dual-channel search combines compiled OKF knowledge (claims + metadata + page BM25F + graph +
-complete DuckDB ledger) with lossless source evidence, then the current Agent synthesizes with
+Hybrid search combines compiled OKF knowledge (claims + metadata + page BM25F + structured
+visual evidence + graph + complete DuckDB ledger) with lossless source evidence, then the current Agent synthesizes with
 citations. No
-configured model/API key is required by default. Referenced images are resolved from each
-retrieved page, included in synthesis context, and exposed in `images` and
-`source_details[].images` in query results.
+configured model/API key is required by default. Visual records index summaries, entities,
+axes/series, nodes/edges, lanes/handoffs, and Gantt tasks/dependencies. A visual match resolves
+the exact persisted source image, includes its structured interpretation in synthesis context,
+and exposes it through `visuals`, `images`, and `source_details[].images` in query results.
 
 > **强制查询协议（所有 Agent 必须遵守）**
 >
@@ -351,6 +359,8 @@ Default retrieval quality features:
   authoritative sources while retaining mismatched and unknown evidence for comparison.
 - Metadata search indexes OKF `title`, `description`, `tags`, `type`, and Concept ID.
 - Page BM25F weights Concept ID, title, tags, description, key facts, headings, and body.
+- Visual search indexes the multimodal `visuals` records independently of body prose and returns
+  the matched chart/diagram plus its original persisted image for answer-time display.
 - Candidate streams over-fetch before scope/status filters and use intent-aware weighted RRF.
 - Ledger search runs in DuckDB across all declared fields and rows; graph/ledger/vector can run concurrently.
 - Graph search anchors natural-language questions to compiled entities and relationships.
@@ -373,7 +383,7 @@ Default retrieval quality features:
   coverage-aware top-k selection retains distinct comparison sides instead of redundant pages.
 - Education graph search recognizes typed `tests`, `depends_on`, `has_example`,
   `confuses_with`, `derived_from`, and `similar_question` paths.
-- `python scripts/search.py --doctor` reports page, metadata, graph, and optional embedding health.
+- `python scripts/search.py --doctor` reports page, metadata, visual, graph, and optional embedding health.
 - `python scripts/search.py --eval <cases.jsonl>` measures Recall@K and MRR from jsonl eval cases.
 - `python scripts/benchmark.py <cases.jsonl> --method retrieval` additionally reports complete
   subgoal coverage, topic drift, retrieval hop depth, forbidden leakage, and P50/P95 latency. Every

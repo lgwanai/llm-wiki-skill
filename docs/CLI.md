@@ -1,5 +1,9 @@
 # CLI Reference
 
+For task-oriented Chinese examples covering initialization, multimodal compilation,
+temporal queries, visual retrieval, maintenance, OKF, and ledgers, see
+[使用指南](USAGE.md).
+
 ## Core Commands
 
 | Command | Description |
@@ -13,7 +17,7 @@
 | `wiki compile <file-or-dir> --mode llm` | Compile via configured LLM provider |
 | `wiki compile <dir> --depth 1` | Limit directory recursion depth |
 | `wiki compile --text "content" --name "title"` | Compile inline text |
-| `wiki compile <dir> -j 4` | Parallel compilation (4 workers) |
+| `wiki compile <dir> --mode llm -j 4` | Parallel LLM compilation (4 workers) |
 | `wiki query <question>` | Search + synthesize answer |
 | `wiki query <q> --no-synthesis` | Fast search, skip LLM (0.5s) |
 | `wiki query <q> --file-back` | Answer + file back to wiki |
@@ -26,7 +30,7 @@
 | `wiki embed` | Generate page embeddings |
 | `wiki embed --chunks` | Generate chunk embeddings |
 | `wiki embed --force` | Force re-generate |
-| `wiki bulks` | Bulk operations (stats, clean) |
+| `wiki bulk` | Bulk operations (stats, clean) |
 | `wiki search doctor` | Retrieval index health diagnostics |
 | `wiki search eval <file>` | Evaluate retrieval (Recall@K, MRR) |
 

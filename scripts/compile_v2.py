@@ -727,16 +727,20 @@ def build_domain_expert_guidance(content: str, source_name: str = "") -> str:
 def build_media_fidelity_guidance(lang: str) -> str:
     """Return mandatory compile instructions for images and page provenance."""
     if lang == "zh":
-        return """## 图片与来源保真（强制）
-- 原文中的 Markdown 图片链接是证据，不是装饰。知识页使用了某张图、图表、实验装置、题图或页面内容时，必须原样保留对应图片引用。
-- 图片已持久化到 OKF bundle 的 `pages/assets/**`，只能引用这些稳定路径，不得改回临时 OCR 目录。
-- 保留图片与页码的对应关系；禁止只描述图片而删除可用原图。
-- 知识学习类页面必须包含 `## 来源追溯`：原始资料文件名、一个或多个页码/连续页范围、原文摘录，并在有图时包含对应图片。知识边界可以跨页；无法精确定位时写‘候选页范围/待核验’并继续提取，绝不能因页码不确定而丢弃知识。"""
+        return """## 多模态视觉证据与来源保真（强制）
+- OCR 只负责文字识别，不能替代视觉理解。对图表、流程图、泳道图、甘特图、架构图、时序图、思维导图、时间线、矩阵、地图和其他信息图，即使 OCR 成功，也必须使用当前 Agent 的原生多模态能力查看原图。
+- 原文中的 Markdown 图片链接是证据，不是装饰。知识页使用了某张图、实验装置、题图或页面内容时，必须原样保留对应图片引用；图片已持久化到 `pages/assets/**`，不得改回临时 OCR 目录。
+- 每个被知识页引用的视觉对象必须在 frontmatter 的 `visuals` 列表中建立结构化记录，至少包含 `id`、`kind`、`title`、`image`、`source_locator`、`summary`、`keywords`、`entities`。`image` 必须指向正文中展示的同一张原图。
+- 折线/柱状/饼图等图表还要记录 `axes`、`series`、`legend`、`values`、`trends`；流程/架构/时序图记录 `nodes` 与带方向和标签的 `edges`；泳道图额外记录 `lanes`、步骤所属角色、跨泳道交接；甘特图记录 `timescale`、`tasks`、起止时间、持续期、依赖、里程碑和关键路径。看不清的字段写 `[unclear]`，禁止猜测。
+- 在正文增加 `## 图表与视觉证据`，用自然语言解释图的目的、阅读顺序、关键关系、异常/趋势和结论，并嵌入原图。结构化记录用于索引，正文解释用于回答，二者都不能省略。
+- 保留图片与页码/幻灯片/EPUB section 的对应关系。知识学习类页面还必须包含 `## 来源追溯`：原始资料文件名、精确页码或候选页范围、原文摘录。无法精确定位时标记‘待核验’，不得丢弃视觉知识。"""
     return """## Image and Source Fidelity (mandatory)
-- Markdown image links in the source are evidence, not decoration. Preserve the corresponding image whenever a compiled page uses a diagram, chart, apparatus, question figure, or rendered page.
-- Images are persisted under `pages/assets/**`; keep those stable references and never point back to a temporary OCR directory.
-- Preserve the image-to-page/slide association. Do not replace an available source image with text-only prose.
-- Study-material pages require `## Source Traceability` with the source filename, one or more pages/a page range, a verbatim excerpt, and the corresponding image when present. Knowledge boundaries may cross pages. If the exact location is uncertain, record a candidate range and `needs verification`; never discard knowledge merely because page provenance is uncertain."""
+- OCR extracts text; it does not replace visual understanding. For charts, flowcharts, swimlanes, Gantt charts, architecture or sequence diagrams, mind maps, timelines, matrices, maps, and other infographics, inspect the original pixels with the current Agent's native multimodal capability even when OCR succeeds.
+- Markdown image links are evidence, not decoration. Preserve every diagram, chart, apparatus, question figure, or rendered page used by a concept. Images live under `pages/assets/**`; never point back to temporary OCR storage.
+- Every referenced visual requires a structured `visuals` frontmatter record with `id`, `kind`, `title`, `image`, `source_locator`, `summary`, `keywords`, and `entities`. The `image` must be the same original asset embedded in the page body.
+- Charts additionally record `axes`, `series`, `legend`, `values`, and `trends`; flow/architecture/sequence diagrams record directed, labelled `nodes` and `edges`; swimlanes add `lanes`, step ownership, and hand-offs; Gantt charts add `timescale`, tasks, start/end, duration, dependencies, milestones, and critical path. Use `[unclear]` instead of guessing.
+- Add a `## Visual Evidence` section that explains purpose, reading order, key relationships, trends/anomalies, and conclusions, and embeds the original visual. Structured metadata is for retrieval; prose is for answers; both are required.
+- Preserve image-to-page/slide/EPUB-section association. Study-material pages also require `## Source Traceability` with filename, exact or candidate locator, and a verbatim excerpt. Mark uncertain provenance for verification instead of discarding visual knowledge."""
 
 
 def build_temporal_applicability_guidance(lang: str) -> str:
@@ -819,6 +823,10 @@ Required output for any flowchart/process diagram:
 - If it is a mind map: restore the full hierarchy as nested bullet lists.
 - If it is an architecture diagram: identify layers, components, data flow direction, and protocols between components.
 - If it is a chart: restore chart type, data series, axis labels with units, numeric values, and visible trends.
+- If it is a swimlane diagram: list every lane/role, each step's owning lane, sequence, decision branches, cross-lane hand-offs, messages, loops, start, and end states.
+- If it is a Gantt chart: recover the time scale, task/group hierarchy, start and end, duration, progress, dependencies, milestones, overlaps, slack when explicit, and the visibly marked critical path.
+- If it is a timeline: recover every dated event in order, intervals, parallel tracks, and causal links explicitly shown.
+- If it is a sequence diagram: recover participants, message direction, labels, activation spans, conditions, loops, and return messages.
 - If it is a document screenshot: extract text faithfully with section structure.
 - If it contains a table: reproduce the table in markdown table format with all rows and columns.
 
@@ -838,6 +846,11 @@ mark it `[unclear]` rather than guessing.
 ### 4. Key Entities
 - List named entities visible in the image (people, organizations, projects, systems, metrics, dates).
 - These will be used for knowledge graph linking.
+
+### 5. Retrieval Record
+- Propose a stable visual ID, visual kind, concise title, source locator, keywords, entities, and the exact original image path.
+- Emit type-specific searchable structures: `axes`/`series`/`values`/`trends`, `nodes`/`edges`, `lanes`, or `timescale`/`tasks`/`dependencies`/`milestones` as applicable.
+- Separate directly visible facts from interpretation. Mark illegible or ambiguous content `[unclear]`; never infer hidden values or connections.
 
 Avoid generic descriptions like "this is an image of a diagram" — be specific about what the image contains and how it's organized.
 """
@@ -1241,6 +1254,144 @@ def _source_page_image_map(content: str) -> dict[int, list[tuple[str, str]]]:
     return result
 
 
+def compiled_visual_records(page_content: str) -> list[dict[str, Any]]:
+    """Return structured visual records from one compiled OKF page."""
+    if not page_content.startswith("---"):
+        return []
+    lines = page_content.splitlines()
+    end = next(
+        (index for index, line in enumerate(lines[1:], start=1) if line.strip() == "---"),
+        0,
+    )
+    if end <= 0:
+        return []
+    try:
+        metadata = yaml.safe_load("\n".join(lines[1:end])) or {}
+    except yaml.YAMLError:
+        return []
+    if not isinstance(metadata, dict):
+        return []
+    visuals = metadata.get("visuals", [])
+    if isinstance(visuals, dict):
+        visuals = [visuals]
+    return [dict(item) for item in visuals if isinstance(item, dict)]
+
+
+def validate_compiled_visual_evidence(
+    page_content: str,
+    page_path: Path,
+    image_targets: list[str],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Validate multimodal records and their link to displayable original assets."""
+    records = compiled_visual_records(page_content)
+    errors: list[str] = []
+    if image_targets and not records:
+        return records, ["image-bearing page has no structured `visuals` frontmatter records"]
+
+    required = {
+        "id",
+        "kind",
+        "title",
+        "image",
+        "source_locator",
+        "summary",
+        "keywords",
+        "entities",
+    }
+    resolved_page_images = {
+        str(local_path)
+        for target in image_targets
+        if (local_path := _local_image_path(target, page_path.parent)) is not None
+    }
+    visual_section_match = re.search(
+        r"^##\s+(?:图表与视觉证据|视觉证据|Visual Evidence)\s*$"
+        r"(?P<body>.*?)(?=^##\s+|\Z)",
+        page_content,
+        flags=re.MULTILINE | re.IGNORECASE | re.DOTALL,
+    )
+    visual_section_images = {
+        str(local_path)
+        for match in MARKDOWN_IMAGE_RE.finditer(
+            visual_section_match.group("body") if visual_section_match else ""
+        )
+        if (
+            local_path := _local_image_path(
+                _clean_image_target(match.group("target")),
+                page_path.parent,
+            )
+        )
+        is not None
+    }
+    matched_original = False
+    for index, record in enumerate(records, start=1):
+        missing = sorted(
+            field
+            for field in required
+            if (
+                not str(record.get(field, "")).strip()
+                or (field in {"keywords", "entities"} and not isinstance(record.get(field), list))
+                or (field in {"keywords", "entities"} and not record.get(field))
+            )
+        )
+        if missing:
+            errors.append(f"visual record {index} missing required fields: {', '.join(missing)}")
+        image_target = str(record.get("image", "")).strip()
+        visual_image = _local_image_path(image_target, page_path.parent) if image_target else None
+        if visual_image is None or not visual_image.is_file():
+            errors.append(
+                f"visual record {index} references a missing original image: {image_target}"
+            )
+        elif str(visual_image) in resolved_page_images:
+            matched_original = True
+            if str(visual_image) not in visual_section_images:
+                errors.append(
+                    f"visual record {index} original image is not embedded in the "
+                    "visual evidence section"
+                )
+
+        kind = str(record.get("kind", "")).casefold()
+        if any(token in kind for token in ("swimlane", "泳道")):
+            for field in ("lanes", "nodes", "edges"):
+                if not isinstance(record.get(field), list) or not record[field]:
+                    errors.append(f"visual record {index} ({kind}) requires non-empty `{field}`")
+        elif any(token in kind for token in ("gantt", "甘特")):
+            if not record.get("timescale"):
+                errors.append(f"visual record {index} ({kind}) requires `timescale`")
+            if not isinstance(record.get("tasks"), list) or not record["tasks"]:
+                errors.append(f"visual record {index} ({kind}) requires non-empty `tasks`")
+        elif any(
+            token in kind
+            for token in (
+                "flowchart",
+                "process",
+                "architecture",
+                "sequence",
+                "流程",
+                "架构",
+                "时序",
+            )
+        ):
+            for field in ("nodes", "edges"):
+                if not isinstance(record.get(field), list) or not record[field]:
+                    errors.append(f"visual record {index} ({kind}) requires non-empty `{field}`")
+        elif any(
+            token in kind
+            for token in ("chart", "plot", "graph", "柱状", "折线", "饼图", "散点", "图表")
+        ):
+            if not isinstance(record.get("axes"), dict) or not record["axes"]:
+                errors.append(f"visual record {index} ({kind}) requires non-empty `axes`")
+            if not isinstance(record.get("series"), list) or not record["series"]:
+                errors.append(f"visual record {index} ({kind}) requires non-empty `series`")
+
+    if image_targets and records and not matched_original:
+        errors.append("no visual record points to an original image embedded in the compiled page")
+    if records and visual_section_match is None:
+        errors.append(
+            "structured visuals require a `## 图表与视觉证据`/`## Visual Evidence` section"
+        )
+    return records, errors
+
+
 AGENT_PAGE_HEADING_RE = re.compile(
     r"(?m)^##\s+(?:Page|Slide|第)\s*\d+\s*(?:页|张)?\s*$",
     re.IGNORECASE,
@@ -1600,14 +1751,14 @@ def _attach_source_media(page_content: str, source_content: str, page_path: Path
 def analyze_image_for_compile(image_path: Path, for_agent: bool = False) -> str:
     """Convert an image source to markdown for wiki compilation.
 
-    Image recognition precedence:
-      1. OCR — configured OCR backend (PaddleOCR-VL-1.6 by default).
-      2. vision-skill — fallback only when OCR is unavailable or insufficient.
-      3. Agent's own image-parsing capability — last resort.
+    Agent mode uses complementary recognition paths:
+      1. OCR — configured backend for text, formulas, tables, and captions.
+      2. Agent native multimodal inspection — always for visual semantics.
+      3. vision-skill — external fallback when either path is insufficient.
 
     In agent mode (``for_agent=True``, the default compile mode), emit a
-    precedence instruction for the Agent and pre-extract OCR text as the
-    primary evidence. The ``image_analysis`` vision API is NOT used here — it is
+    two-track instruction for the Agent and pre-extract OCR text as the primary
+    textual evidence. The ``image_analysis`` vision API is NOT used here — it is
     reserved for ``--mode llm`` where no Agent is in the loop to invoke a
     skill.
 
@@ -1694,7 +1845,7 @@ def _build_llm_image_task(image_path: Path, stored_path: Path) -> str:
 
 
 def _build_agent_image_task(image_path: Path, stored_path: Path) -> str:
-    """Agent-mode image task: OCR first, vision only after OCR failure."""
+    """Build an Agent task with OCR text plus mandatory native visual inspection."""
     vision_config = get_vision_skill_config()
     vision_enabled = bool(vision_config.get("enabled"))
     ocr_config = get_ocr_config()
@@ -1717,10 +1868,13 @@ def _build_agent_image_task(image_path: Path, stored_path: Path) -> str:
                 "",
                 f"**Required path completed: {ocr_label} OCR.**",
                 "",
-                "Use the OCR Markdown below as the primary extraction. Do not invoke "
-                "vision-skill or replace this result with native vision when OCR has "
-                "succeeded. Keep the original image link and all OCR-generated figure "
-                "references in the compiled page.",
+                "Use the OCR Markdown below as the primary text extraction. Then inspect "
+                "the original image with native multimodal capability for spatial, "
+                "relational, directional, ownership, axis, trend, and timeline meaning. "
+                "OCR success never permits skipping this visual interpretation. Keep the "
+                "original image link and all OCR-generated figure references in the "
+                "compiled page. Use an external vision-skill only if native inspection "
+                "remains insufficient.",
                 "",
                 f"![{image_path.stem}]({stored_path.resolve()})",
                 "",
@@ -1736,8 +1890,8 @@ def _build_agent_image_task(image_path: Path, stored_path: Path) -> str:
         [
             "## Image Recognition",
             "",
-            "**OCR was unavailable or insufficient. Fallback precedence: "
-            "vision-skill → native capability.**",
+            "**OCR was unavailable or insufficient. Inspect the original with native "
+            "multimodal capability; use vision-skill only as an external fallback.**",
             "",
         ]
     )
@@ -1746,14 +1900,22 @@ def _build_agent_image_task(image_path: Path, stored_path: Path) -> str:
     if vision_enabled:
         sections.extend(
             [
-                f"{tier}. **vision-skill (OCR fallback only)** — OCR did not return "
-                "enough readable document content. If vision-skill is available, use it "
-                "to recover the missing content.",
+                f"{tier}. **Native multimodal capability (required)** — read the image "
+                "directly, recover visible content, and describe visual structure. Mark "
+                "unreadable or ambiguous details instead of guessing.",
                 "",
             ]
         )
+        tier += 1
         scripts_path = vision_config.get("scripts_path", "")
         fmt = vision_config.get("recognize_format", "markdown_note")
+        sections.extend(
+            [
+                f"{tier}. **vision-skill (external fallback only)** — use it only if the "
+                "native inspection above remains insufficient, and record why.",
+                "",
+            ]
+        )
         if scripts_path:
             cli = Path(os.path.expanduser(str(scripts_path))) / "vision_cli.py"
             sections.extend(
@@ -1767,17 +1929,17 @@ def _build_agent_image_task(image_path: Path, stored_path: Path) -> str:
                     "",
                 ]
             )
-        tier += 1
+    else:
+        sections.extend(
+            [
+                f"{tier}. **Native multimodal capability (required)** — read the image "
+                "directly, recover visible content and visual structure, and mark "
+                "uncertainty explicitly.",
+                "",
+            ]
+        )
 
-    sections.extend(
-        [
-            f"{tier}. **Native capability** — If the OCR and vision-skill fallback are "
-            "both unavailable, read the image directly.",
-            "",
-            f"![{image_path.stem}]({stored_path.resolve()})",
-            "",
-        ]
-    )
+    sections.extend([f"![{image_path.stem}]({stored_path.resolve()})", ""])
 
     if ocr_text:
         sections.extend(["### Partial OCR Evidence", "", ocr_text.strip(), ""])
@@ -3053,11 +3215,14 @@ def create_agent_compile_task(
                 item.update(
                     {
                         "requires_image_inspection": True,
+                        "requires_multimodal_analysis": True,
                         "image_count": len(image_paths),
                         "image_paths": image_paths,
                         "ocr_backend": image_ocr_report["backend"],
                         "ocr_status": "success" if ocr_complete else "fallback_allowed",
-                        "vision_fallback_allowed": not ocr_complete,
+                        "native_multimodal_required": True,
+                        "external_vision_fallback_allowed": not ocr_complete,
+                        "visual_schema_version": 1,
                     }
                 )
             todo_items.append(item)
@@ -3135,12 +3300,16 @@ Agent cannot read it, ask the user to provide a text export or summary.
             image_task_guidance = f"""### Image-backed Markdown / captured pages (mandatory)
 
 - `{configured_ocr_label}` has already processed every source image while this
-  task was created. Its primary Markdown is embedded in each artifact.
-- Use that OCR Markdown and retain every original-page and generated crop reference.
-- `vision_fallback_allowed=false` is authoritative: do not invoke vision-skill or
-  native visual recognition for these successfully processed images.
-- Complete a task only after all OCR text, formulas, tables, captions, and referenced
-  crops are represented in the output. This run contains
+  task was created. Use its Markdown as the primary text extraction and retain every
+  original-page and generated crop reference.
+- OCR success does not describe spatial, relational, ownership, dependency, or
+  time-axis meaning. Use the Agent's native multimodal capability to inspect every
+  listed image that contains a chart, flowchart, swimlane, Gantt chart, architecture
+  diagram, sequence diagram, timeline, map, matrix, or other information-bearing figure.
+- Do not call an external vision-skill when native multimodal inspection is sufficient.
+  This restriction never permits skipping native visual interpretation.
+- Complete a task only after all OCR text, formulas, tables, captions, structured visual
+  semantics, and referenced crops are represented in the output. This run contains
   {sum(int(item.get("image_count", 0)) for item in todo_items)} persisted image asset(s).
 
 """
@@ -3151,12 +3320,16 @@ Agent cannot read it, ask the user to provide a text export or summary.
   `requires_image_inspection=true` and concrete absolute `image_paths`.
 - For every path in `image_paths`, run the configured `{configured_ocr_backend}`
   backend ({configured_ocr_label}) through `{Path(__file__).resolve().parent / "ocr.py"}`
-  before any visual skill. Use its Markdown as the primary extraction and retain all
-  generated crop references. Do not invoke vision-skill when OCR succeeds.
-- vision-skill is permitted only for a specific image after its OCR command fails or
-  returns insufficient document text. Record that OCR failure before using the fallback.
-- The image itself remains authoritative. OCR failure is not permission to skip the
-  task; use the fallback only for the failed image and preserve its provenance.
+  before any external visual skill. Use its Markdown as the primary text extraction and
+  retain all generated crop references.
+- Independently use the Agent's native multimodal capability for visual semantics on
+  every information-bearing figure, whether OCR succeeds or fails. OCR alone is never
+  sufficient for charts, flowcharts, swimlanes, Gantt charts, architecture/sequence
+  diagrams, timelines, maps, matrices, or other spatial and relational graphics.
+- An external vision-skill is permitted only for a specific image after OCR fails or
+  native multimodal inspection remains insufficient. Record the reason before fallback.
+- The image itself remains authoritative. OCR failure is not permission to skip the task;
+  preserve its provenance and explicitly mark any unreadable value or ambiguous edge.
 - Do not substitute, deduplicate away, or mark failed merely because another PDF or
   source URL appears similar. Compile this source and preserve its own provenance.
 - A task may be completed only after every listed image has been read and represented
@@ -3245,6 +3418,20 @@ This task was generated in Agent mode. Do not call the configured LLM API.
 - Source images have already been copied under `.wiki/pages/assets/**`. Use those
   exact files in Markdown image links; do not point compiled pages at temporary
   OCR directories or the caller's original file location.
+- OCR is text extraction, not visual understanding. Inspect each information-bearing
+  figure with native multimodal capability, even when OCR succeeded. Interpret charts,
+  flowcharts, swimlanes, Gantt charts, architecture/sequence diagrams, timelines,
+  maps, matrices, and similar graphics as structured evidence.
+- For every retained figure, add a frontmatter `visuals` record with `id`, `kind`,
+  `title`, `image`, `source_locator`, `summary`, `keywords`, and `entities`. Add
+  type-specific structure: charts need `axes` and `series`; flow/architecture/sequence
+  diagrams need `nodes` and directed labelled `edges`; swimlanes also need `lanes`,
+  ownership, and handoffs; Gantt charts need `timescale`, tasks with dates/durations,
+  dependencies, milestones, and critical-path information when visible.
+- Add `## 图表与视觉证据` / `## Visual Evidence` to explain the visual in prose and
+  embed the exact original image. Never reconstruct or replace the source figure.
+- Mark unreadable labels, uncertain values, ambiguous connectors, and inferred
+  relationships explicitly. Do not turn visual guesses into facts.
 - When a concept uses evidence from a page/slide, retain its corresponding image
   under a `## 来源图片` / `## Source Images` section.
 - In the study-material expert mode, EVERY knowledge-point and question page must

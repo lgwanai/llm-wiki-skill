@@ -136,7 +136,7 @@ query:
   synthesis_mode: agent
   default_format: markdown
   max_results: 5
-  search_streams: metadata,bm25,graph,ledger
+  search_streams: raw,claim,metadata,bm25,visual,graph,ledger
   llm_query_expansion: false
   cross_language_expansion: true
   multi_hop_enabled: true

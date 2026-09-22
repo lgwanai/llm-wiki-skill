@@ -8,6 +8,7 @@ are already structured knowledge units curated by the LLM during compile.
 Streams:
 - metadata: Search page frontmatter (aliases, keywords, questions, summary)
 - bm25: Full-page BM25 keyword search with jieba Chinese segmentation
+- visual: Search structured multimodal chart/diagram records and original assets
 - graph: Entity-aware graph search with symbolic name matching + traversal
 - table: BM25 search over DuckDB ledger tables
 """
@@ -68,9 +69,11 @@ _bm25_index: dict | None = None
 _BM25_CACHE_FILE = WIKI_DIR / "graph" / ".bm25_index.json"
 _METADATA_CACHE_FILE = WIKI_DIR / "graph" / ".metadata_index.json"
 _CLAIM_CACHE_FILE = WIKI_DIR / "graph" / ".claim_index.json"
+_VISUAL_CACHE_FILE = WIKI_DIR / "graph" / ".visual_index.json"
 _BM25_CACHE_VERSION = 4
 _METADATA_CACHE_VERSION = 5
 _CLAIM_CACHE_VERSION = 1
+_VISUAL_CACHE_VERSION = 1
 
 
 def _pages_signature(pages_dir: str | Path = PAGES_DIR) -> tuple[str, int, int, int]:
@@ -478,6 +481,213 @@ def _as_list(value) -> list[str]:
     if isinstance(value, str):
         return [value] if value.strip() else []
     return [str(value)]
+
+
+def _flatten_visual_value(value) -> list[str]:
+    """Flatten nested visual metadata into searchable, human-readable strings."""
+    if value in (None, "", [], {}):
+        return []
+    if isinstance(value, dict):
+        flattened: list[str] = []
+        for key, nested in value.items():
+            flattened.append(str(key))
+            flattened.extend(_flatten_visual_value(nested))
+        return flattened
+    if isinstance(value, list):
+        flattened = []
+        for nested in value:
+            flattened.extend(_flatten_visual_value(nested))
+        return flattened
+    return [str(value)]
+
+
+def _resolve_visual_image(page_path: Path, target: str) -> tuple[str, str]:
+    """Return a display target and local path for one visual asset."""
+    target = target.strip()
+    if not target:
+        return "", ""
+    lowered = target.casefold()
+    if lowered.startswith(("http://", "https://", "data:", "blob:")):
+        return target, ""
+    if lowered.startswith("file://"):
+        target = target[7:]
+    candidate = Path(target).expanduser()
+    if not candidate.is_absolute():
+        candidate = page_path.parent / candidate
+    candidate = candidate.resolve()
+    return (str(candidate), str(candidate)) if candidate.is_file() else (target, "")
+
+
+def _visual_records_for_page(path: Path, pages_dir: str | Path) -> list[dict]:
+    """Normalize structured ``visuals`` metadata and legacy Markdown images."""
+    fm, body = _read_page_parts(str(path))
+    page_id = path.relative_to(Path(pages_dir)).with_suffix("").as_posix()
+    raw_visuals = fm.get("visuals", [])
+    if isinstance(raw_visuals, dict):
+        raw_visuals = [raw_visuals]
+    if not isinstance(raw_visuals, list):
+        raw_visuals = []
+
+    records: list[dict] = []
+    seen_images: set[str] = set()
+    for index, raw in enumerate(raw_visuals, start=1):
+        if not isinstance(raw, dict):
+            continue
+        visual = dict(raw)
+        visual_id = str(visual.get("id") or f"{page_id}#visual-{index}")
+        kind = str(visual.get("kind") or "visual")
+        title = str(visual.get("title") or visual.get("summary") or visual_id)
+        image_target = str(visual.get("image") or visual.get("source_image") or "")
+        display_url, local_path = _resolve_visual_image(path, image_target)
+        if image_target:
+            seen_images.add(local_path or display_url or image_target)
+        searchable = " ".join([page_id, kind, title] + _flatten_visual_value(visual))
+        records.append(
+            {
+                "id": visual_id,
+                "page_id": page_id,
+                "path": str(path),
+                "page_type": str(fm.get("type", "unknown")),
+                "kind": kind,
+                "title": title,
+                "summary": str(visual.get("summary") or ""),
+                "source_locator": str(visual.get("source_locator") or ""),
+                "image": display_url,
+                "image_path": local_path,
+                "searchable": searchable,
+                "tokens": [_stem(token) for token in _tokenize(searchable)],
+                "data": visual,
+            }
+        )
+
+    image_pattern = re.compile(r"!\[(?P<alt>[^]]*)\]\((?P<target><[^>]+>|[^)\n]+)\)")
+    for index, match in enumerate(image_pattern.finditer(body), start=1):
+        target = match.group("target").strip()
+        if target.startswith("<") and ">" in target:
+            target = target[1 : target.find(">")].strip()
+        else:
+            target = target.split(maxsplit=1)[0]
+        display_url, local_path = _resolve_visual_image(path, target)
+        identity = local_path or display_url or target
+        if identity in seen_images:
+            continue
+        alt = match.group("alt").strip() or f"Image {index}"
+        searchable = f"{page_id} image visual figure diagram chart {alt}"
+        records.append(
+            {
+                "id": f"{page_id}#image-{index}",
+                "page_id": page_id,
+                "path": str(path),
+                "page_type": str(fm.get("type", "unknown")),
+                "kind": "image",
+                "title": alt,
+                "summary": alt,
+                "source_locator": "",
+                "image": display_url,
+                "image_path": local_path,
+                "searchable": searchable,
+                "tokens": [_stem(token) for token in _tokenize(searchable)],
+                "data": {"kind": "image", "title": alt, "image": target},
+            }
+        )
+        seen_images.add(identity)
+    return records
+
+
+def build_visual_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
+    """Build records for multimodally interpreted visuals in compiled pages."""
+    records: list[dict] = []
+    for path in _known_page_paths(pages_dir):
+        records.extend(_visual_records_for_page(path, pages_dir))
+    return records
+
+
+def _load_visual_index(pages_dir: str | Path = PAGES_DIR) -> list[dict]:
+    """Load or rebuild the disk-backed visual evidence index."""
+    pages_root = Path(pages_dir).resolve()
+    cache_file = pages_root.parent / "graph" / _VISUAL_CACHE_FILE.name
+    signature = list(_pages_signature(pages_root))
+    if cache_file.is_file():
+        try:
+            payload = json.loads(cache_file.read_text(encoding="utf-8"))
+            if (
+                payload.get("version") == _VISUAL_CACHE_VERSION
+                and payload.get("root") == str(pages_root)
+                and payload.get("signature") == signature
+                and isinstance(payload.get("records"), list)
+            ):
+                return payload["records"]
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    records = build_visual_index(pages_root)
+    try:
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        cache_file.write_text(
+            json.dumps(
+                {
+                    "version": _VISUAL_CACHE_VERSION,
+                    "root": str(pages_root),
+                    "signature": signature,
+                    "records": records,
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+    return records
+
+
+def visual_search(query: str, pages_dir: str | Path = PAGES_DIR, limit: int = 10) -> list[dict]:
+    """Search chart, diagram, timeline, and other structured visual evidence."""
+    query_terms = [_stem(term) for term in _tokenize(query)]
+    if not query_terms:
+        return []
+    query_phrase = query.casefold().strip()
+    grouped: dict[str, dict] = {}
+    for record in _load_visual_index(pages_dir):
+        frequencies = Counter(record.get("tokens", []))
+        score = sum(
+            1.0 + math.log1p(frequencies.get(term, 0))
+            for term in query_terms
+            if term in frequencies
+        )
+        searchable = str(record.get("searchable", "")).casefold()
+        if query_phrase and query_phrase in searchable:
+            score += 4.0
+        if score <= 0:
+            continue
+        path = str(record.get("path", ""))
+        page_id = str(record.get("page_id", ""))
+        result = grouped.setdefault(
+            path,
+            {
+                "file": page_id,
+                "path": path,
+                "type": record.get("page_type", "unknown"),
+                "score": 0.0,
+                "stream": "visual",
+                "matched_section": "Visual Evidence",
+                "visual_hits": [],
+            },
+        )
+        result["score"] = max(float(result["score"]), score)
+        result["visual_hits"].append({**record, "score": round(score, 3)})
+
+    results = list(grouped.values())
+    for result in results:
+        result["visual_hits"] = sorted(
+            result["visual_hits"],
+            key=lambda item: -float(item.get("score", 0)),
+        )[:5]
+        result["score"] = round(
+            float(result["score"])
+            + 0.15 * sum(float(hit.get("score", 0)) for hit in result["visual_hits"]),
+            3,
+        )
+    return sorted(results, key=lambda item: -float(item["score"]))[:limit]
 
 
 def _normalize_date(value) -> str:
@@ -1137,6 +1347,14 @@ def reciprocal_rank_fusion(
                 if item.get("matched_claim") and not fused[key].get("matched_claim"):
                     fused[key]["matched_claim"] = item["matched_claim"]
                     fused[key]["claim_hits"] = item.get("claim_hits", [])
+                if item.get("visual_hits"):
+                    existing_visuals = fused[key].setdefault("visual_hits", [])
+                    known_visuals = {str(hit.get("id", "")) for hit in existing_visuals}
+                    existing_visuals.extend(
+                        hit
+                        for hit in item["visual_hits"]
+                        if str(hit.get("id", "")) not in known_visuals
+                    )
                 fused[key]["source_authority"] = max(
                     float(fused[key].get("source_authority", 0) or 0),
                     float(item.get("source_authority", 0) or 0),
@@ -1340,6 +1558,7 @@ def search_doctor(wiki_dir: str | Path = WIKI_DIR) -> dict:
 
     metadata_items = build_metadata_index(wiki / "pages")
     claim_items = build_claim_index(wiki / "pages")
+    visual_items = build_visual_index(wiki / "pages")
     entities = _load_json_safe(str(wiki / "graph" / "entities.json"), {})
     edges_data = _load_json_safe(str(wiki / "graph" / "edges.json"), {"edges": []})
     edges = edges_data.get("edges", []) if isinstance(edges_data, dict) else []
@@ -1360,6 +1579,7 @@ def search_doctor(wiki_dir: str | Path = WIKI_DIR) -> dict:
         "pages": len(pages),
         "metadata_items": len(metadata_items),
         "claim_items": len(claim_items),
+        "visual_items": len(visual_items),
         "entities": len(graph_ids),
         "edges": len(edges),
         "orphan_graph_entities": orphan_graph_ids[:20],
@@ -1436,8 +1656,8 @@ def _main() -> None:
     parser.add_argument("query", nargs="?", help="Search query")
     parser.add_argument(
         "--streams",
-        default="claim,metadata,bm25,graph,ledger",
-        help="Comma-separated streams: claim,metadata,bm25,graph,table",
+        default="claim,metadata,bm25,visual,graph,ledger",
+        help="Comma-separated streams: claim,metadata,bm25,visual,graph,table",
     )
     parser.add_argument("--limit", type=int, default=10, help="Max results per stream")
     parser.add_argument("--impact", help="Impact analysis (entity ID)")
@@ -1488,6 +1708,8 @@ def _main() -> None:
         all_results.append(bm25_search(args.query, PAGES_DIR, args.limit))
     if "metadata" in streams:
         all_results.append(metadata_search(args.query, PAGES_DIR, args.limit))
+    if "visual" in streams:
+        all_results.append(visual_search(args.query, PAGES_DIR, args.limit))
     if "graph" in streams:
         all_results.append(graph_search(args.query, GRAPH_DIR, args.limit))
     if "table" in streams:

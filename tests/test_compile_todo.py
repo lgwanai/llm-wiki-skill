@@ -126,8 +126,21 @@ def test_agent_completion_attaches_and_verifies_cited_source_images(tmp_path: Pa
     output = pages / "concepts" / "weather.md"
     output.parent.mkdir(parents=True)
     output.write_text(
-        "---\ntype: concept\ntitle: 天气与气候\n---\n"
-        "# 天气与气候\n\n## 来源追溯\n\n- 页码：第 12 页\n",
+        "---\ntype: concept\ntitle: 天气与气候\n"
+        "visuals:\n"
+        "  - id: weather-map-p12\n"
+        "    kind: map\n"
+        "    title: 天气图\n"
+        "    image: ../assets/book/weather.png\n"
+        "    source_locator: Page 12\n"
+        "    summary: 天气与气候分布图\n"
+        "    keywords: [天气, 气候]\n"
+        "    entities: [天气, 气候]\n"
+        "---\n"
+        "# 天气与气候\n\n## 来源追溯\n\n- 页码：第 12 页\n\n"
+        "## 图表与视觉证据\n\n"
+        "![天气图](../assets/book/weather.png)\n\n"
+        "天气图展示天气与气候分布。\n",
         encoding="utf-8",
     )
     manifest_path = tmp_path / "agent-todolist.json"
@@ -154,11 +167,91 @@ def test_agent_completion_attaches_and_verifies_cited_source_images(tmp_path: Pa
     )
 
     compiled = output.read_text(encoding="utf-8")
-    assert "## 来源图片" in compiled
+    assert "## 图表与视觉证据" in compiled
     assert "../assets/book/weather.png" in compiled
     assert completed["items"][0]["media_fidelity"][0]["image_targets"]
+    assert completed["items"][0]["media_fidelity"][0]["visual_count"] == 1
+    assert completed["items"][0]["media_fidelity"][0]["visual_ids"] == ["weather-map-p12"]
     verified = compile_todo.verify_manifest(manifest_path)
     assert verified["coverage_complete"] is True
+
+
+def test_agent_completion_rejects_ocr_only_image_page(tmp_path: Path):
+    wiki = tmp_path / ".wiki"
+    pages = wiki / "pages"
+    image = pages / "assets" / "book" / "process.png"
+    image.parent.mkdir(parents=True)
+    image.write_bytes(b"process")
+    artifact = tmp_path / "part.md"
+    artifact.write_text(
+        f"## Page 4\n\n![流程图]({image.resolve()})\n",
+        encoding="utf-8",
+    )
+    output = pages / "concepts" / "process.md"
+    output.parent.mkdir(parents=True)
+    output.write_text(
+        "---\ntype: concept\ntitle: 审批流程\n---\n# 审批流程\n\n## 来源追溯\n\n- 页码：第 4 页\n",
+        encoding="utf-8",
+    )
+    manifest_path = tmp_path / "agent-todolist.json"
+    compile_todo.create_manifest(
+        manifest_path,
+        source="policy.md",
+        mode="agent",
+        items=[
+            {
+                "id": "chunk-0001",
+                "artifact_path": str(artifact),
+                "artifact_sha256": compile_todo.sha256_file(artifact),
+            }
+        ],
+        metadata={"wiki_dir": str(wiki), "study_material": True},
+    )
+    compile_todo.update_task(manifest_path, "chunk-0001", "in_progress")
+
+    with pytest.raises(ValueError, match="visual evidence validation failed"):
+        compile_todo.update_task(
+            manifest_path,
+            "chunk-0001",
+            "completed",
+            outputs=["concepts/process"],
+        )
+
+
+def test_visual_validation_requires_flowchart_nodes_and_edges(tmp_path: Path):
+    page = tmp_path / "flow.md"
+    image = tmp_path / "flow.png"
+    image.write_bytes(b"flow")
+    content = """---
+type: concept
+title: 审批流程
+visuals:
+  - id: approval-flow
+    kind: flowchart
+    title: 审批流程图
+    image: flow.png
+    source_locator: Page 4
+    summary: 提交后进入审批
+    keywords: [审批, 提交]
+    entities: [申请人, 审批人]
+    nodes:
+      - {id: submit, label: 提交}
+---
+# 审批流程
+
+## 图表与视觉证据
+
+![审批流程图](flow.png)
+"""
+
+    records, errors = compile_v2.validate_compiled_visual_evidence(
+        content,
+        page,
+        ["flow.png"],
+    )
+
+    assert records[0]["id"] == "approval-flow"
+    assert any("requires non-empty `edges`" in error for error in errors)
 
 
 def test_image_bearing_study_output_requires_page_or_section_citation(tmp_path: Path):

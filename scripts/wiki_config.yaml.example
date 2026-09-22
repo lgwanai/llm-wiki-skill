@@ -54,8 +54,8 @@ query:
   parallel_search: true
   # Default combines lossless source evidence with compiled OKF concepts and ledgers.
   # Optional legacy/RAG-like streams can be enabled explicitly:
-  # raw,claim,metadata,bm25,graph,ledger,chunk,vector,chunk_vector
-  search_streams: raw,claim,metadata,bm25,graph,ledger
+  # raw,claim,metadata,bm25,visual,graph,ledger,chunk,vector,chunk_vector
+  search_streams: raw,claim,metadata,bm25,visual,graph,ledger
   llm_query_expansion: false
   cross_language_expansion: true
   multi_hop_enabled: true

@@ -167,7 +167,7 @@ def test_default_query_path_is_wiki_native(monkeypatch, tmp_path):
 
     assert config.get_config()["compile"]["mode"] == "agent"
     assert query["synthesis_mode"] == "agent"
-    assert query["search_streams"] == "raw,claim,metadata,bm25,graph,ledger"
+    assert query["search_streams"] == "raw,claim,metadata,bm25,visual,graph,ledger"
     assert query["llm_query_expansion"] is False
     assert query["cross_language_expansion"] is True
     assert query["multi_hop_enabled"] is True
