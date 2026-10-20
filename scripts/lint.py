@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+from confidence import normalize_confidence
 from config import get_wiki_dir
 
 
@@ -212,7 +213,7 @@ def find_contradictions() -> list[dict]:
     for name, entries in by_name.items():
         if len(entries) < 2:
             continue
-        confidences = [e[1].get("confidence", 0.5) for e in entries]
+        confidences = [normalize_confidence(e[1].get("confidence")) for e in entries]
         if max(confidences) - min(confidences) > 0.3:
             contradictions.append(
                 {
@@ -236,7 +237,9 @@ def rescore_content() -> list[dict]:
     for eid, entity in entities_data.items():
         dimensions = {
             "structure": 0.5 if entity.get("attributes") else 0.3,
-            "completeness": 0.5 if entity.get("confidence", 0) > 0.5 else 0.3,
+            "completeness": (
+                0.5 if normalize_confidence(entity.get("confidence"), default=0.0) > 0.5 else 0.3
+            ),
             "source_citation": 0.5 if entity.get("sources") else 0.2,
             "consistency": 0.7,
             "freshness": 0.5,

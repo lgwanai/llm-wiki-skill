@@ -83,6 +83,26 @@ wiki init
 
 > After activation, Claude auto-detects wiki intents — "remember this", "add to wiki", "what do we know about X" — and invokes the skill automatically.
 
+## Confidence metadata compatibility
+
+Confidence values are normalized before graph scoring, quality checks, contradiction detection,
+entity reinforcement, bulk statistics/deletion, and resolution-report formatting. Numeric values
+and numeric strings are accepted; legacy labels map to `high: 0.9`, `medium: 0.5`, and `low: 0.3`.
+Valid zero is preserved, and finite values are clamped to `[0, 1]`. Missing or invalid values,
+including booleans, NaN, and infinity, use each operation's default. Bulk deletion uses `1.0`
+for unrecognized confidence values to avoid treating unknown metadata as low confidence.
+
+Existing graph indexes containing string confidence values can be queried without rebuilding.
+New graph entities and edges produced by the updated builders, extractor, and session pipeline
+store numeric confidence values. Regression coverage is in
+[`tests/test_confidence.py`](tests/test_confidence.py).
+
+Knowledge confidence, query relevance, and a model's confidence in its own decision are distinct
+signals. The optional reranker currently supports FlagEmbedding. **Laya-MLX is an evaluation
+candidate, not an integrated backend**: any future adapter should score short query/evidence
+pairs separately, preserve the native retrieval fallback, and demonstrate gains on representative
+Chinese queries before affecting production ranking. No Laya accuracy improvement is claimed.
+
 ## Search Performance
 
 llm-wiki keeps a fast lexical/graph baseline with no embedding calls or remote vector DB round-trips. Optional local Zvec retrieval and reranking trade extra latency for semantic recall:

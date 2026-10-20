@@ -11,8 +11,10 @@ import sys
 from datetime import datetime, timezone
 
 try:
+    from .confidence import normalize_confidence
     from .config import get_wiki_dir
 except ImportError:
+    from confidence import normalize_confidence
     from config import get_wiki_dir
 
 
@@ -90,10 +92,12 @@ def on_memory_write(fact: dict) -> list[dict]:
         result = check_contradictions([fact])
         if result:
             for c in result:
+                existing = normalize_confidence(c.get("existing_confidence"), default=0.0)
+                incoming = normalize_confidence(c.get("new_confidence"), default=0.0)
                 print(
                     f"CONTRADICTION: {c.get('entity_id', '?')} — "
                     "confidence delta: "
-                    f"{abs(c.get('existing_confidence', 0) - c.get('new_confidence', 0)):.2f}",
+                    f"{abs(existing - incoming):.2f}",
                     file=sys.stderr,
                 )
             contradictions = result

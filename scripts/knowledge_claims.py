@@ -11,6 +11,11 @@ import hashlib
 import re
 from typing import Any
 
+try:
+    from .confidence import normalize_confidence
+except ImportError:
+    from confidence import normalize_confidence
+
 MAX_CLAIMS_PER_PAGE = 200
 CLAIM_FIELDS = {
     "id",
@@ -114,11 +119,9 @@ def normalize_claim(
     for field in ("source", "source_kind"):
         if raw.get(field) not in (None, ""):
             claim[field] = raw[field]
-    try:
-        confidence = float(raw.get("confidence", metadata.get("confidence", 0.8)))
-    except (TypeError, ValueError):
-        confidence = 0.8
-    claim["confidence"] = round(min(max(confidence, 0.0), 1.0), 3)
+    claim["confidence"] = round(
+        normalize_confidence(raw.get("confidence", metadata.get("confidence")), default=0.8), 3
+    )
     return claim
 
 

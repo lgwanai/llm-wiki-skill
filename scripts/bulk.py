@@ -25,8 +25,10 @@ import shutil
 from datetime import datetime, timezone
 
 try:
+    from .confidence import normalize_confidence
     from .config import get_wiki_dir
 except ImportError:
+    from confidence import normalize_confidence
     from config import get_wiki_dir
 
 WIKI_DIR = get_wiki_dir()
@@ -121,12 +123,12 @@ def cmd_delete_low_confidence(threshold: float, dry_run: bool = False) -> dict:
     deleted = []
 
     for eid, entity in list(entities.items()):
-        if entity.get("confidence", 1.0) < threshold:
+        if normalize_confidence(entity.get("confidence"), default=1.0) < threshold:
             deleted.append(
                 {
                     "id": eid,
                     "name": entity.get("name", eid),
-                    "confidence": entity.get("confidence", 0),
+                    "confidence": normalize_confidence(entity.get("confidence"), default=1.0),
                 }
             )
 
@@ -283,7 +285,7 @@ def cmd_stats() -> dict:
         entities_count = len(entities)
         confidences = []
         for e in entities.values():
-            c = e.get("confidence", 0.85)
+            c = normalize_confidence(e.get("confidence"), default=0.85)
             confidences.append(c)
             bucket = f"{int(c * 10) / 10:.1f}"
             confidence_dist[bucket] = confidence_dist.get(bucket, 0) + 1

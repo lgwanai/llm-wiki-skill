@@ -42,6 +42,7 @@ from compile_todo import (
     update_task,
     verify_manifest,
 )
+from confidence import normalize_confidence
 from config import (
     get_config,
     get_image_analysis_config,
@@ -5796,7 +5797,7 @@ Output pages separated by ===PAGE_END==="""
                     page_content += "\n## Resolution\n\n"
                     for i, r in enumerate(resolutions):
                         winner = r.get("winner", "unknown")
-                        conf = r.get("confidence", 0.5)
+                        conf = normalize_confidence(r.get("confidence"))
                         reasoning = r.get("reasoning", "")
                         action = r.get("action", "flag")
                         page_content += f"- **Resolved #{i + 1}**: {winner} claim accepted ({action}) — confidence {conf:.0%}\n"

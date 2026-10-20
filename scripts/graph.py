@@ -13,8 +13,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 try:
+    from .confidence import normalize_confidence
     from .config import get_wiki_dir
 except ImportError:
+    from confidence import normalize_confidence
     from config import get_wiki_dir
 
 WIKI_DIR = get_wiki_dir()
@@ -113,7 +115,7 @@ def build_entity_registry(pages_dir: str) -> dict:
             "type": fm.get("type", "unknown"),
             "name": fm.get("name", entity_id),
             "attributes": {k: v for k, v in fm.items() if k not in ("id", "type", "name")},
-            "confidence": fm.get("confidence", 0.5),
+            "confidence": normalize_confidence(fm.get("confidence")),
             "page": f"pages/entities/{filename}",
         }
 
@@ -160,7 +162,7 @@ def build_edges(pages_dir: str) -> list[dict]:
                                 "source": source_id,
                                 "target": target_id,
                                 "type": rel_type,
-                                "confidence": fm.get("confidence", 0.5),
+                                "confidence": normalize_confidence(fm.get("confidence")),
                                 "sources": [source_id],
                                 "description": (description or "").strip(),
                                 "created_at": datetime.now(timezone.utc).isoformat(),

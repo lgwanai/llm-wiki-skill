@@ -17,8 +17,10 @@ from pathlib import Path
 import requests
 
 try:
+    from .confidence import normalize_confidence
     from .config import get_wiki_dir
 except ImportError:
+    from confidence import normalize_confidence
     from config import get_wiki_dir
 
 CONFIG_PATH = Path(__file__).parent.parent / "wiki_config.yaml"
@@ -338,7 +340,11 @@ class LLMExtractor:
                 enable_thinking=False,
             )
             try:
-                return self._parse_response(response)
+                result = self._parse_response(response)
+                for field in ("entities", "relationships"):
+                    for item in result.get(field, []):
+                        item["confidence"] = normalize_confidence(item.get("confidence"))
+                return result
             except Exception as e:
                 print(f"  Parse error: {e}", file=sys.stderr)
                 print(f"  Raw response (first 500 chars): {response[:500]}", file=sys.stderr)
@@ -381,12 +387,15 @@ class LLMExtractor:
                         file=sys.stderr,
                     )
                     for entity in result.get("entities", []):
+                        entity["confidence"] = normalize_confidence(entity.get("confidence"))
                         eid = entity["id"]
                         similar_id = self._find_similar_entity(eid, entity_registry)
 
                         if similar_id:
                             entity_registry[similar_id]["confidence"] = min(
-                                1.0, entity_registry[similar_id].get("confidence", 0.5) + 0.1
+                                1.0,
+                                normalize_confidence(entity_registry[similar_id].get("confidence"))
+                                + 0.1,
                             )
                             entity_registry[similar_id].setdefault("aliases", []).append(eid)
                         else:
@@ -396,6 +405,7 @@ class LLMExtractor:
                             all_entities.append(entity)
 
                     for rel in result.get("relationships", []):
+                        rel["confidence"] = normalize_confidence(rel.get("confidence"))
                         source = rel.get("source", "")
                         target = rel.get("target", "")
                         normalized_source = self._normalize_entity_id(source)

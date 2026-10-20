@@ -29,6 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+from confidence import normalize_confidence
 from config import get_wiki_dir
 
 # ── constants ────────────────────────────────────────────────────────────────
@@ -626,7 +627,7 @@ def check_page(page_id: str, wiki_dir: Path | None = None) -> dict:
             "path": str(path),
             "density": density,
             "status": fm.get("status", "unknown"),
-            "confidence": fm.get("confidence", 0),
+            "confidence": normalize_confidence(fm.get("confidence"), default=0.0),
             "has_keywords": bool(fm.get("tags") or fm.get("keywords")),
             "has_aliases": bool(fm.get("aliases")),
             "has_questions": bool(fm.get("questions")),

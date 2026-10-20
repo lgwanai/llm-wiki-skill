@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+from confidence import normalize_confidence
 from config import get_wiki_dir
 
 WIKI_DIR = get_wiki_dir()
@@ -258,7 +259,7 @@ def update_graph(entities: list[dict], edges: list[dict]):
                 "type": entity.get("type", "unknown"),
                 "name": entity.get("name", eid),
                 "attributes": entity.get("attributes", {}),
-                "confidence": entity.get("confidence", 0.5),
+                "confidence": normalize_confidence(entity.get("confidence")),
                 "sources": [entity.get("source", "crystallize")],
                 "page": f"pages/entities/{eid}.md",
             }
@@ -267,6 +268,7 @@ def update_graph(entities: list[dict], edges: list[dict]):
     edges_data = _load_json(EDGES_FILE)
     all_edges = edges_data.get("edges", []) if isinstance(edges_data, dict) else []
     for edge in edges:
+        edge["confidence"] = normalize_confidence(edge.get("confidence"))
         edge["created_at"] = _now()
         all_edges.append(edge)
     _save_json(EDGES_FILE, {"edges": all_edges})
@@ -284,8 +286,8 @@ def check_contradictions(facts: list[dict]) -> list[dict]:
         for eid, entity in entities_data.items():
             name = entity.get("name", "")
             if name and name.lower() in claim.lower():
-                existing_conf = entity.get("confidence", 0)
-                new_conf = fact.get("confidence", 0)
+                existing_conf = normalize_confidence(entity.get("confidence"), default=0.0)
+                new_conf = normalize_confidence(fact.get("confidence"), default=0.0)
                 if abs(existing_conf - new_conf) > 0.4:
                     contradictions.append(
                         {

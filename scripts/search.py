@@ -26,6 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import yaml
+from confidence import normalize_confidence
 from config import get_wiki_dir
 
 try:
@@ -1162,7 +1163,7 @@ def _entity_match_score(query: str, entity_id: str, entity: dict) -> float:
 
     if score <= 0:
         return 0.0
-    confidence = float(entity.get("confidence", 0.7) or 0.7)
+    confidence = normalize_confidence(entity.get("confidence"), default=0.7)
     return round(score * (0.85 + min(max(confidence, 0.0), 1.0) * 0.15), 4)
 
 

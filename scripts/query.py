@@ -30,6 +30,7 @@ for _import_path in (str(_PROJECT_ROOT), str(_SCRIPT_DIR)):
 sys.path.insert(0, str(_PROJECT_ROOT))
 sys.path.insert(1, str(_SCRIPT_DIR))
 from _llm_utils import call_llm  # noqa: E402
+from confidence import normalize_confidence  # noqa: E402
 from config import (  # noqa: E402
     get_embeddings_config,
     get_query_config,
@@ -1178,7 +1179,7 @@ def search_wiki(
                             {
                                 "file": eid,
                                 "path": str(page_path),
-                                "score": g.get("confidence", 0.5),
+                                "score": normalize_confidence(g.get("confidence")),
                                 "stream": "graph",
                                 "text": g.get("name", ""),
                                 "graph_path": g.get("graph_path", []),
