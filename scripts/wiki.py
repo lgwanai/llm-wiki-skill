@@ -6,6 +6,8 @@ Commands:
     wiki compile <source>  Compile source file/directory → build wiki pages
     wiki ocr <source>      Preflight, smoke-test, or parse a document
     wiki query <question>  Search wiki → answer questions
+    wiki export <zip>      Share wiki pages or a module
+    wiki import <zip>      Merge shared wiki pages
     wiki dream             Optimize retrieval metadata from query behavior
     wiki lint              Health check → auto-heal
     wiki status            Show wiki statistics
@@ -358,7 +360,36 @@ def cmd_config(init: bool = False, show: bool = True, check: bool = False) -> di
     return {"success": True}
 
 
-def main():
+def cmd_transfer(
+    operation: str,
+    archive: str,
+    *,
+    modules: list[str],
+    pages: list[str],
+    force: bool,
+) -> int:
+    import zlib
+    from zipfile import BadZipFile
+
+    from scripts.wiki_transfer import export_zip, import_zip, validate_zip
+
+    root = get_wiki_dir() / "pages"
+    path = Path(archive)
+    try:
+        if operation == "export":
+            result = export_zip(root, path, module_dirs=modules, page_ids=pages, force=force)
+        elif operation == "import":
+            result = import_zip(root, path, force=force)
+        else:
+            result = validate_zip(path)
+    except (BadZipFile, OSError, RuntimeError, ValueError, zlib.error) as exc:
+        print(f"wiki {operation}: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["valid"] else 1
+
+
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="LLM Wiki v2 CLI — Personal knowledge base powered by LLMs",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -372,6 +403,8 @@ Examples:
   wiki ocr paper.pdf --smoke-pages 3
     wiki query "What is X?"      Query wiki and get answer
     wiki search doctor           Diagnose retrieval indexes
+    wiki export team.zip         Share all compiled wiki pages
+    wiki import team.zip         Merge a shared wiki ZIP
   wiki lint --auto-heal        Health check with auto-repair
 
 Environment:
@@ -573,14 +606,27 @@ Environment:
     lint_parser = subparsers.add_parser("lint", help="Health check wiki")
     lint_parser.add_argument("--auto-heal", action="store_true", help="Auto-fix issues")
 
+    export_parser = subparsers.add_parser("export", help="Share wiki pages in a ZIP")
+    export_parser.add_argument("archive", help="Destination ZIP file")
+    export_parser.add_argument(
+        "--module", action="append", default=[], help="Directory under wiki pages; repeatable"
+    )
+    export_parser.add_argument(
+        "--page", action="append", default=[], help="Bundle-relative Concept ID; repeatable"
+    )
+    export_parser.add_argument("--force", action="store_true", help="Replace an existing ZIP")
+    import_parser = subparsers.add_parser("import", help="Merge a shared wiki ZIP")
+    import_parser.add_argument("archive", help="ZIP file to import")
+    import_parser.add_argument("--force", action="store_true", help="Overwrite conflicting files")
+
     okf_parser = subparsers.add_parser("okf", help="OKF v0.1 validate/import/export")
     okf_sub = okf_parser.add_subparsers(dest="okf_cmd", required=True)
-    okf_validate = okf_sub.add_parser("validate", help="Validate an OKF bundle")
+    okf_validate = okf_sub.add_parser("validate", help="Validate an OKF directory or ZIP")
     okf_validate.add_argument("bundle")
-    okf_import = okf_sub.add_parser("import", help="Import an OKF bundle")
+    okf_import = okf_sub.add_parser("import", help="Import an OKF directory or ZIP")
     okf_import.add_argument("bundle")
     okf_import.add_argument("--force", action="store_true")
-    okf_export = okf_sub.add_parser("export", help="Export wiki as an OKF bundle")
+    okf_export = okf_sub.add_parser("export", help="Export wiki as an OKF directory or ZIP")
     okf_export.add_argument("destination")
     okf_export.add_argument("--force", action="store_true")
     okf_migrate = okf_sub.add_parser("migrate", help="Migrate legacy pages to native OKF")
@@ -854,6 +900,17 @@ Environment:
         result = cmd_lint(auto_heal=args.auto_heal)
         print(result["output"])
 
+    elif args.command in {"export", "import"}:
+        code = cmd_transfer(
+            args.command,
+            args.archive,
+            modules=getattr(args, "module", []),
+            pages=getattr(args, "page", []),
+            force=args.force,
+        )
+        if code:
+            sys.exit(code)
+
     elif args.command == "okf":
         okf_args = [args.okf_cmd]
         if args.okf_cmd in {"validate", "import"}:
@@ -862,6 +919,19 @@ Environment:
             okf_args.append(args.destination)
         elif args.bundle:
             okf_args.append(args.bundle)
+        if args.okf_cmd != "migrate":
+            path = Path(okf_args[1]).expanduser()
+            if path.suffix.lower() == ".zip" and not path.is_dir():
+                code = cmd_transfer(
+                    args.okf_cmd,
+                    okf_args[1],
+                    modules=[],
+                    pages=[],
+                    force=getattr(args, "force", False),
+                )
+                if code:
+                    sys.exit(code)
+                return
         if getattr(args, "force", False):
             okf_args.append("--force")
         code, output = run_script("okf.py", okf_args)

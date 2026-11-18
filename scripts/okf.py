@@ -6,11 +6,18 @@ from __future__ import annotations
 import argparse
 import re
 import shutil
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
-from config import get_wiki_dir
+
+if __package__:
+    from .config import get_wiki_dir
+    from .knowledge_claims import validate_claims
+else:
+    from config import get_wiki_dir
+    from knowledge_claims import validate_claims
 
 RESERVED = {"index.md", "log.md"}
 OKF_FIELDS = {"type", "title", "description", "resource", "tags", "timestamp"}
@@ -62,7 +69,7 @@ def read_markdown(path: Path) -> tuple[dict, str, str | None]:
     return metadata, text[end + 5 :], None
 
 
-def validate_bundle(bundle: str | Path) -> dict:
+def validate_bundle(bundle: str | Path, *, paths: Iterable[Path] | None = None) -> dict:
     """Validate the normative OKF v0.1 conformance requirements."""
     root = Path(bundle).resolve()
     errors: list[dict] = []
@@ -76,7 +83,7 @@ def validate_bundle(bundle: str | Path) -> dict:
             "warnings": [],
         }
 
-    for path in sorted(root.rglob("*.md")):
+    for path in sorted(root.rglob("*.md") if paths is None else paths):
         rel = path.relative_to(root).as_posix()
         if path.name in RESERVED:
             if path.name == "log.md":
@@ -94,13 +101,8 @@ def validate_bundle(bundle: str | Path) -> dict:
         elif not str(metadata.get("type", "")).strip():
             errors.append({"path": rel, "message": "required field 'type' is empty"})
         else:
-            try:
-                from knowledge_claims import validate_claims
-
-                for message in validate_claims(metadata.get("claims")):
-                    warnings.append({"path": rel, "message": message})
-            except ImportError:
-                pass
+            for message in validate_claims(metadata.get("claims")):
+                warnings.append({"path": rel, "message": message})
             if metadata.get("source_authority") not in (None, ""):
                 try:
                     authority = float(metadata["source_authority"])
