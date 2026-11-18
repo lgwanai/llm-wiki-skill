@@ -12,7 +12,7 @@
 python3 -m pytest -q tests/test_p1_mixed_wiki.py tests/test_answer_verification.py
 ```
 
-GitHub Actions 在每个 PR 上运行 `P1 fixed-answer regression`。失败日志逐项列出题号和提示开关，例如 `S06 (hints=off)`。`main` 的合并规则使用该检查的固定名称。
+直接推送到 `main` 时，GitHub Actions 自动运行 `P1 fixed-answer regression`。在仓库的 Actions 页面查看结果。失败日志逐项列出题号和提示开关，例如 `S06 (hints=off)`。测试结果用于回归诊断，直接推送无需等待检查通过。
 
 测试在临时 Wiki 重建原语料，重新检索规则开启和关闭两组的证据，复用 [原评测答卷](results.json) 的原始措辞并按来源和物理页绑定引用。两组每道可答题都须找齐证据、引用正确并通过产品校验，每道无答案题都须正确拒答。开启时只有 C01、C02 在各自来源出现正确的时段提示，C03 无提示。关闭时 27 道题均无提示。测试按题号报告失败，计时只作记录。
 

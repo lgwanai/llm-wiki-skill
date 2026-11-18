@@ -1,6 +1,8 @@
 name: P1 Wiki regression
 
 on:
+  push:
+    branches: [main]
   pull_request:
   merge_group:
 
