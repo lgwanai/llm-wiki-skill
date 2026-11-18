@@ -3,6 +3,15 @@
 Wiki 使用 `wiki_config.yaml`；独立 OCR 使用 `~/.config/ocr/config.yaml`。
 运行 `wiki config --init` 会生成最小可用 Wiki 模板。
 
+## 开始前确认模型资源
+
+默认 Agent 模式复用当前 AI 助手连接。如果要通过 `--mode llm` 独立运行，
+请提前从服务提供方确认 API 地址、模型 ID，以及需要的 API Key 和额度。把 API Key
+留在环境变量或密钥管理器里，配置文件引用该环境变量。Ollama 需要已启动的服务和已安装的模型。
+
+运行 `wiki config --check`，或在源码目录运行 `python scripts/wiki.py config --check`，
+即可检查模型接入配置。检查只读本地配置，服务连通性、凭据有效性和剩余额度由实际的模型服务验证。
+
 ## 配置文件位置
 
 查找优先级：
