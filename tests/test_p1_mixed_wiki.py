@@ -40,11 +40,6 @@ def fixed_answer_report(tmp_path_factory: pytest.TempPathFactory) -> dict:
     result = json.loads(report.read_text(encoding="utf-8"))
     assert result["corpus_sha256"] == CORPUS_SHA256
     assert set(result["arms"]) == {"on", "off"}
-    # Temporary probe of the required check and its failure logs.
-    for arm in result["arms"].values():
-        case = next(row for row in arm["rows"] if row["id"] == "S06")
-        case["local_verify_status"] = "warning"
-        case["local_verify_reasons"] = {"probe": "simulated numeric field mismatch"}
     return result
 
 
