@@ -20,6 +20,8 @@ import hashlib
 import json
 import re
 import sys
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -29,6 +31,7 @@ import duckdb
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from config import get_wiki_dir  # noqa: E402
+from source_versions import current_compiled_table  # noqa: E402
 
 WIKI_DIR = get_wiki_dir()
 LEDGER_DIR = WIKI_DIR / "ledger"
@@ -37,6 +40,19 @@ LEDGER_DB = LEDGER_DIR / "ledger.duckdb"
 TABLES_DIR = LEDGER_DIR / "tables"
 REGISTRY_FILE = LEDGER_DIR / "registry.json"
 INDEX_FILE = LEDGER_DIR / "index.json"
+
+_LEDGER_WORKSPACE: ContextVar[Path | None] = ContextVar("ledger_workspace", default=None)
+
+
+@contextmanager
+def ledger_workspace(path: Path):
+    """Use a private ledger while compiling a source revision."""
+    token = _LEDGER_WORKSPACE.set(path)
+    try:
+        yield
+    finally:
+        _LEDGER_WORKSPACE.reset(token)
+
 
 VALID_TYPES = frozenset({"string", "text", "integer", "number", "boolean", "date", "datetime"})
 
@@ -82,14 +98,15 @@ def _q(name: str) -> str:
 
 def _get_conn(read_only: bool = False) -> duckdb.DuckDBPyConnection:
     """Get a DuckDB connection, ensuring schema tables and auto-migration."""
-    LEDGER_DB.parent.mkdir(parents=True, exist_ok=True)
+    workspace = _LEDGER_WORKSPACE.get()
+    database = workspace / "ledger.duckdb" if workspace else LEDGER_DB
     if read_only:
-        if not LEDGER_DB.exists():
+        if not database.exists():
             raise FileNotFoundError("No ledger database found.")
-        return duckdb.connect(str(LEDGER_DB), read_only=True)
-    conn = duckdb.connect(str(LEDGER_DB))
+        return duckdb.connect(str(database), read_only=True)
+    database.parent.mkdir(parents=True, exist_ok=True)
+    conn = duckdb.connect(str(database))
     _ensure_schema(conn)
-    # Auto-migrate from JSON if needed
     _auto_migrate(conn)
     return conn
 
@@ -115,25 +132,31 @@ def _ensure_schema(conn: duckdb.DuckDBPyConnection) -> None:
 def _auto_migrate(conn: duckdb.DuckDBPyConnection) -> None:
     """One-time migration from old JSON ledger to DuckDB."""
     existing = conn.execute("SELECT COUNT(*) FROM _registry").fetchone()[0]
-    if existing == 0 and REGISTRY_FILE.exists():
+    workspace = _LEDGER_WORKSPACE.get()
+    registry = workspace / "registry.json" if workspace else REGISTRY_FILE
+    index = workspace / "index.json" if workspace else INDEX_FILE
+    if existing == 0 and registry.exists():
         # Old v1 registry layout: .wiki/ledger/tables/<table>/*
         _migrate_from_json(conn)
-    if INDEX_FILE.exists():
+    if index.exists():
         # Later import layout: .wiki/ledger/<table-id>/{schema.json,data.json}
         _migrate_from_index_json(conn)
 
 
 def _migrate_from_json(conn: duckdb.DuckDBPyConnection) -> None:
     """Migrate all JSON-based tables into DuckDB."""
-    reg = _load_json_legacy(REGISTRY_FILE, {"version": 1, "tables": {}})
+    workspace = _LEDGER_WORKSPACE.get()
+    registry = workspace / "registry.json" if workspace else REGISTRY_FILE
+    tables_dir = workspace / "tables" if workspace else TABLES_DIR
+    reg = _load_json_legacy(registry, {"version": 1, "tables": {}})
     tables = reg.get("tables", {})
     if not tables:
         return
 
     for actual_name, info in tables.items():
-        schema = _load_json_legacy(TABLES_DIR / actual_name / "schema.json")
-        data = _load_json_legacy(TABLES_DIR / actual_name / "data.json", [])
-        seq = _load_json_legacy(TABLES_DIR / actual_name / "sequence.json", {"next_id": 1})
+        schema = _load_json_legacy(tables_dir / actual_name / "schema.json")
+        data = _load_json_legacy(tables_dir / actual_name / "data.json", [])
+        seq = _load_json_legacy(tables_dir / actual_name / "sequence.json", {"next_id": 1})
         if not schema:
             continue
 
@@ -193,7 +216,10 @@ def _migrate_from_json(conn: duckdb.DuckDBPyConnection) -> None:
 
 def _migrate_from_index_json(conn: duckdb.DuckDBPyConnection) -> None:
     """Migrate index.json based imported ledgers into DuckDB."""
-    entries = _load_json_legacy(INDEX_FILE, [])
+    workspace = _LEDGER_WORKSPACE.get()
+    ledger_dir = workspace or LEDGER_DIR
+    index_file = workspace / "index.json" if workspace else INDEX_FILE
+    entries = _load_json_legacy(index_file, [])
     if not isinstance(entries, list):
         return
 
@@ -206,7 +232,7 @@ def _migrate_from_index_json(conn: duckdb.DuckDBPyConnection) -> None:
         if not table_id or table_id in existing:
             continue
 
-        table_dir = LEDGER_DIR / table_id
+        table_dir = ledger_dir / table_id
         schema = _load_json_legacy(table_dir / "schema.json")
         data = _load_json_legacy(table_dir / "data.json", [])
         if not schema or not isinstance(data, list):
@@ -1189,6 +1215,8 @@ def search_ledgers(query: str, limit: int = 10) -> list[dict]:
         "FROM _registry"
     ).fetchall()
     for actual, display, description, record_count, fields_json, updated_at in registry_rows:
+        if not current_compiled_table(LEDGER_DB.parent.parent, description):
+            continue
         fields = json.loads(fields_json)
         score = 0
         matched_fields = []

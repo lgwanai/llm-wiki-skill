@@ -331,3 +331,59 @@ def test_ocr_parser_accepts_paddlevl_as_default(monkeypatch):
     args = ocr_cli.build_parser().parse_args(["--doctor"])
 
     assert args.backend == "paddlevl"
+
+
+@pytest.mark.parametrize(
+    ("script", "prefix"),
+    [("compile_v2.py", []), ("wiki.py", ["compile"])],
+)
+def test_llm_compile_checks_credentials_before_creating_source(tmp_path, script, prefix):
+    project = Path(__file__).resolve().parents[1]
+    config_path = tmp_path / "wiki_config.yaml"
+    config_path.write_text(
+        "compile:\n  mode: llm\nmodel:\n  provider: openai\n  model: test-model\n"
+        "  api_key: ${WIKI_PREFLIGHT_TEST_KEY_MISSING}\n",
+        encoding="utf-8",
+    )
+    env = {**os.environ, "LLM_WIKI_CONFIG": str(config_path)}
+    env.pop("LLM_WIKI_DIR", None)
+    env.pop("WIKI_PREFLIGHT_TEST_KEY_MISSING", None)
+    result = subprocess.run(
+        [sys.executable, str(project / "scripts" / script), *prefix, "--text", "fixture"],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=15,
+    )
+    assert result.returncode == 2
+    assert "before compiling" in result.stderr
+    assert "WIKI_PREFLIGHT_TEST_KEY_MISSING" in result.stderr
+    assert not (tmp_path / ".wiki").exists()
+
+
+def test_config_check_hides_credentials_and_accepts_keyless_ollama(tmp_path):
+    project = Path(__file__).resolve().parents[1]
+    config_path = tmp_path / "wiki_config.yaml"
+    env = {**os.environ, "LLM_WIKI_CONFIG": str(config_path), "WIKI_TEST_KEY": "fixture-secret"}
+    command = [sys.executable, str(project / "scripts" / "wiki.py"), "config"]
+
+    config_path.write_text(
+        "model:\n  provider: openai\n  model: test-model\n  api_key: ${WIKI_TEST_KEY}\n",
+        encoding="utf-8",
+    )
+    for flags in ([], ["--check"]):
+        completed = subprocess.run(
+            [*command, *flags], cwd=tmp_path, env=env,
+            text=True, capture_output=True, timeout=15,
+        )
+        assert completed.returncode == 0, completed.stderr
+        assert "fixture-secret" not in completed.stdout + completed.stderr
+
+    config_path.write_text("model:\n  provider: ollama\n", encoding="utf-8")
+    completed = subprocess.run(
+        [*command, "--check"], cwd=tmp_path, env=env,
+        text=True, capture_output=True, timeout=15,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "local checks" in completed.stdout

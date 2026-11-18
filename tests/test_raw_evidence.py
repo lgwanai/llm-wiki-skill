@@ -62,14 +62,28 @@ def test_verify_evidence_bundle_detects_tampering(tmp_path: Path) -> None:
     assert result["raw_copy_sha256_matches"] is False
 
 
-def test_recompile_replaces_stale_bundle_for_same_source(tmp_path: Path) -> None:
+def test_verify_rejects_invalid_evidence_records_with_unchanged_count(tmp_path: Path) -> None:
+    manifest = persist_raw_evidence(SOURCE, "guide.md", tmp_path)
+    records = Path(manifest["records_path"])
+    lines = records.read_text(encoding="utf-8").splitlines()
+    records.write_text("\n".join(["invalid record"] * len(lines)) + "\n", encoding="utf-8")
+
+    checked = verify_evidence_bundle(Path(manifest["raw_path"]).with_name("manifest.json"))
+    assert checked["raw_copy_sha256_matches"]
+    assert not checked["coverage_complete"]
+
+
+def test_recompile_retains_previous_bundle_for_same_source(tmp_path: Path) -> None:
     wiki = tmp_path / ".wiki"
     first = persist_raw_evidence("old policy", "policy.md", wiki)
     second = persist_raw_evidence("new policy", "policy.md", wiki)
 
-    assert not Path(first["raw_path"]).exists()
+    assert Path(first["raw_path"]).read_text(encoding="utf-8") == "old policy"
     assert Path(second["raw_path"]).read_text(encoding="utf-8") == "new policy"
-    assert len(list((wiki / "source" / "evidence").glob("*/manifest.json"))) == 1
+    assert first["source_id"] == second["source_id"]
+    assert first["source_version"] != second["source_version"]
+    assert search_raw_evidence("policy", wiki)[0]["source_version"] == second["source_version"]
+    assert len(list((wiki / "source" / "evidence").glob("*/manifest.json"))) == 2
 
 
 def test_search_raw_evidence_returns_exact_field_and_locator(tmp_path: Path) -> None:
@@ -334,3 +348,33 @@ def test_answer_hints_extract_dated_goodwill_balance(tmp_path: Path) -> None:
     )
 
     assert hints["goodwill_balance_millions"] == "1383"
+
+
+def test_question_hints_stay_with_the_named_source_revision(tmp_path: Path) -> None:
+    for title, name, text in (
+        ("枯蒲集市器材窗口", "a-market.md", "Monday to Thursday: 9.00am–2.15pm"),
+        ("潮桥工坊借具窗口", "z-workshop.md", "Monday to Thursday: 10.00am–7.40pm"),
+        ("鹭湾外借台须知", "quay.md", "凭卡预约取件。"),
+    ):
+        persist_raw_evidence(f"## Page 1\n### {title}\n{text}\n", name, tmp_path)
+
+    results = search_raw_evidence("潮桥工坊借具窗口的 Tuesday close 时间？", tmp_path)
+    hinted = [row for row in results if row["answer_hints"]]
+    assert len(hinted) == 1 and hinted[0]["source_name"] == "z-workshop.md"
+    assert hinted[0]["answer_hints"][0]["value"] == "7.40pm"
+    assert hinted[0]["answer_hints"][0]["source_key"] in hinted[0]["id"]
+
+    for question in ("鹭湾外借台 Tuesday close 时间？", "When does the window close on Tuesday?"):
+        results = search_raw_evidence(question, tmp_path)
+        assert results and not any(row["answer_hints"] for row in results)
+
+
+def test_question_hints_abstain_on_an_ambiguous_same_name(tmp_path: Path) -> None:
+    for source_id, hours in (("a" * 24, "2.15pm"), ("b" * 24, "7.40pm")):
+        persist_raw_evidence(
+            f"Monday to Thursday: 9.00am–{hours}", "manual.md", tmp_path,
+            source_id=source_id,
+        )
+    results = search_raw_evidence("When does the counter in manual.md close on Tuesday?", tmp_path)
+    assert len(results) == 2
+    assert not any(row["answer_hints"] for row in results)

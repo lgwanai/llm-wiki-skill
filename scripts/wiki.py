@@ -112,7 +112,7 @@ def cmd_compile(
     if code == 0:
         return {"success": True, "message": output.strip()}
     else:
-        return {"success": False, "error": output}
+        return {"success": False, "error": output, "exit_code": code}
 
 
 def cmd_query(
@@ -386,7 +386,7 @@ Environment:
     config_parser = subparsers.add_parser("config", help="Show or create configuration")
     config_parser.add_argument("--init", action="store_true", help="Create default config file")
     config_parser.add_argument(
-        "--check", action="store_true", help="Validate configuration and exit"
+        "--check", action="store_true", help="Check configuration and standalone model prerequisites without a network call"
     )
 
     compile_parser = subparsers.add_parser("compile", help="Compile source file/directory to wiki")
@@ -717,19 +717,22 @@ Environment:
         if args.init:
             if result.get("success"):
                 print(f"Config file created: {result['created']}")
-                print("Edit the file to set your API key and preferences.")
+                print(
+                    "For standalone LLM mode, set the model endpoint, model ID, and required "
+                    "API key before compiling. Agent mode uses the current AI assistant."
+                )
             else:
                 print(f"Error: {result.get('error', 'Unknown error')}")
+        elif args.check:
+            if not result["valid"]:
+                for issue in result["issues"]:
+                    print(f"- {issue}", file=sys.stderr)
+                raise SystemExit(2)
+            print("Configuration and model prerequisites passed local checks.")
         else:
             print_config()
 
     elif args.command == "compile":
-        try:
-            from dream import cancel_active_dream
-
-            cancel_active_dream("compile started")
-        except Exception:
-            pass
         result = cmd_compile(
             args.source,
             source_type=args.source_type,
@@ -744,7 +747,8 @@ Environment:
         if result.get("success"):
             print(result.get("message", "Done"))
         else:
-            print(f"Error: {result.get('error', 'Unknown error')}")
+            print(result.get("error", "Compile failed"), file=sys.stderr)
+            raise SystemExit(result.get("exit_code", 1))
 
     elif args.command == "ocr":
         try:
@@ -808,12 +812,17 @@ Environment:
             if args.json:
                 print(json.dumps(result, ensure_ascii=False, default=str))
             else:
+                from query import print_answer_verification
+
                 print(result["answer"])
+                print_answer_verification(result)
                 if args.debug_search:
                     from query import _format_debug_table
 
                     print("\n--- SEARCH DEBUG ---\n")
                     print(_format_debug_table(result.get("debug_search", {})))
+            if result.get("file_back_skipped") == "verification_failed":
+                raise SystemExit(1)
         else:
             if args.json:
                 print(json.dumps(result, ensure_ascii=False, default=str))

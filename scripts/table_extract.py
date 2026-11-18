@@ -141,7 +141,14 @@ def table_link(name: str, headers: list[str]) -> str:
     return f"[📊 {label}](table://{name})"
 
 
-def persist_page_tables(content: str, source_name: str, page_id: str) -> tuple[str, list[str]]:
+def persist_page_tables(
+    content: str,
+    source_name: str,
+    page_id: str,
+    *,
+    source_id: str | None = None,
+    revision: str | None = None,
+) -> tuple[str, list[str]]:
     """Store non-Key-Facts tables and replace them with navigable wiki links.
 
     Storage failures do not alter the page: compilation should not lose source
@@ -155,8 +162,12 @@ def persist_page_tables(content: str, source_name: str, page_id: str) -> tuple[s
         if not table.rows or _has_key_facts_heading_before(content, table.start):
             continue
         headers = _unique_headers(table.headers)
-        name = _table_name(source_name, page_id, ordinal)
+        name = _table_name(revision or source_name, page_id, ordinal)
+        description = f"Extracted from {source_name}, page {page_id}, table {ordinal}"
         display_name = f"Extracted table: {page_id} #{ordinal}"
+        if source_id and revision:
+            description += f" [compile:{source_id}:{revision}]"
+            display_name += f" · {revision[:12]}"
         fields = json.dumps(
             [{"name": header, "type": "string"} for header in headers], ensure_ascii=False
         )
@@ -167,7 +178,7 @@ def persist_page_tables(content: str, source_name: str, page_id: str) -> tuple[s
             display_name=display_name,
             fields_json=fields,
             table_name=name,
-            description=f"Extracted from {source_name}, page {page_id}, table {ordinal}",
+            description=description,
         )
         if not created.get("success"):
             continue

@@ -76,10 +76,9 @@ def call_llm(
                 {"role": "user", "content": user_content},
             ],
         }
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {llm_config.get('api_key', '')}",
-        }
+        headers = {"Content-Type": "application/json"}
+        if key := llm_config.get("api_key"):
+            headers["Authorization"] = f"Bearer {key}"
     else:
         # deepseek, openai, or any OpenAI-compatible provider
         api_url = get_api_url()
@@ -87,7 +86,8 @@ def call_llm(
         if not api_key:
             raise RuntimeError(
                 "LLM API key not configured. "
-                "Set llm.api_key in wiki_config.yaml or DEEPSEEK_API_KEY env var."
+                "Set model.api_key in wiki_config.yaml or "
+                "the provider's API key environment variable."
             )
         payload = {
             "model": llm_config.get("model", "deepseek-v4-flash"),

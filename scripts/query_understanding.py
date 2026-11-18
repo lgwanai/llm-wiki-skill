@@ -180,6 +180,34 @@ def _required_evidence(intent: str) -> list[str]:
     }.get(intent, ["direct supporting fact"])
 
 
+def requested_field_types(query: str) -> list[str]:
+    """Identify value types the question explicitly calls for."""
+    lowered = query.casefold()
+    field_markers = {
+        "email": ("email", "e-mail", "邮箱", "邮件地址"),
+        "url": ("url", "web link", "website", "网址", "链接"),
+        "phone": ("phone", "fax", "telephone", "电话", "传真"),
+        "date": ("date", "日期", "年月日"),
+        "percentage": ("percentage", "proportion", "percent", "比例", "百分比", "占比", "采纳率"),
+        "money": (
+            "amount",
+            "expense",
+            "spend",
+            "how much",
+            "金额",
+            "多少钱",
+            "多少元",
+            "亿元",
+            "万元",
+        ),
+    }
+    return [
+        field_type
+        for field_type, markers in field_markers.items()
+        if any(marker in lowered for marker in markers)
+    ]
+
+
 def understand_query(query: str) -> dict[str, Any]:
     """Parse stable retrieval constraints without making an LLM call."""
     try:
@@ -219,19 +247,7 @@ def understand_query(query: str) -> dict[str, Any]:
         page_numbers.add(2)
     elif "cover page" in lowered or "封面" in query:
         page_numbers.add(1)
-    field_markers = {
-        "email": ("email", "e-mail", "邮箱", "邮件地址"),
-        "url": ("url", "web link", "website", "网址", "链接"),
-        "phone": ("phone", "fax", "telephone", "电话", "传真"),
-        "date": ("date", "日期", "年月日"),
-        "percentage": ("percentage", "proportion", "percent", "比例", "百分比"),
-        "money": ("amount", "expense", "spend", "how much", "金额", "多少"),
-    }
-    field_types = [
-        field_type
-        for field_type, markers in field_markers.items()
-        if any(marker in lowered for marker in markers)
-    ]
+    field_types = requested_field_types(query)
     structural_terms = [
         f"{kind.casefold()} {number}"
         for kind, number in re.findall(
