@@ -47,9 +47,26 @@ Never write a temporary program, shell pipeline, SQL query, grep command, or man
 filesystem scan to retrieve Wiki content. Never inspect `.wiki/pages` as a substitute
 for the official query command. The query pipeline already performs access filtering,
 BM25/metadata/visual/graph/ledger fusion, multi-hop traversal, and evidence selection.
-After it returns an Agent synthesis task, answer only from that task's retrieved evidence.
+After it returns an Agent synthesis task, draft from its retrieved evidence and run
+the local verification command printed in the task before delivering the answer.
 
 ## Dependencies
+
+### Confirm AI resources before starting
+
+- **Agent mode** uses the current AI assistant to compile or synthesize. Confirm
+  that the host is already connected to a usable model. Image-heavy sources need
+  an Agent with image input and the configured OCR path.
+- **Standalone LLM mode** (`--mode llm`) uses the project's model service.
+  Before starting work, tell the user to have the API endpoint, model ID, and API
+  key ready if the service requires authentication. Configure them in
+  `wiki_config.yaml` using an environment variable for the key. Run
+  `python scripts/wiki.py config --check` before ingesting sources. This checks
+  local configuration. An Ollama workflow needs a running service and the
+  requested model installed.
+- If model access, credentials, or quota are missing, raise the issue before
+  promising an end-to-end AI workflow. Ask the user to set the key in their
+  environment or secret store.
 
 ### OCR extracts text; the Agent interprets visual semantics
 
@@ -102,7 +119,7 @@ scripts/<script>.py ...` on Unix.
 
 Default mode is **Agent compile**. The current Agent reads the source directly,
 decides the document type, and writes wiki pages according to `schema.md` and
-the compile standard. No configured model/API key is required.
+the compile standard. It reuses the host Agent’s model connection.
 
 ```bash
 python scripts/compile_v2.py source.md
@@ -124,7 +141,7 @@ Treat every supplied source as an all-or-incomplete job. Never report successful
 ingestion after sampling, previewing, partially OCRing, or compiling only the first
 model-context window.
 
-Agent mode creates an immutable run directory containing `task.md`,
+Agent mode creates a run directory containing `task.md`,
 `todolist.json`, and, for large readable sources, ordered `chunks/part-NNNN.md`
 artifacts. Creating these files is only planning; it is **not completion**. The
 current Agent must continue immediately:
@@ -142,15 +159,21 @@ current Agent must continue immediately:
    record type-specific structure in frontmatter `visuals` and embed the exact original
    image under `## 图表与视觉证据` / `## Visual Evidence`. Missing pre-extracted OCR
    text is never a valid reason to fail, skip, deduplicate, or substitute another PDF.
-4. Mark a task `completed` only after recording every affected Concept ID as an
-   output. Reading or summarizing a chunk is not sufficient. For image-bearing
-   study materials, `complete` requires exact page/EPUB-section citations and
+4. Write the Concept Markdown files under the run's `metadata.staged_pages`
+   directory. Keep the published `pages/` tree available as a read-only reference.
+   Add a `source_citations` frontmatter list to each stage page, with one entry
+   per contributing task. Set `artifact` to the todo item's `source_citation` and
+   `quote` to a verbatim excerpt from its text artifact. Binary inspection tasks
+   require the artifact ID. Record every affected Concept ID with `complete`.
+   Use a distinct Concept ID if a published page belongs to another source.
+   For image-bearing study materials, `complete` requires exact page/EPUB-section citations and
    deterministically attaches the cited and adjacent source images to those pages;
    missing citations, missing image files, or missing structured visual records fail
    the task instead of degrading to OCR-only text.
-5. If one task is too large for the current context, recursively run
-   `compile_v2.py` on that immutable task artifact, finish its child todo, then
-   resume the parent. Never silently truncate or skip forward.
+5. For a directory worklist, run Agent compile on each listed snapshot,
+   finish that child's todo, and record it on the parent with
+   `complete --child <child-todolist>`. If a text task is too large for one
+   read, process it in slices within the same task.
 6. After all tasks have been attempted, reconcile the source inventory
    (headings/pages/tables and checksums) against compiled pages. Add remediation
    tasks for uncovered content.
@@ -160,10 +183,10 @@ current Agent must continue immediately:
    python scripts/compile_todo.py verify "<run-dir>/todolist.json"
    ```
 
-   Success requires `coverage_complete: true` and zero `pending`, `in_progress`,
-   `failed`, or `blocked` items. Do not update the final index/graph/audit state
-   or tell the user ingestion succeeded until this command passes. Preserve the
-   todo manifest on failure so work can resume without hiding omissions.
+   The single-source gate publishes the staged concepts, source evidence,
+   index, and graph together. Success requires `coverage_complete: true` and,
+   for a single source, a `published_revision`. Preserve the manifest on
+   failure so work can resume from the staged outputs.
 
 Useful task-state commands:
 
@@ -181,11 +204,7 @@ python scripts/compile_todo.py fail "<run-dir>/todolist.json" chunk-0001 \
 - Ordered execution is enforced: `start` refuses a task while any earlier task is not
   `completed`/`failed`/`blocked`. Chunks therefore **cannot be compiled in parallel**;
   attempting parallel sub-agents will produce pages but rejected task-state updates.
-- `complete --output` accepts **exactly one** Concept ID. Never pass a comma-joined list:
-  the whole string is treated as a single path and the final `verify` fails with
-  "compiled output is missing". For a task that legitimately produces several pages,
-  either split the work into several tasks or normalize the manifest `outputs` entries
-  (split on commas, resolve each to a real `pages`-relative path) before `verify`.
+- Repeat `--output` for each emitted Concept ID. Pass one ID per flag.
 - A page's frontmatter `id` must equal its OKF Concept ID, i.e. the `pages`-relative path
   including the type directory (`concepts/foo`, `entities/bar`). A bare stem makes
   `search.py --doctor` report `orphan_graph_entities` because graph ids and path-derived
@@ -213,9 +232,15 @@ pages are published only after every task passes the todo verification. Director
 compilation is forced to run sequentially for deterministic coverage.
 
 **What happens:**
-- API keys, tokens, private keys, and passwords are removed before either compile or evidence
-  persistence. Public contact fields remain only in the local lossless evidence layer so explicit
-  email/phone lookup still works; stricter model compile input continues to redact email addresses.
+- Text snapshots, extracted evidence, and compiled text redact recognized
+  credentials before persistence. Binary inspection copies and converted Word
+  originals live in a private system temporary directory. Images and rendered
+  pages retain their original visual content. Public contact fields remain in
+  local evidence for exact lookup, and model compile input also redacts email addresses.
+- A source ID follows the input path, including its directory. Two files with the
+  same name can coexist. Each successfully published version keeps its evidence
+  and a copy of its compiled concepts. Normal queries use the active version
+  while a replacement is being prepared.
 - Every readable source gets an exact post-secret-redaction copy plus page/slide/section records,
   a heading outline, tables, footnotes, extracted exact fields, SHA-256 checks, and a fail-closed
   `coverage_complete` manifest under `.wiki/source/evidence/`.
@@ -230,7 +255,7 @@ compilation is forced to run sequentially for deterministic coverage.
   - Render every page/slide to images first
   - Legacy binary `.doc` uses LibreOffice for page-faithful PDF rendering. If that
     path fails, convert a read-only copy to `.docx` with LibreOffice or macOS
-    `textutil`, cache it by source hash under `.wiki/source/converted_documents/`,
+    `textutil`, cache it by source hash with the private binary inspection copies,
     then extract compile-ready Markdown. When rendering succeeds, retain every page
     image for visual verification but prefer native DOCX structure over slower/noisier
     OCR. Never send raw `.doc` to MarkItDown.
@@ -309,6 +334,9 @@ and exposes it through `visuals`, `images`, and `source_details[].images` in que
 >   直接说明缺口；不得以“再写一个搜索脚本”作为补救。
 > - `query.py` 返回 `Agent Query Synthesis Task` 后，只根据其中已检索文档合成答案，不再调用
 >   其他搜索工具或读取原始目录。
+> - 将最终草稿通过标准输入交给任务里给出的 `--verify-agent-answer` 命令校验。校验只用
+>   本次检索的证据，不调用模型。发现引用缺失、条款方向颠倒或数字不符时，修正或说明
+>   证据缺口。由校验命令处理已请求的 `--file-back`，校验通过才写回。
 
 ```bash
 python scripts/query.py "What is X?"

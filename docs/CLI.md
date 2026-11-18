@@ -20,7 +20,7 @@ temporal queries, visual retrieval, maintenance, OKF, and ledgers, see
 | `wiki compile <dir> --mode llm -j 4` | Parallel LLM compilation (4 workers) |
 | `wiki query <question>` | Search + synthesize answer |
 | `wiki query <q> --no-synthesis` | Fast search, skip LLM (0.5s) |
-| `wiki query <q> --file-back` | Answer + file back to wiki |
+| `wiki query <q> --file-back` | File the answer only if evidence checks pass |
 | `wiki query <q> --debug-search` | Per-hop coverage, missing subgoals, sections, scores, and stop reason |
 | `wiki query <q> --max-hops 3` | Evidence-driven subgoal decomposition and linked retrieval |
 | `wiki query <q> --single-hop` | Disable multi-hop for diagnostics/benchmarks |
@@ -33,6 +33,67 @@ temporal queries, visual retrieval, maintenance, OKF, and ledgers, see
 | `wiki bulk` | Bulk operations (stats, clean) |
 | `wiki search doctor` | Retrieval index health diagnostics |
 | `wiki search eval <file>` | Evaluate retrieval (Recall@K, MRR) |
+
+## Check AI resources before compiling
+
+Agent mode uses the current AI assistant's model connection. Confirm the
+assistant is available before assigning it an Agent worklist. For standalone
+`--mode llm`, have the model endpoint, model ID, and any required API key ready
+before running compile. Put the key in an environment variable and reference
+it from `wiki_config.yaml`. With Ollama, start the server and install the model
+before compiling. Use `wiki config --check` to validate local configuration.
+
+## Answer evidence verification
+
+In Agent mode, query prints a local verification command for the current
+assistant. Submit the final draft through standard input before delivering the
+answer. The task uses the evidence retrieved by the original query. Keep any
+draft file outside the Wiki.
+
+```bash
+python scripts/query.py --verify-agent-answer TASK.json < draft.md
+```
+
+LLM mode verifies the model's answer directly. Both paths check citations,
+explicit permission and prohibition, exact values and units, and applicability
+at the date requested in the question.
+An unsupported or conflicting claim blocks `--file-back` even when
+`query.verify_answers` is disabled. The verifier uses local rules and returns
+the conflicting clause or values for review.
+
+## Source versions and publication
+
+A source ID is derived from the input path. Moving or renaming the source
+creates a separate identity. Files that share a name in different directories
+can be compiled independently. Prior versions retain their raw evidence and
+compiled page copies under `.wiki/source/evidence/`.
+
+Agent runs write drafts to the worklist's `metadata.staged_pages`.
+For each contributing item, include this structure in the draft's frontmatter:
+
+```yaml
+source_citations:
+  - artifact: "<source_citation from the todo item>"
+    quote: "<verbatim excerpt from the item's text artifact>"
+```
+
+Use `compile_todo.py complete --output <concept-id>` with one flag per
+concept. Run `compile_todo.py verify <todolist>` to publish the source.
+Directory worklists verify one child source at a time and record its
+manifest with `complete --child <child-todolist>`. LLM mode publishes
+automatically after its staged compile succeeds.
+
+Queries keep using the previous version until publication succeeds. If the
+publishing process is interrupted, the next query or publication recovers the
+previous version before proceeding. Retry by verifying the same completed
+worklist or correcting its unfinished tasks. If a different run already
+published a newer revision, start a new worklist.
+
+New UTF-8 input snapshots and extracted text redact recognized credentials.
+Binary inspection copies and converted originals are held in private OS
+temporary storage. Rendered images still show their original pixels. Existing
+unversioned evidence remains readable, and files already written by earlier
+versions are unchanged.
 
 ## Dream (Self-Looping Maintenance)
 
