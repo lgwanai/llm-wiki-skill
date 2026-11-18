@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import json
 import stat
+from pathlib import Path
+
+import pytest
 
 import ocr
-from ocr import cli
+from ocr import cli, registry
 from ocr.config import get_default_model, get_model_config
 
 
@@ -68,3 +71,29 @@ def test_direct_file_parser_uses_selected_default(monkeypatch, tmp_path):
 
     args = cli.build_parser().parse_args(["scan.png"])
     assert args.backend == "api"
+
+
+@pytest.mark.parametrize(
+    "backend, path_env, weight",
+    [
+        ("deepseek", "DEEPSEEK_OCR_MODEL_PATH", "model-00001-of-00002.safetensors"),
+        ("logics", "LOGICS_PARSING_MODEL_PATH", "pytorch_model.bin"),
+    ],
+)
+def test_local_ocr_probe_requires_config_and_weights(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, backend: str, path_env: str, weight: str,
+) -> None:
+    monkeypatch.setenv("OCR_CONFIG", str(tmp_path / "ocr.yaml"))
+    model = tmp_path / "local-model"
+    model.mkdir()
+    monkeypatch.setenv(path_env, str(model))
+    monkeypatch.setattr(registry.importlib.util, "find_spec", lambda _: object())
+
+    probe = registry.get_model(backend).probe
+    assert not probe()[0]
+    (model / "config.json").write_text("{}", encoding="utf-8")
+    assert not probe()[0]
+    (model / weight).touch()
+    assert not probe()[0]
+    (model / weight).write_bytes(b"model fixture")
+    assert probe()[0]

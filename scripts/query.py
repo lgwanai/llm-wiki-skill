@@ -1306,6 +1306,7 @@ def search_wiki(
                             "visual_hits": f.get("visual_hits", []),
                             "source_authority": f.get("source_authority", 0.6),
                             "evidence_excerpt": f.get("evidence_excerpt", ""),
+                            "reviewed_visual": f.get("reviewed_visual", ""),
                             "source_name": f.get("source_name", ""),
                             "source_id": f.get("source_id"),
                             "source_version": f.get("source_version"),
@@ -1382,6 +1383,7 @@ def search_wiki(
                         "visual_hits": r.get("visual_hits", []),
                         "source_authority": r.get("source_authority", 0.6),
                         "evidence_excerpt": r.get("evidence_excerpt", ""),
+                        "reviewed_visual": r.get("reviewed_visual", ""),
                         "source_name": r.get("source_name", ""),
                         "source_id": r.get("source_id"),
                         "source_version": r.get("source_version"),
@@ -1698,6 +1700,11 @@ def _format_page_context(page: dict, index: int, query: str = "") -> str:
             content = read_page_content(page.get("path", ""))
         if not content:
             return ""
+        reviewed = str(page.get("reviewed_visual", ""))
+        review_block = f"\n\n### Reviewed visual observations\n\n{reviewed}" if reviewed else ""
+        from chart_evidence import chart_calculation_context
+
+        chart_block = chart_calculation_context(query, content + "\n\n" + reviewed)
         exact_fields = page.get("matched_fields", {})
         fields_block = ""
         if exact_fields:
@@ -1705,6 +1712,12 @@ def _format_page_context(page: dict, index: int, query: str = "") -> str:
                 f"- {field}: {', '.join(str(value) for value in values)}"
                 for field, values in exact_fields.items()
             )
+        # OCR HTML can be verbose and obscure column associations. The raw
+        # index retains the original HTML and supplies a compact row-wise view.
+        table_block = ""
+        tables = [table for table in page.get("tables", []) if table not in content]
+        if tables:
+            table_block = "\n\n### Structured table evidence\n\n" + "\n\n".join(tables)[:3500]
         neighbor_block = ""
         if page.get("neighbor_evidence"):
             neighbor_parts = []
@@ -1731,7 +1744,8 @@ def _format_page_context(page: dict, index: int, query: str = "") -> str:
             f"**Type**: source_evidence | **ID**: {pid}\n"
             f"**Original source**: {page.get('source_name', '')} | "
             f"**Locator**: {locator}\n\n"
-            f"{content}{fields_block}{hint_block}{neighbor_block}\n"
+            f"{content}{review_block}{table_block}{fields_block}"
+            f"{hint_block}{chart_block}{neighbor_block}\n"
         )
     # Read full page content from file — search snippets are incomplete
     content = read_page_content(page.get("path", ""))
@@ -1939,6 +1953,12 @@ def synthesize_answer(
 ) -> str:
     if not pages:
         return "No relevant wiki pages found. Try adding more sources with `wiki add`."
+
+    if fmt == "markdown":
+        from chart_evidence import exact_displayed_count
+
+        if checked := exact_displayed_count(query, pages):
+            return checked
 
     contexts = []
     for i, page in enumerate(pages[:8]):
@@ -2395,7 +2415,7 @@ def _verification_sources(pages: list[dict]) -> dict[str, str]:
         row = page.get("row_data") or {}
         structured_row = "\n".join(f"{key}: {value}" for key, value in row.items())
         evidence[identifier] = "\n".join(
-            [text, structured_row, *page.get("tables", [])]
+            [text, structured_row, str(page.get("reviewed_visual", "")), *page.get("tables", [])]
         )
     return evidence
 
@@ -2461,12 +2481,27 @@ def _verification_temporal_context(
     }
 
 
+def _verify_with_evidence(
+    answer: str, evidence: dict[str, str], query: str, calculation: str, temporal: dict | None = None,
+) -> dict:
+    if calculation and answer.strip() == calculation.strip():
+        initial = verify(answer, evidence, query, temporal=temporal)
+        cited = initial["cited_concepts"]
+        if len(cited) == 1 and cited[0] in evidence:
+            identifier = cited[0]
+            evidence = {**evidence, identifier: evidence[identifier] + "\n" + calculation}
+    return verify(answer, evidence, query, temporal=temporal)
+
+
 def verify_answer_evidence(
     answer: str, pages: list[dict], query: str = "", *, temporal_context: dict | None = None,
 ) -> dict:
     """Check the exact text to be delivered or written against its cited evidence."""
+    from chart_evidence import exact_displayed_count
+
+    calculation = exact_displayed_count(query, pages) if query else ""
     timing = _verification_temporal_context(pages, query, temporal_context)
-    return verify(answer, _verification_sources(pages), query, temporal=timing)
+    return _verify_with_evidence(answer, _verification_sources(pages), query, calculation, timing)
 
 
 def _source_digest(path: str) -> str:
@@ -2480,6 +2515,8 @@ def _create_answer_task(
     file_back: bool, temporal_context: dict,
 ) -> Path:
     """Freeze the retrieved evidence in a private local handoff to the current Agent."""
+    from chart_evidence import exact_displayed_count
+
     sources = []
     for item in source_details[:8]:
         selected = {key: item.get(key) for key in ("id", "path", "source_id", "source_version")}
@@ -2500,6 +2537,7 @@ def _create_answer_task(
         "file_back": file_back,
         "sources": sources,
         "evidence": _verification_sources(pages),
+        "calculation": exact_displayed_count(synthesis_query, pages),
         "temporal": _verification_temporal_context(pages, synthesis_query, temporal_context),
     }
     with tempfile.NamedTemporaryFile(
@@ -2539,8 +2577,9 @@ def verify_agent_answer(task_path: str | Path, answer: str) -> dict:
     if task.get("version") != 1 or task.get("wiki_dir") != str(WIKI_DIR.resolve()):
         raise ValueError("Answer task belongs to a different Wiki or uses an unsupported version")
     sources = task["sources"]
-    report = verify(
-        answer, task["evidence"], task["synthesis_query"], temporal=task.get("temporal"),
+    report = _verify_with_evidence(
+        answer, task["evidence"], task["synthesis_query"], task.get("calculation", ""),
+        task.get("temporal"),
     )
     if any(
         _source_digest(source["path"] or "") != source["digest"]

@@ -29,6 +29,7 @@ try:
         atomic_bytes,
         json_bytes,
         publication_view,
+        publication_write,
         publish_changes,
         read_json,
         source_id_for,
@@ -41,6 +42,7 @@ except ImportError:
         atomic_bytes,
         json_bytes,
         publication_view,
+        publication_write,
         publish_changes,
         read_json,
         source_id_for,
@@ -142,7 +144,18 @@ def _tables(text: str) -> list[str]:
             current = []
     if len(current) >= 2:
         tables.append("\n".join(current))
-    return tables
+    if "<table" in text.lower():
+        try:
+            from .ocr_tables import html_table_markdown
+        except ImportError:
+            from ocr_tables import html_table_markdown
+
+        tables.extend(
+            projection
+            for html in re.findall(r"<table\b[^>]*>.*?</table\s*>", text, re.I | re.S)
+            if (projection := html_table_markdown(html))
+        )
+    return list(dict.fromkeys(tables))
 
 
 def _footnotes(text: str) -> list[str]:
@@ -174,6 +187,7 @@ def persist_raw_evidence(
     source_name: str,
     wiki_dir: str | Path,
     *,
+    visual_notes: dict[int, str] | None = None,
     source_id: str | None = None,
     source_version: str | None = None,
     staged: bool = False,
@@ -199,6 +213,9 @@ def persist_raw_evidence(
     records_path = root / "evidence.jsonl"
     manifest_path = root / "manifest.json"
     units = _locator_units(content)
+    notes = {number: strip_secrets(note) for number, note in (visual_notes or {}).items()}
+    if notes.keys() - {unit["page_number"] for unit in units}:
+        raise ValueError("Reviewed observations must refer to existing source pages or slides")
     records: list[dict[str, Any]] = []
     field_totals: Counter[str] = Counter()
     table_total = 0
@@ -207,8 +224,9 @@ def persist_raw_evidence(
     _atomic_write(raw_path, content)
     for index, unit in enumerate(units, start=1):
         unit_text = str(unit["text"])
+        observation = notes.get(unit["page_number"], "").strip()
         fields = extract_exact_fields(unit_text)
-        tables = _tables(unit_text)
+        tables = list(dict.fromkeys([*_tables(unit_text), *_tables(observation)]))
         footnotes = _footnotes(unit_text)
         field_totals.update({name: len(values) for name, values in fields.items()})
         table_total += len(tables)
@@ -229,6 +247,8 @@ def persist_raw_evidence(
             f"# {title}\n\n"
             f"{unit_text.rstrip()}\n"
         )
+        if observation:
+            page_content += f"\n### Reviewed visual observations\n\n{observation}\n"
         _atomic_write(page_path, page_content)
         record = {
             "schema_version": EVIDENCE_SCHEMA_VERSION,
@@ -244,6 +264,7 @@ def persist_raw_evidence(
             "text": unit_text,
             "text_sha256": _sha256_text(unit_text),
             "page_sha256": _sha256_text(page_content),
+            "reviewed_visual": observation,
             "headings": _headings(unit_text),
             "exact_fields": fields,
             "tables": tables,
@@ -273,6 +294,7 @@ def persist_raw_evidence(
         "locator_units_expected": len(units),
         "locator_units_indexed": len(records),
         "tables_indexed": table_total,
+        "visual_locators_indexed": sum(bool(record["reviewed_visual"]) for record in records),
         "footnotes_indexed": footnote_total,
         "exact_fields_indexed": dict(field_totals),
         "outline": _headings(content),
@@ -377,6 +399,70 @@ def evidence_publication(
             "source_name": manifest["source_name"],
         })
     }
+
+
+def attach_reviewed_visual_evidence(
+    manifest_path: str | Path, notes_markdown: str, wiki_dir: str | Path
+) -> dict[str, Any]:
+    """Attach page-scoped visual observations; leave the exact extracted copy intact."""
+    path = Path(manifest_path).resolve()
+    root = Path(wiki_dir).expanduser().resolve() / "source" / "evidence"
+    if path.name != "manifest.json" or path.parent.parent != root:
+        raise ValueError("Expected an evidence manifest within this wiki")
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    raw = (path.parent / "raw.md").read_bytes().decode("utf-8")
+    if not verify_evidence_bundle(path)["coverage_complete"]:
+        raise ValueError("Evidence manifest and original extraction do not match")
+    matches = list(_LOCATOR_RE.finditer(notes_markdown))
+    if not matches or any(
+        not match["number"] or match["kind"].casefold() not in {"page", "slide"}
+        for match in matches
+    ):
+        raise ValueError("Use explicit '## Page N' or '## Slide N' headings for observations")
+    units = _locator_units(notes_markdown)
+    numbers = [unit["page_number"] for unit in units]
+    if None in numbers or len(set(numbers)) != len(numbers):
+        raise ValueError("Use one '## Page N' or '## Slide N' heading per reviewed locator")
+    if set(numbers) - {unit["page_number"] for unit in _locator_units(raw)}:
+        raise ValueError("Reviewed observations must refer to existing source pages or slides")
+    observations = {}
+    for unit in units:
+        body = unit["text"].split("\n", 1)[-1].strip()
+        if not body or body == unit["text"]:
+            raise ValueError("Reviewed visual observations must not be empty")
+        observations[unit["page_number"]] = body
+    source_id = manifest.get("source_id")
+    wiki = root.parent.parent
+    with publication_write(wiki):
+        active = active_source(wiki, source_id) if source_id else {}
+        is_pending = source_id is not None and (
+            active.get("revision", "") == manifest["base_revision"]
+        )
+        if source_id and not is_pending and active.get("revision") != manifest["revision"]:
+            raise ValueError(
+                "Visual observations must target the active or a current staged revision"
+            )
+        # Read the latest notes under the lock so concurrent reviews cannot lose observations.
+        prior_notes = {}
+        for line in (path.parent / "evidence.jsonl").read_text(encoding="utf-8").splitlines():
+            row = json.loads(line)
+            if row.get("reviewed_visual"):
+                prior_notes[row["page_number"]] = row["reviewed_visual"]
+        result = persist_raw_evidence(
+            raw,
+            manifest["source_name"],
+            wiki_dir,
+            visual_notes=prior_notes | observations,
+            source_id=source_id,
+            source_version=manifest.get("source_version"),
+            staged=True,
+            base_revision=active.get("revision", ""),
+            revision=manifest["revision"] if is_pending else None,
+        )
+    if not is_pending:
+        new_path = Path(result["raw_path"]).with_name("manifest.json")
+        publish_changes(wiki, lambda: evidence_publication(wiki, new_path))
+    return result
 
 
 def _query_terms(query: str) -> list[str]:
@@ -527,6 +613,8 @@ def _cached_records(
                             fields["money"] = amounts
                         else:
                             fields.pop("money", None)
+                    if observation := record.get("reviewed_visual"):
+                        searchable += "\n" + observation
                     text = searchable.casefold()
                     vocabulary.update(re.findall(r"[a-z][a-z0-9_-]{3,}", text))
                     record["path"] = str(path.parent / "pages" / Path(record["id"]).name) + ".md"
@@ -1086,6 +1174,7 @@ def search_raw_evidence(
                 "page_number": page_number,
                 "locator": record["locator"],
                 "matched_fields": matched_fields,
+                "reviewed_visual": _excerpt(record.get("reviewed_visual", ""), terms),
                 "tables": list(record.get("tables", [])),
                 "footnotes": list(record.get("footnotes", [])),
                 "neighbor_evidence": neighbor_evidence,
@@ -1098,15 +1187,13 @@ def search_raw_evidence(
 
 def _read_source(path: Path, native_pdf: bool, redact: bool = False) -> str:
     if native_pdf and path.suffix.casefold() == ".pdf":
-        import fitz
+        try:
+            from .native_document import pdf_sections
+        except ImportError:
+            from native_document import pdf_sections
 
-        sections: list[str] = []
-        with fitz.open(path) as document:
-            for number, page in enumerate(document, start=1):
-                sections.extend(
-                    [f"## Page {number}", "", page.get_text("text", sort=True).strip(), ""]
-                )
-        content = "\n".join(sections).strip() + "\n"
+        sections = [f"## Page {number}\n\n{text}" for number, text in pdf_sections(path)]
+        content = "\n\n".join(sections).strip() + "\n"
     else:
         content = path.read_text(encoding="utf-8")
     if redact:
@@ -1145,6 +1232,10 @@ def main() -> int:
         action="store_true",
         help="apply compile_v2 sensitive-value redaction before persistence",
     )
+    visual = subparsers.add_parser("attach-visual")
+    visual.add_argument("manifest")
+    visual.add_argument("notes", type=Path, help="reviewed Markdown with Page/Slide headings")
+    visual.add_argument("--wiki-dir", required=True)
     verify = subparsers.add_parser("verify")
     verify.add_argument("manifest")
     search = subparsers.add_parser("search")
@@ -1158,6 +1249,10 @@ def main() -> int:
             args.wiki_dir,
             native_pdf=args.native_pdf,
             redact=args.redact,
+        )
+    elif args.command == "attach-visual":
+        result = attach_reviewed_visual_evidence(
+            args.manifest, args.notes.read_text(encoding="utf-8"), args.wiki_dir
         )
     elif args.command == "verify":
         result = verify_evidence_bundle(args.manifest)

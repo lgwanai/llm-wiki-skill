@@ -478,6 +478,20 @@ def update_task(
         target["started_at"] = utc_now()
     elif status in {"completed", "failed", "blocked"} and target.get("status") != "in_progress":
         raise ValueError(f"{task_id} must be in_progress before it can become {status}")
+    if status == "completed" and (review_pages := target.get("pdf_agent_review_pages")):
+        records_path = manifest.get("metadata", {}).get("raw_evidence_records")
+        reviewed = set()
+        if records_path and Path(records_path).is_file():
+            for line in Path(records_path).read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    record = json.loads(line)
+                    if record.get("reviewed_visual", "").strip():
+                        reviewed.add(record["page_number"])
+        missing = sorted(set(review_pages) - reviewed)
+        if missing:
+            raise ValueError(
+                f"Attach Agent visual observations for PDF pages {missing} before completion"
+            )
     metadata = manifest.get("metadata", {})
     normalized_outputs = [str(value) for value in outputs] if outputs else []
     if status == "completed" and metadata.get("directory_worklist"):

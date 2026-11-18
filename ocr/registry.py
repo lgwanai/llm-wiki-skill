@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,10 +21,15 @@ class ModelSpec:
     probe: Callable[[], tuple[bool, str]]
 
 
-def _path_probe(path: Path, label: str) -> tuple[bool, str]:
-    exists = path.expanduser().exists()
-    detail = f"{label}: {path.expanduser()}" if exists else f"missing {label}: {path.expanduser()}"
-    return exists, detail
+def _transformer_weights_probe(path: Path) -> tuple[bool, str]:
+    model = path.expanduser()
+    if not (model / "config.json").is_file() or not any(
+        weight.is_file() and weight.stat().st_size > 0
+        for pattern in ("*.safetensors", "pytorch_model*.bin")
+        for weight in model.glob(pattern)
+    ):
+        return False, f"missing local model config or weights: {model}"
+    return True, f"model: {model}"
 
 
 def _paddlevl() -> Any:
@@ -76,11 +82,13 @@ def _probe_deepseek() -> tuple[bool, str]:
     from ocr.config import get_model_config
 
     options = get_model_config("deepseek").get("options", {})
-    model_path = Path(options.get("model_path", DEFAULT_MODEL_PATH))
+    model_path = Path(
+        options.get("model_path") or os.environ.get("DEEPSEEK_OCR_MODEL_PATH") or DEFAULT_MODEL_PATH
+    )
     missing = [name for name in ("torch", "transformers") if importlib.util.find_spec(name) is None]
     if missing:
         return False, f"missing Python package(s): {', '.join(missing)}"
-    return _path_probe(model_path, "model")
+    return _transformer_weights_probe(model_path)
 
 
 def _logics() -> Any:
@@ -94,11 +102,15 @@ def _probe_logics() -> tuple[bool, str]:
     from ocr.config import get_model_config
 
     options = get_model_config("logics").get("options", {})
-    model_path = Path(options.get("model_path", DEFAULT_MODEL_PATH))
+    model_path = Path(
+        options.get("model_path")
+        or os.environ.get("LOGICS_PARSING_MODEL_PATH")
+        or DEFAULT_MODEL_PATH
+    )
     missing = [name for name in ("torch", "transformers") if importlib.util.find_spec(name) is None]
     if missing:
         return False, f"missing Python package(s): {', '.join(missing)}"
-    return _path_probe(model_path, "model")
+    return _transformer_weights_probe(model_path)
 
 
 def _paddle() -> Any:

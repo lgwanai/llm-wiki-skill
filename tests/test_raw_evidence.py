@@ -350,6 +350,25 @@ def test_answer_hints_extract_dated_goodwill_balance(tmp_path: Path) -> None:
     assert hints["goodwill_balance_millions"] == "1383"
 
 
+def test_ocr_angle_does_not_promote_unrelated_money_page(tmp_path: Path) -> None:
+    from scripts.query_understanding import requested_field_types
+    from scripts.raw_evidence import extract_exact_fields
+
+    assert extract_exact_fields(r"视图为 $ 360^{\circ} $，市场规模252.7亿元，预算$400。")[
+        "money"
+    ] == ["252.7亿元", "$400"]
+    assert requested_field_types("新一代 AI 的采纳率是多少？") == ["percentage"]
+    assert requested_field_types("市场规模是多少亿元？") == ["money"]
+
+    manifest = persist_raw_evidence("## Page 1\n画像为 $ 360^{\\circ} $。", "report.pdf", tmp_path)
+    records = Path(manifest["records_path"])
+    old_record = json.loads(records.read_text())
+    old_record["exact_fields"]["money"] = ["$ 360"]
+    records.write_text(json.dumps(old_record) + "\n")
+    hit = search_raw_evidence("第1页画像的金额是多少？", tmp_path)[0]
+    assert "money" not in hit["matched_fields"]
+
+
 def test_question_hints_stay_with_the_named_source_revision(tmp_path: Path) -> None:
     for title, name, text in (
         ("枯蒲集市器材窗口", "a-market.md", "Monday to Thursday: 9.00am–2.15pm"),

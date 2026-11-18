@@ -135,7 +135,10 @@ def test_english_policy_claims_are_bound_to_the_cited_clause(claim):
     assert query.verify_answer_evidence(claim + CITE, [page])["status"] == "warning"
 
 
-def test_default_agent_cli_uses_original_evidence_and_verifies_stdin(policy_wiki):
+@pytest.mark.parametrize("legacy_task", [False, True], ids=["current-task", "legacy-task"])
+def test_default_agent_cli_uses_original_evidence_and_verifies_stdin(
+    policy_wiki, legacy_task: bool,
+) -> None:
     wiki, policy = policy_wiki
     scripts = Path(__file__).resolve().parents[1] / "scripts"
     env = {
@@ -157,11 +160,15 @@ def test_default_agent_cli_uses_original_evidence_and_verifies_stdin(policy_wiki
 
     search = run("wiki.py", "query", "客户记录留存期限", "--mode", "agent", "--file-back", "--json")
     assert search.returncode == 0, search.stderr
-    task = json.loads(search.stdout)["answer_task"]
+    task = Path(json.loads(search.stdout)["answer_task"])
+    if legacy_task:
+        task_data = json.loads(task.read_text(encoding="utf-8"))
+        task_data.pop("calculation")
+        task.write_text(json.dumps(task_data, ensure_ascii=False), encoding="utf-8")
     bad = run(
         "query.py",
         "--verify-agent-answer",
-        task,
+        str(task),
         draft="客户记录留存期限为20天。" + CITE,
     )
     assert bad.returncode == 1, bad.stderr
@@ -170,7 +177,7 @@ def test_default_agent_cli_uses_original_evidence_and_verifies_stdin(policy_wiki
     good = run(
         "query.py",
         "--verify-agent-answer",
-        task,
+        str(task),
         draft="客户记录留存期限为120天。" + CITE,
     )
     assert good.returncode == 0, good.stderr

@@ -50,10 +50,9 @@ def test_native_pdf_text_layer_preserves_every_page_without_ocr(tmp_path, monkey
         second.insert_text((72, 72), "Second page implementation detail.")
         document.save(source)
 
-    monkeypatch.setenv("LLM_WIKI_PDF_TEXT_LAYER", "1")
     monkeypatch.setattr(
         compile_v2,
-        "_render_paginated_document_to_images",
+        "_render_pdf_pages_to_images",
         lambda *_args, **_kwargs: pytest.fail("native text mode must not render or OCR"),
     )
 
@@ -1102,7 +1101,7 @@ def test_paginated_document_without_ocr_preserves_every_page_for_agent(tmp_path,
         return [page_1, page_2], "pdf-pages"
 
     monkeypatch.setattr(compile_v2, "_render_paginated_document_to_images", fake_render)
-    monkeypatch.setattr(compile_v2, "_ocr_backend_available", lambda: False)
+    monkeypatch.setattr(compile_v2, "_pdf_local_ocr_backend", lambda: None)
     monkeypatch.setattr(compile_v2, "_image_analysis_available", lambda: False)
 
     content, readable = compile_v2._read_agent_visible_source(source)
@@ -1138,7 +1137,7 @@ def test_paginated_document_ocr_runs_for_every_page(tmp_path, monkeypatch):
         "_render_paginated_document_to_images",
         lambda path, storage_source_path=None: (pages, "pdf-pages"),
     )
-    monkeypatch.setattr(compile_v2, "_ocr_backend_available", lambda: True)
+    monkeypatch.setattr(compile_v2, "_pdf_local_ocr_backend", lambda: "paddle")
     monkeypatch.setattr(
         compile_v2,
         "get_ocr_config",
@@ -1175,7 +1174,7 @@ def test_ovis_pdf_compile_uses_one_document_run_and_keeps_page_images(tmp_path, 
         "_render_paginated_document_to_images",
         lambda path, storage_source_path=None: (pages, "pdf-pages"),
     )
-    monkeypatch.setattr(compile_v2, "_ocr_backend_available", lambda: True)
+    monkeypatch.setattr(compile_v2, "_pdf_local_ocr_backend", lambda: "ovis")
     monkeypatch.setattr(
         compile_v2,
         "get_ocr_config",
@@ -1217,7 +1216,7 @@ def test_pdf_render_failure_uses_direct_ocr_before_markitdown(tmp_path, monkeypa
         "_render_paginated_document_to_images",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("render failed")),
     )
-    monkeypatch.setattr(compile_v2, "_ocr_backend_available", lambda: True)
+    monkeypatch.setattr(compile_v2, "_pdf_local_ocr_backend", lambda: "paddle")
 
     def fake_direct_ocr(path):
         assert path != source
@@ -1233,13 +1232,13 @@ def test_pdf_render_failure_uses_direct_ocr_before_markitdown(tmp_path, monkeypa
 
     content = compile_v2._read_paginated_document_for_compile(source)
 
-    assert "Direct OCR Succeeded" in content
+    assert "Partial direct OCR evidence" in content
     assert "这是扫描 PDF 的正文" in content
-    assert "MarkItDown" in content  # explicit instruction not to replace OCR with it
+    assert "Agent Action Required" in content
     assert source.read_bytes() == original
 
 
-def test_pdf_failed_ocr_labels_markitdown_as_partial_only(tmp_path, monkeypatch):
+def test_pdf_failed_ocr_hands_off_to_agent_without_markitdown(tmp_path, monkeypatch):
     source = tmp_path / "scan.pdf"
     source.write_bytes(b"%PDF scanned source")
     monkeypatch.setattr(
@@ -1247,7 +1246,7 @@ def test_pdf_failed_ocr_labels_markitdown_as_partial_only(tmp_path, monkeypatch)
         "_render_paginated_document_to_images",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("render failed")),
     )
-    monkeypatch.setattr(compile_v2, "_ocr_backend_available", lambda: True)
+    monkeypatch.setattr(compile_v2, "_pdf_local_ocr_backend", lambda: "paddle")
     monkeypatch.setattr(
         compile_v2,
         "_ocr_pdf_with_config",
@@ -1256,15 +1255,14 @@ def test_pdf_failed_ocr_labels_markitdown_as_partial_only(tmp_path, monkeypatch)
     monkeypatch.setattr(
         compile_v2,
         "_markitdown_to_markdown",
-        lambda _path: "title and one official web link",
+        lambda _path: pytest.fail("PDF should hand off directly to Agent"),
     )
 
     content = compile_v2._read_paginated_document_for_compile(source)
 
     assert "Direct OCR Failed" in content
     assert "mineru failed" in content
-    assert "MarkItDown Partial Evidence (not compile-ready)" in content
-    assert "Do not compile from this text alone" in content
+    assert "Agent Action Required" in content
 
 
 def test_image_source_uses_analysis_and_keeps_source_path(tmp_path, monkeypatch):
@@ -1481,3 +1479,120 @@ def test_materialize_text_source_default_name_and_collision(tmp_path, monkeypatc
     p3 = compile_v2._materialize_text_source("new", "fixed")
     assert Path(p3).read_text(encoding="utf-8") == "new"
     assert collide.read_text(encoding="utf-8") == "orig"  # original preserved
+
+
+def test_mixed_pdf_uses_agent_for_visual_page_when_model_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fitz = pytest.importorskip("fitz")
+    from types import SimpleNamespace
+
+    import yaml
+    from compile_todo import update_task, verify_manifest
+
+    from ocr import registry
+    from scripts.raw_evidence import attach_reviewed_visual_evidence, search_raw_evidence
+
+    source = tmp_path / "mixed.pdf"
+    with fitz.open() as doc:
+        doc.new_page().insert_text((72, 72), "Native policy coverage is sufficient for this page.")
+        page = doc.new_page()
+        page.insert_text(
+            (72, 72), "Native paragraph does not identify arrows or nodes in the diagram."
+        )
+        for x in (72, 195, 320):
+            page.draw_rect(fitz.Rect(x, 130, x + 100, 240))
+        doc.save(source)
+    wiki = tmp_path / "wiki"
+    monkeypatch.setattr(compile_v2, "WIKI_DIR", wiki)
+    monkeypatch.setattr(
+        compile_v2, "get_ocr_config", lambda: {"mode": "local", "backend": "paddlevl"}
+    )
+    monkeypatch.setattr(
+        registry, "get_model", lambda _: SimpleNamespace(probe=lambda: (False, "missing weights"))
+    )
+    monkeypatch.setattr(
+        compile_v2, "_ocr_selected_pdf_pages", lambda *_: pytest.fail("missing model")
+    )
+    monkeypatch.setattr(
+        compile_v2, "_analyze_page_image_with_vision", lambda *_: pytest.fail("use Agent")
+    )
+
+    # Exercise the explicit LLM entry point. It must return a worklist before
+    # calling the text model, even though native text is present on both pages.
+    result = compile_v2.compile_source(str(source))
+    assert result["needs_agent"] and result["pdf_agent_review_pages"] == [2]
+    todo = Path(result["todo"])
+    manifest = json.loads(todo.read_text())
+    item = manifest["items"][0]
+    chunk = Path(item["artifact_path"]).read_text()
+    assert "Native policy coverage" in chunk
+    assert "Native paragraph" in chunk
+    assert "page-002.png" in chunk and "page-001.png" not in chunk
+    assert item["pdf_agent_review_pages"] == [2]
+
+    monkeypatch.setitem(sys.modules, "compile_v2", compile_v2)
+    stage = Path(result["staged_pages"])
+    concept_id = "concepts/pdf-review"
+    concept = stage / f"{concept_id}.md"
+    concept.parent.mkdir()
+    metadata = {
+        "type": "Concept",
+        "title": "Reviewed PDF",
+        "source_citations": [{
+            "artifact": item["source_citation"],
+            "quote": "Native paragraph does not identify arrows or nodes in the diagram.",
+        }],
+    }
+    observation = "Three outlined boxes"
+    concept.write_text(
+        "---\n" + yaml.safe_dump(metadata) + f"---\n\n{observation}.\n", encoding="utf-8",
+    )
+    update_task(todo, item["id"], "in_progress")
+    with pytest.raises(ValueError, match=r"PDF pages \[2\]"):
+        update_task(todo, item["id"], "completed", outputs=[concept_id])
+
+    raw = Path(result["raw_evidence"]["raw_path"])
+    original = raw.read_bytes()
+    evidence = raw.with_name("manifest.json")
+    attach_reviewed_visual_evidence(evidence, f"## Page 2\n{observation}.", wiki)
+    assert raw.read_bytes() == original
+    assert search_raw_evidence(observation, wiki) == []
+    update_task(todo, item["id"], "completed", outputs=[concept_id])
+    publication = verify_manifest(todo)
+    assert publication["coverage_complete"]
+    assert (wiki / "pages" / f"{concept_id}.md").is_file()
+    hits = search_raw_evidence(observation, wiki)
+    reviewed = [hit for hit in hits if observation in hit.get("reviewed_visual", "")]
+    assert [hit["page_number"] for hit in reviewed] == [2]
+
+
+@pytest.mark.parametrize(
+    "ocr_text, pending",
+    [
+        ("## Page 1\n## Title", [2]),
+        ("## Page 1\nThis body has useful and readable OCR evidence.", []),
+    ],
+)
+def test_pdf_ocr_is_used_only_for_weak_pages(tmp_path, monkeypatch, ocr_text, pending):
+    fitz = pytest.importorskip("fitz")
+    source = tmp_path / "scan.pdf"
+    with fitz.open() as doc:
+        doc.new_page().insert_text((72, 72), "Native policy coverage is sufficient for this page.")
+        doc.new_page().insert_text((72, 72), "Title")
+        doc.new_page().insert_text((72, 72), "Native appendix remains available for this page.")
+        doc.save(source)
+    monkeypatch.setattr(compile_v2, "WIKI_DIR", tmp_path / "wiki")
+    monkeypatch.setattr(compile_v2, "_pdf_local_ocr_backend", lambda: "paddlevl")
+
+    def fake_ocr(subset):
+        with fitz.open(subset) as doc:
+            assert doc.page_count == 1 and doc[0].get_text().strip() == "Title"
+        return ocr_text
+
+    monkeypatch.setattr(compile_v2, "_ocr_pdf_with_config", fake_ocr)
+    content, _ = compile_v2.read_source_content(source)
+    assert compile_v2._pdf_agent_pages(content) == pending
+    assert re.findall(r"^## Page (\d+)$", content, re.M) == ["1", "2", "3"]
+    assert "page-002.png" in content and "page-001.png" not in content
+    assert ("useful and readable OCR evidence" in content) == (not pending)
