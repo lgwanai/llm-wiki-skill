@@ -7,7 +7,8 @@ description: >
   this", "file away", "add to wiki", "second brain", "build knowledge base", "set
   up wiki", accumulating and structuring information that compounds over time, or
   parsing PDF, Word, PowerPoint, EPUB, textbook, and exam sources before compiling
-  them into traceable knowledge while preserving referenced images.
+  them into traceable knowledge while preserving referenced images, or sharing
+  and importing a knowledge base or module as a ZIP.
 ---
 
 # LLM Wiki v2
@@ -74,7 +75,7 @@ Image-source compilation (`python scripts/compile_v2.py exam.png`) uses two comp
 tracks. OCR and multimodal inspection are not substitutes:
 
 1. **Configured OCR (required text extractor)** — PaddleOCR-VL-1.6 is the default. Exam pages,
-   worksheets, textbook screenshots, scanned documents, and image-backed Markdown
+   worksheets, textbook screenshots, and image-backed Markdown
    pages use it for words, formulas, tables, captions, and crop references. Successful OCR
    remains authoritative text-extraction evidence, but it does not explain layout,
    direction, ownership, dependencies, axes, trends, or a time scale.
@@ -126,7 +127,7 @@ python scripts/compile_v2.py source.md
 python scripts/compile_v2.py docs/                 # recursively compile supported files
 python scripts/compile_v2.py docs/ --depth 1       # only direct files + one directory level
 python scripts/compile_v2.py exam.png              # OCR text + Agent multimodal visual semantics
-python scripts/compile_v2.py handbook.pdf          # every page rendered; OCR + multimodal inspection
+python scripts/compile_v2.py handbook.pdf          # native first; OCR or Agent review for gaps
 python scripts/compile_v2.py handbook.doc           # legacy Word → PDF, or cached DOCX fast fallback
 python scripts/compile_v2.py handbook.docx         # Word pages rendered through PDF, with page provenance
 python scripts/compile_v2.py slides.pptx           # every slide rendered; never first-slide-only
@@ -166,7 +167,8 @@ current Agent must continue immediately:
    `quote` to a verbatim excerpt from its text artifact. Binary inspection tasks
    require the artifact ID. Record every affected Concept ID with `complete`.
    Use a distinct Concept ID if a published page belongs to another source.
-   For image-bearing study materials, `complete` requires exact page/EPUB-section citations and
+   For image-bearing
+   study materials, `complete` requires exact page/EPUB-section citations and
    deterministically attaches the cited and adjacent source images to those pages;
    missing citations, missing image files, or missing structured visual records fail
    the task instead of degrading to OCR-only text.
@@ -209,11 +211,9 @@ python scripts/compile_todo.py fail "<run-dir>/todolist.json" chunk-0001 \
   including the type directory (`concepts/foo`, `entities/bar`). A bare stem makes
   `search.py --doctor` report `orphan_graph_entities` because graph ids and path-derived
   Concept IDs no longer match.
-- Text-layer PDFs: when `PyMuPDF.get_text()` covers essentially every page, extract
-  per-page text into a `## Page N` Markdown intermediate and compile that instead of
-  running page-by-page OCR. OCR (PaddleOCR-VL-1.6 on CPU) runs on the order of ~1 minute
-  per page and a few hundred pages becomes impractical, especially when several jobs
-  share one `mlx-vlm-server`.
+- PDFs use native extraction first and assess coverage page by page. Use the
+  generated Agent task to inspect pages flagged for visual review and attach
+  observations by physical page number before completing the todo.
 
 Pages compiled before deterministic Agent media finalization can be repaired
 without regenerating their text. Preview first, then apply the citation-driven
@@ -251,8 +251,11 @@ compilation is forced to run sequentially for deterministic coverage.
   order; failed chunks are retried and remain visibly incomplete instead of being skipped
 - Compilation has a final coverage gate: all todo items must record concrete output
   Concept IDs and retain matching source checksums before the run can report success
-- PDF/DOC/DOCX/PPT/PPTX are treated as paginated documents:
-  - Render every page/slide to images first
+- PDF compilation starts with native text and layout evidence. Sparse or garbled
+  text and substantial graphics trigger selective rendering and an installed,
+  ready local OCR backend. Without ready OCR, or if OCR leaves visual gaps, the
+  current Agent inspects those pages directly and attaches reviewed evidence.
+- DOC/DOCX/PPT/PPTX retain paginated evidence:
   - Legacy binary `.doc` uses LibreOffice for page-faithful PDF rendering. If that
     path fails, convert a read-only copy to `.docx` with LibreOffice or macOS
     `textutil`, cache it by source hash with the private binary inspection copies,
@@ -262,10 +265,6 @@ compilation is forced to run sequentially for deterministic coverage.
   - If OCR is installed/configured, OCR each page image in order
   - Independently inspect information-bearing figures with Agent multimodal capability;
     OCR success never removes this requirement
-  - If page rendering fails for a PDF, run the configured backend
-    (PaddleOCR-VL-1.6 by default) against the complete PDF before trying MarkItDown
-  - MarkItDown output from a scanned PDF is partial evidence only; short,
-    header-only, or page-incomplete output must never be compiled as the source
   - If OCR is unavailable, use configured vision/image analysis on each page image
   - If neither is available, preserve all page images under `.wiki/source/document_images/`
     and require the Agent to inspect them or ask the user
@@ -428,6 +427,28 @@ python scripts/lint.py --auto-heal  # Check + fix
 ```
 
 Checks: contradictions, stale claims, orphan pages, broken links, missing concepts.
+
+### Share or Import a Wiki ZIP
+
+```bash
+python scripts/wiki.py export team-wiki.zip
+python scripts/wiki.py export onboarding.zip --module modules/onboarding --page concepts/access
+python scripts/wiki.py okf validate onboarding.zip
+python scripts/wiki.py import onboarding.zip
+```
+
+Use a directory under the configured wiki's `pages/` as a reusable knowledge
+module. Put its OKF Markdown pages there, then use `--module` with the
+bundle-relative directory. Repeat `--page` to include selected Concept IDs and
+`--module` to combine directories. Module ZIPs include local attachments within
+the selected directories or linked from the included pages. Include linked
+concepts explicitly when the recipient needs those pages.
+
+ZIPs contain compiled pages and their attachments, preserving paths and
+metadata. A full export includes session pages. Import merges into the
+recipient's wiki and the pages can be queried immediately. Identical files
+are skipped. If there are conflicting files, report their paths and use
+`--force` only if the user requests overwriting them.
 
 ### `/wiki-okf` — Native Open Knowledge Format v0.1 Storage
 

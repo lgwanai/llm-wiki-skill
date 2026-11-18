@@ -1,228 +1,210 @@
 <p align="center">
-  <a href="README.md">🇬🇧 English</a> &nbsp;|&nbsp;
-  <a href="README_CN.md">🇨🇳 中文</a>
+  <a href="README.md">English</a> &nbsp;|&nbsp;
+  <a href="README_CN.md">简体中文</a>
 </p>
 
 # llm-wiki
 
-**会自己生长的知识库。** 不是 RAG —— 不重复推导，一次编译永久使用。LLM 读取你的资料，构建类型化知识图谱，自动维护。交叉引用、矛盾检测、置信度衰减——全部自动化。
+llm-wiki 是一个用于搭建本地知识库的 Python 命令行工具和 Agent 技能。它把文档、图片、笔记和代码编译成可复用的 Markdown 知识页，为概念建立类型化关系，并单独索引来源证据。查询可以串联多份资料，并引用支撑答案的具体页码、幻灯片、章节或表格。
 
-<p align="center">
-  <img src="docs/benchmark_chart.png" alt="PageIndex 与 llm-wiki 同物料评测" width="100%">
-</p>
-
-> 在 PageIndex OSS 的同一批 **34 份 PDF、1,945 页、62 道问题**上取得
-> **62/62**。PageIndex 级文档问答能力被整合进一个支持本地多格式摄入、类型化图谱、
-> 无损证据、政策时效、结构化台账和生命周期修复的长期知识系统。
-> 回答模型和 Judge 配置不同，因此这是方向性同物料对比。
-> [Benchmark 与产品能力对比 →](docs/BENCHMARK.md)
-
----
-
-## 为什么选择 llm-wiki
-
-| | RAG | llm-wiki |
-|---|-----|----------|
-| **方式** | 检索 → 拼凑 → 丢弃 | 编译 → 结构化 → 持久化 |
-| **知识** | 每次查询重新推导，无积累 | 持续积累，越用越强 |
-| **交叉引用** | 无 | 自动实体链接 + 类型化关系边 |
-| **矛盾处理** | 沉默忽略 | 自动检测、标记、解决 |
-| **时效管理** | 手动清理 | 自动置信度衰减 + 取代 |
-| **结构** | 扁平分块 | 类型化页面（概念/技术/模型/事件...） |
-| **检索速度** | 200–500ms（嵌入 API + 向量数据库） | **~41ms**（BM25 + metadata + graph，进程内） |
-
-> *"知识库维护的瓶颈不是阅读，不是思考——是簿记。LLM 不疲倦、不遗忘、一次能触及 15 个文件。"* — Andrej Karpathy
+例如，你可以查询某天适用的报销政策，找到审批流程中向财务移交的步骤，核对多份报告里的数值，也可以把教材知识点和考查它们的试题关联起来。
 
 ## 快速开始
 
+需要 Python 3.10 或更高版本。安装后，在想要存放知识库的项目目录中运行 `wiki`。
+
 ```bash
-pip install -e .
-wiki config --init        # 创建配置文件
-wiki init                 # 初始化 .wiki/
-wiki compile paper.md     # Agent 读取来源 → 结构化页面
-wiki query "什么是Transformer?"  # 搜索 → 合成 → 带引用的答案
+git clone https://github.com/lgwanai/llm-wiki-skill.git
+cd llm-wiki-skill
+python -m pip install -e .
 ```
 
-默认 Agent 编译和查询不需要模型 API。只有显式使用 `--mode llm` 时才需要配置模型服务。
-
-**典型使用指令：**
-
 ```bash
-wiki compile ./documents/policy.pdf
-wiki compile ./documents/project-plan.pdf
-wiki compile ./knowledge-sources/ --depth 1
-wiki query "当前有效的报销政策是什么？"
-wiki query "甘特图中开发任务依赖哪个里程碑？"
-wiki query "审批泳道图中哪个步骤移交给财务？" --debug-search
-```
-
-完整的场景说明和可复制指令见 [使用指南](docs/USAGE.md)。文档只提供用途说明与命令，
-不展示预设运行结果。
-
-## 安装为 Claude Code Skill
-
-llm-wiki 既可以独立使用，也可以作为 Claude Code skill 实现自动知识管理：
-
-```bash
-# 1. 克隆并安装
-git clone https://github.com/lgwanai/llm-wiki-skill.git ~/.claude/skills/llm-wiki
-cd ~/.claude/skills/llm-wiki
-pip install -e .
-
-# 2. 注册 skill
-mkdir -p ~/.claude/skills
-cp ~/.claude/skills/llm-wiki/SKILL.md ~/.claude/skills/llm-wiki-skill.md
-
-# 3. 配置
 wiki config --init
-vim wiki_config.yaml  # 设置 provider + API key
 wiki init
+wiki status
+wiki compile ./handbook.md --mode agent
+# 让当前 Agent 完成并校验生成的编译工作单，再查询。
+wiki query "手册规定了哪些例外？" --no-synthesis
+wiki query "手册规定了哪些例外？"
 ```
 
-> 激活后，Claude 会自动识别 Wiki 意图——"记住这个"、"添加到知识库"、"X 是什么"——并自动调用 skill。
+把 `./handbook.md` 换成你的文件。Agent 模式下，最后一条命令会返回证据包，由当前助手作答并校验。只在终端中运行编译和问答时，先配置模型服务，再分别传入 `--mode llm`。在源码目录也可以通过 `python scripts/wiki.py` 调用命令。
 
-## 置信度元数据兼容性
+### 安装为 Agent 技能
 
-图谱评分、质量检查、矛盾检测、实体强化、批量统计与删除、冲突解决报告统一处理置信度类型：
-
-- 支持数值和数字字符串；兼容历史标签 `high → 0.9`、`medium → 0.5`、`low → 0.3`。
-- 保留有效的 `0`；有限数值限制在 `[0, 1]`。
-- 缺失或非法值（包括布尔值、NaN、Infinity）采用各操作原有的默认值。
-- 批量删除对无法识别的置信度采用 `1.0`，避免把未知值误判为低置信度而删除。
-
-已有图索引中的字符串置信度无需重建即可查询；更新后的建图、抽取和会话流程为新生成的
-图谱实体与关系写入数值置信度。回归测试见
-[`tests/test_confidence.py`](tests/test_confidence.py)。
-
-知识可信度、查询相关性、模型对自身判断的置信度是不同信号。可选重排器目前支持
-FlagEmbedding。**Laya-MLX 处于候选评估阶段，尚未集成**；后续如接入，应单独评分短查询与
-证据片段，保留原生检索回退，并在真实中文查询上验证收益后再参与正式排序。目前不声称
-Laya 已提升本项目的检索准确率。
-
-## 检索性能
-
-llm-wiki 的 Wiki 原生架构实现亚 50ms 检索延迟——无需嵌入调用，无需向量数据库往返：
-
-| 管道 | 检索延迟 | 技术栈 |
-|------|---------|--------|
-| **llm-wiki** | **~41ms avg** | BM25 + metadata + graph（进程内） |
-| RAG（分块+嵌入） | 200–500ms | 嵌入 API + 向量数据库 |
-| GraphRAG | 500ms–2s | 社区检测 + LLM 摘要 |
-
-> ⚡ **41ms 检索延迟**——比基于嵌入的 RAG 快 5–50 倍。一次编译，即时查询。[完整评测 →](docs/BENCHMARK.md)
-
-## 自循环维护 & 医生
-
-**梦境** 从查询日志自动优化你的知识库。**医生** 让你一键反馈问题并自动修复。
+在宿主的技能目录中克隆或链接整个仓库，使 `SKILL.md`、`scripts/`、`templates/` 和 `references/` 位于同一个技能目录下。Codex 的目录可用 `~/.codex/skills/llm-wiki`，也可使用自定义 Codex 主目录。Claude Code 使用 `~/.claude/skills/llm-wiki`。以 Codex 为例：
 
 ```bash
-# 梦境 — 自循环优化（4阶段，直接修改内容）
-wiki dream --foreground          # 自动合并重复页面、补充元数据
-                                 # git 快照 + 质量门控 + 自动回滚
-
-# 医生 — 反馈问题，自动诊断修复
-wiki doctor "专家评审组信息不完整，缺少成员名单"   # 自然语言反馈
-wiki doctor --check coursepl-专家评审组            # 诊断检查
-wiki doctor --recompile .wiki/source/doc.md        # 重新编译源文件
-wiki doctor --re-ocr .wiki/source/slides.pptx      # 重新 OCR + 编译
-wiki doctor --list                                 # 列出未解决问题
+mkdir -p ~/.codex/skills
+git clone https://github.com/lgwanai/llm-wiki-skill.git ~/.codex/skills/llm-wiki
+python -m pip install -e ~/.codex/skills/llm-wiki
 ```
 
-| 特性 | 机制 |
-|------|------|
-| **Git 快照** | 每次修改前自动 `git commit` 到 `.wiki/.git` — 安全回滚 |
-| **质量门控** | 三维检索评估（排名/密度/覆盖率）— 质量下降自动回滚 |
-| **经验积累** | SHA256 去重的经验教训 → 下次梦境自动加载为上下文 |
-| **医生工作流** | 正则分类 → wiki 搜索诊断 → 8 种修复策略 → 验证 → 持久化 |
+在知识库项目中打开助手后，可在 Codex 中输入「用 `$llm-wiki` 把这份手册加入知识库，并回答试用期有哪些例外」。技能会引导助手完成编译任务并校验答案。仓库也提供可选的 Codex 和 Claude Code 会话钩子。 [技能说明](SKILL.md) · [自动化参考](references/automation.md)
 
-## 评测
+### 模型和 OCR 要求
 
-我们评测的是**完整产品 pipeline**（编译→检索→合成→校验），并使用 PageIndex OSS
-Benchmark 的相同 PDF、问题和参考答案。
+| 运行方式 | 所需资源 |
+|---|---|
+| **本地检索** | `wiki query --no-synthesis` 返回排序后的证据。默认检索使用本地索引，无需调用回答模型。 |
+| **Agent 模式（默认）** | 复用当前 AI 助手的模型连接。CLI 负责生成编译工作单或查询证据包。处理图片或未解析的图表关系时，需要支持图像输入的助手，并为文字提取配置 OCR。 |
+| **独立 LLM 模式** | 提前确认模型服务的 API 地址、模型 ID、访问权限、额度和所需 API Key。把密钥放在环境变量里，由 `wiki_config.yaml` 引用。Ollama 需要先启动服务并安装目标模型。 |
+| **OCR** | 本地后端需要对应的运行环境和模型权重。独立 OCR 的 API 后端需要可用的视觉模型端点。OCR 使用单独的配置文件。 |
 
-| 系统/配置 | 正确数 | 准确率 |
-|---|---:|---:|
-| PageIndex · gpt-5.6-luna/high | 60/62 | 96.8% |
-| PageIndex · gpt-5.6-terra/medium | 61/62 | 98.4% |
-| PageIndex · gpt-5.6-terra/high | **62/62** | **100.0%** |
-| PageIndex · gpt-5.6-sol/medium | **62/62** | **100.0%** |
-| **llm-wiki · 方向性结果** | **62/62** | **100.0%** |
+独立 LLM 模式配置模型后，运行 `wiki config --check` 检查本地配置。此命令不会请求模型服务。OCR 环境可用 `ocr list --check` 和 `ocr --doctor` 检查。 [配置指南](CONFIGURATION.md) · [使用指南](docs/USAGE.md)
 
-这组结果证明 llm-wiki 已达到 PageIndex 级文档问答准确率。在此基础上，它进一步提供本地 OCR、
-Agent 原生多模态图表解读、多格式摄入、无损证据、类型化知识图谱、政策时效、DuckDB 台账和可修复的知识生命周期。
-由于回答模型和 Judge 配置不同，这代表达到相同评测上限，而不是严格的模型对模型胜负。
+配置模型服务后，可用下面的命令独立运行。PDF 中仍有未解析的页面证据时，编译可能返回工作单，交由 Agent 看图复核。
 
-→ [Benchmark、产品能力对比与复现细节](docs/BENCHMARK.md)
+```bash
+wiki config --check
+wiki compile ./handbook.md --mode llm
+wiki query "手册规定了哪些例外？" --mode llm
+```
 
-## 核心能力
+## 导入与编译
 
-| 能力 | 说明 |
-|------|------|
-| **编译** | Agent 读取来源、判断文档类型、写入符合 schema 的 wiki 页面和图谱 |
-| **查询** | Wiki 原生检索（元数据+BM25+视觉证据+图谱+台账）+ 实体链接 → Agent 合成答案 |
-| **多模态配图** | OCR 提取文字，Agent 解读图表/流程图/泳道图/甘特图结构；独立索引并在答案中返回命中原图 |
-| **检查** | 健康扫描+自愈：矛盾、过期、孤立页面、断链 |
-| **生命周期** | 艾宾浩斯遗忘曲线、置信度评分、矛盾检测、取代 |
-| **记忆层级** | 工作→情景→语义→程序，自动整合提升 |
-| **台账** | 结构化表格管理，自然语言→SQL（DuckDB） |
-| **多语言** | 中英文双引擎检索（jieba + Porter 词干提取） |
-| **隐私** | 摄入时敏感信息过滤（API key、token、PII） |
-| **梦境（自动）** | 查询驱动的自循环优化：git 快照 + 质量门控 + 经验积累 |
-| **医生** | 用户反馈诊断修复：分类 → 搜索 → 修复 → 验证 |
+| 来源 | 可保留的结构和证据 |
+|---|---|
+| **Markdown、文本、HTML 文件、代码和对话记录** | 提取标题、事实、定义、代码片段和概念链接。支持单个文件、递归目录、内联文本和标准输入。 |
+| **PDF** | 优先提取原生文字和版面信息。结构明确时可保留代码缩进，拼接跨页续表，区分并排表格，并绑定简单图表的标签和数值。存在缺口的页面会渲染后走本地 OCR 或进入 Agent 复核。 |
+| **PowerPoint** | 对可编辑的 `.pptx`，提取可用的连接线端点、决策分支、表格单元格和图表数值。含截图的混合幻灯片可在同一页码下保留原生数据和 OCR 结果。 |
+| **Word 和 EPUB** | Word 在渲染条件具备时保留页级证据，旧版 `.doc` 可能需要 LibreOffice 或 macOS `textutil` 转换。EPUB 按原书阅读顺序处理，保留章节、节标题和引用的配图。 |
+| **截图、扫描件和图片** | OCR 提取文字、公式和表格。支持图像输入的 Agent 读取箭头方向、泳道交接、任务依赖、坐标轴和数据系列等关系。核对后的观察可单独归档为可搜索的证据，并关联原图。 |
+| **电子表格和 CSV** | 可作为资料编译，也可用 `wiki ledger import` 导入台账，按行存储和查询。 |
 
-## 文档
+编译可按政策合规、运营、工程、财务、学术研究和教育等领域采用不同的提取规则。制度文件可保留条款编号、许可或禁止、适用范围、例外和生效日期。研究材料可关联定义、公式、假设、结论和限制。教材与试卷可建立「知识点 ↔ 试题」的双向链接。概念之间可以使用 `depends_on`、`tests`、`contradicts`、`supersedes` 等类型化关系。
+
+事实、表格行、键值对和脚注可提取为原子主张，同时保留对应条件和出处。查询也能直接检索按页、幻灯片或 EPUB 章节保存的来源文本。即使知识页没有收录某个字段，仍有机会从来源证据中查到。命中视觉记录时，可同时返回对应的原图和来源位置。
+
+### 来源版本与发布
+
+系统按文件路径识别来源。同名文件位于不同目录时可分别编译，移动或改名后视为新来源。内容未变时可跳过处理。用 `--force` 强制重编译，用 `--dry-run` 预览。
+
+Agent 编译会生成工作单，在暂存区写草稿，并用来源定位和原文摘录记录每一项的覆盖情况。校验成功后，知识页和对应证据一同发布。独立 LLM 模式在暂存编译成功后发布。编译未完成或发布中断时，查询继续使用上一个已发布版本。旧版证据和知识页副本保存在 `.wiki/source/evidence/` 下。
+
+```bash
+wiki compile ./documents/ --depth 1
+wiki compile ./documents/release-plan.pptx --force
+wiki compile --text "审批有效期为 90 天。" --name approval-notes
+```
+
+[工作单、版本和发布命令](docs/CLI.md#source-versions-and-publication) · [视觉证据说明](references/visual-evidence.md) · [文档和图片示例](evals/media_workflows/README.md)
+
+## 检索、问答与答案校验
+
+默认检索融合 **原文证据、原子主张、页面元数据、BM25F、视觉记录、知识图谱和 DuckDB 台账**。系统按问题意图调整各路权重，通过倒数排名融合合并结果。长知识页完整保留，标题下的段落单独参与词法检索。中英文检索在本地分词，支持利用双语别名和 `.wiki/query_lexicon.yaml` 中的项目词表扩展查询。
+
+- **跨资料回答。** 多跳检索将复合问题拆成子目标，沿相关概念链接找证据。证据齐全、没有可用链接或达到跳数上限时停止，默认三跳。
+- **判断政策时效。** 查询当前规则会优先返回已生效版本，并可提示将生效的替代规则。历史查询按所问日期判断是否落入 `effective_from`（含）与 `effective_until`（不含）定义的区间。适用日期缺失时保留为未知。
+- **核对具体字段和原图。** 可定位到来源页、图表、表格行或脚注。当结构化图表证据能唯一确定所需的数据系列和数值时，部分合计和占比可直接计算。
+- **校验并写回。** Agent 模式生成的查询任务附带本地答案校验命令，独立 LLM 模式直接校验生成内容。检查包括引用、许可或禁止的方向、数值与单位、日期适用性。即使关闭常规答案校验，`--file-back` 也会拦截缺少证据或与证据冲突的陈述。
+- **理解追问。** `--conversation-stdin` 可传入最多六轮问答的 JSON 历史。配置的模型先补全当前问题中的指代，再按完整问题检索。本轮答案以新检索到的证据为依据。
+- **按用途输出。** 可只返回证据，也可生成带引用的答案。支持 Markdown、对比表、时间线、Marp 幻灯片、JSON 和关系图。
+
+```bash
+wiki query "2025 年 7 月 1 日适用哪版报销政策？"
+wiki query "甘特图中哪个里程碑阻塞了上线？"
+wiki query "比较两个地区政策中的审批阈值" --format table
+wiki query "哪个步骤把审批移交给财务？" --no-synthesis --debug-search
+wiki query "总结已批准的升级处理流程" --file-back
+```
+
+可选的语义检索使用嵌入式 Zvec 和向量模型。用 `python -m pip install -e '.[vector]'` 安装，启用 `embeddings`，并将 `vector` 加入 `query.search_streams`。可选的 FlagEmbedding 重排使用 `python -m pip install -e '.[rerank]'` 安装，通过 `reranker.enabled` 启用。这些组件未启用或不可用时，原生检索仍可运行。 [混合检索说明](references/hybrid-search.md) · [答案校验命令](docs/CLI.md#answer-evidence-verification)
+
+## 表格与台账
+
+编译提取的表格可通过 `wiki table list` 和 `wiki table show <table>` 查看。用 `wiki ledger` 在 DuckDB 中维护结构化记录，支持导入 CSV 或 Excel、定义字段、批量写入、调整表结构、跨表搜索和导出 CSV。通用 Wiki 查询也可以从台账返回证据。
+
+```bash
+wiki ledger import ./data/projects.xlsx
+wiki ledger list
+wiki ledger show projects
+wiki ledger sql "SELECT * FROM projects WHERE budget > 500000"
+wiki ledger ask projects "哪些项目的预算超过五十万元？"
+```
+
+请按实际数据替换表名和字段名。`wiki ledger sql` 执行只读查询。`wiki ledger ask` 和 `wiki table ask` 使用已配置的模型。也可通过 `wiki ledger context` 获取表结构和函数说明，让当前 Agent 生成 SQL。 [台账命令](docs/CLI.md#ledger) · [SQL 函数参考](references/sql-functions.md)
+
+## 维护、存储与分享
+
+| 任务 | 命令 | 行为 |
+|---|---|---|
+| 查看状态 | `wiki status`、`wiki search doctor` | 查看知识库统计，诊断检索索引。 |
+| 检查和修复 | `wiki lint`、`wiki lint --auto-heal` | 检查孤立页面、断链、过时内容和矛盾，并按需应用可用修复。 |
+| 处理具体问题 | `wiki doctor "华南地区的例外条件缺失"` | 记录问题并检索证据，根据类型重编译、重新 OCR、补充元数据或标记复核。 |
+| 按查询历史优化 | `wiki dream --foreground` | 更新元数据、审计近期查询，并尝试合并重复页或补充内容。用检索质量检查评估改动，并借助 Git 快照回滚。 |
+| 沉淀会话知识 | `wiki consolidate`、会话结晶流程 | 支持记忆整合和置信度衰减，可把会话中的决策、发现和经验保存为可检索的摘要。 |
+| 分享知识 | `wiki export`、`wiki import`、`wiki okf` | 通过 Wiki ZIP 或 OKF bundle 交换已编译的知识页和附件。 |
+
+置信度会随时间衰减，也可通过强化更新。已有页面和图谱中的 `high`、`medium`、`low` 旧标签仍可读取。矛盾标记和取代关系保留了复核冲突或旧知识所需的上下文。 [知识生命周期](references/lifecycle.md)
+
+### 数据目录和可移植性
+
+`.wiki/pages/` 是原生的 [Open Knowledge Format v0.1 草案](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle。概念用带 YAML frontmatter 的 Markdown 保存，Concept ID 来自页面相对于 bundle 根目录的路径。页面用标准 Markdown 链接表达关系。来源证据、图索引和台账数据库各有存储目录。用 `LLM_WIKI_DIR` 切换知识库，用 `LLM_WIKI_CONFIG` 指定配置文件。
+
+```text
+.wiki/
+├── pages/            OKF 知识页、会话摘要和引用附件
+├── source/evidence/  来源记录、证据清单和历史版本
+├── graph/            类型化关系和检索索引
+├── ledger/           DuckDB 结构化台账
+├── schema.md         页面和实体规范
+└── audit.json        编译审计记录
+```
+
+```bash
+wiki export team-wiki.zip
+wiki export onboarding.zip --module modules/onboarding --page concepts/access
+wiki okf validate onboarding.zip
+wiki import onboarding.zip
+wiki okf export ./exports/team-okf
+```
+
+ZIP 保留知识页和随包附件的相对路径及元数据。全量导出包括会话页面。按主题分享时，可重复使用 `--module` 和 `--page`，显式带上相关知识页。ZIP 的范围是已编译的 bundle，原文证据历史、运行配置和 DuckDB 数据库留在原库。导入时跳过相同文件，并在合并前报告冲突。`wiki okf` 也支持校验、导入目录及迁移旧版页面元数据。 [分享与导入说明](docs/USAGE.md#13-分享知识库和知识模块)
+
+### 数据处理
+
+知识库和默认检索索引保存在本地。新生成的文本快照和提取文本会脱敏已识别的凭据，原图像素仍可能包含敏感信息。使用远程助手、独立模型或 API OCR 时，操作所需的来源或检索片段可能会发送到所选服务。处理或分享敏感资料前，可以核对当前运行方式、附件和导出包内容。 [隐私与治理](references/privacy-governance.md)
+
+## 独立 OCR
+
+`ocr` 可以脱离 Wiki 单独使用。可根据资料类型、硬件环境或可用模型端点选择后端。
+
+| 后端 | 引擎和典型用途 |
+|---|---|
+| `paddlevl` | 默认后端。在 Apple Silicon 上用 MLX 运行 PaddleOCR-VL-1.6，提取版面和结构化内容。 |
+| `ovis` | MLX 上的 OvisOCR2，可提取 Markdown、公式和图像。 |
+| `mineru` | MinerU，用于提取页面布局、表格和公式。 |
+| `deepseek` | DeepSeek-OCR-2，用视觉模型解析文档。 |
+| `logics` | Logics-Parsing-v2，用于多模态文档解析。 |
+| `paddle` | PaddleOCR PP-OCRv5，用于多语言文字识别。 |
+| `api` | 已配置的 OpenAI 兼容视觉模型端点。 |
+
+```bash
+ocr list --check
+ocr --doctor
+ocr handbook.pdf --smoke-pages 3
+ocr handbook.pdf -o ./parsed/
+ocr --batch ./pdfs/
+```
+
+OCR 输出 Markdown 和清单。清单记录来源标识、请求页数、实际解析范围和覆盖情况，并在可用时记录资产引用。用 `ocr use <backend>` 切换默认后端，`--backend <backend>` 可单次覆盖，`ocr config` 管理 `~/.config/ocr/config.yaml`。也可以用 `python -m ocr` 或 `wiki ocr` 调用。 [OCR 配置](CONFIGURATION.md#ocr) · [OCR 命令](docs/CLI.md#ocr)
+
+## 评测与文档
+
+- **长文档问答。** 仓库在 PageIndex OSS Benchmark 使用的同一批 34 份 PDF、1,945 页和 62 道问题上记录了 **62/62** 的结果。回答模型和评判模型不同，该数字适合作为同语料的方向性结果。 [评测详情与复现方法](docs/BENCHMARK.md)
+- **多模态证据。** 文档场景评测分别考察 PPT 原生结构、PDF 版面恢复、图片纯 OCR，以及补充视觉观察后的检索与问答。 [多模态评测](evals/media_workflows/README.md)
+- **混合来源问答。** 混合 Wiki 评测覆盖同名来源、政策版本和干扰页，记录证据召回、引用支持、证据不足时的拒答和本地答案校验。 [混合 Wiki 评测](evals/p1_mixed_wiki/README.md)
+
+可以用 `wiki benchmark <cases.jsonl> --method retrieval` 跑自己的检索用例，查看召回、排序、子目标覆盖率及 P50/P95 检索延迟。`--method both` 还会对提供的答案或抽取式答案计算本地 RAGAS 风格的指标。 [评测命令](docs/CLI.md#benchmark)
 
 | 文档 | 内容 |
-|------|------|
-| [使用指南](docs/USAGE.md) | 初始化、编译、图表检索、时效查询、维护、OKF、台账和评测指令 |
-| [配置指南](CONFIGURATION.md) | LLM、Embedding、OCR、查询等配置 |
-| [架构与生命周期](docs/ARCHITECTURE.md) | 三层设计、知识生命周期 |
-| [评测详情](docs/BENCHMARK.md) | PageIndex 同物料对比、架构亮点、完整结果 |
-| [CLI 参考](docs/CLI.md) | 完整命令参考 |
+|---|---|
+| [使用指南](docs/USAGE.md) | 按场景组织的完整流程和可复制命令 |
+| [CLI 参考](docs/CLI.md) | 参数、工作单、证据校验和文档处理 |
+| [配置指南](CONFIGURATION.md) | 模型、OCR、检索和向量配置 |
+| [架构与生命周期](docs/ARCHITECTURE.md) | 存储、检索和知识维护机制 |
+| [Agent 技能](SKILL.md) | Agent 编译、问答、维护和分享协议 |
 
-## 项目结构
-
-```
-llm-wiki-skill/
-├── scripts/           # Python 自动化脚本（~30 个）
-│   ├── wiki.py        # 统一 CLI 入口
-│   ├── compile_v2.py  # LLM 源→Wiki 编译器
-│   ├── query.py       # Wiki 原生搜索 + 答案合成
-│   ├── search.py      # 元数据/BM25/视觉/图谱搜索；向量路径为可选项
-│   ├── lint.py        # 健康扫描 + 自愈
-│   ├── dream.py       # 自循环维护（4阶段，自动模式）
-│   ├── doctor.py       # 用户反馈诊断 + 自动修复
-│   ├── ledger.py      # 结构化表格管理（DuckDB）
-│   └── ...
-├── .wiki/             # Wiki 数据（LLM 生成）
-│   ├── pages/         # 结构化 markdown 页面
-│   ├── graph/         # entities.json, edges.json, 可选 embeddings
-│   ├── ledger/        # ledger.duckdb 数据库
-│   └── source/        # 原始源文件（不可变）
-├── .claude/hooks/     # 自动化钩子（可选启用）
-├── tests/             # 测试套件（400 测试）
-├── templates/         # 页面模板
-└── references/        # 深度参考资料
-```
-
-## 设计来源
-
-基于 [Karpathy 的 LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) 和 [Rohit 的 v2 扩展](https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2)，100% 实现。
-
-| 原则 | 实现 |
-|------|------|
-| 三层架构（源→Wiki→Schema） | `source/` + `pages/` + `schema.md`/`wiki_config.yaml` |
-| 摄入→写页面→索引→日志 | `compile_v2.py` 完整流程 |
-| 同名异实保护 | 自动前缀 + 概念聚合页 |
-| 查询→搜索→合成→回填 | `query.py` + `--file-back` + 6 种输出格式 |
-| 检查→自愈 | `lint.py --auto-heal` |
-| 12 种类型化关系 | `uses`, `depends_on`, `extends`, `contradicts`, `supersedes`... |
-| 艾宾浩斯遗忘曲线 | 6 种实体半衰期（架构260天, Bug20天...） |
-| 记忆整合 | working → episodic → semantic → procedural |
-| 隐私过滤 | 5 种敏感信息模式，LLM 发送前脱敏 |
-| 梦境自循环 | git 快照 + 质量门控 + 回滚 + SHA256 去重经验 |
-| 医生诊断 | 正则分类 → wiki 搜索 → 策略修复 → 验证 → 持久化 |
-
-## 许可
-
-MIT
+项目受 [Karpathy 的 LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) 和 [Rohit 的 v2 扩展](https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2) 启发，采用 [MIT 许可](LICENSE)。

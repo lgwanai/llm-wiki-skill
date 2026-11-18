@@ -1,508 +1,210 @@
 <p align="center">
-  <a href="README.md">🇬🇧 English</a> &nbsp;|&nbsp;
-  <a href="README_CN.md">🇨🇳 中文</a>
+  <a href="README.md">English</a> &nbsp;|&nbsp;
+  <a href="README_CN.md">简体中文</a>
 </p>
 
 # llm-wiki
 
-**A Living Knowledge Base That Compounds.** Not RAG — don't re-derive, compile once. The Agent reads your sources, builds a typed knowledge graph, and maintains it forever. Cross-references, contradiction detection, confidence decay — all automatic.
+llm-wiki is a Python CLI and an Agent skill for building a local knowledge base. It compiles documents, images, notes, and code into reusable Markdown concept pages with typed relationships, while indexing the underlying evidence separately. A query can connect information across sources and cite the specific page, slide, section, or table that supports the answer.
 
-<p align="center">
-  <img src="docs/benchmark_chart.png" alt="PageIndex benchmark: llm-wiki comparison" width="100%">
-</p>
+Use it to look up which policy applied on a given date, trace a handoff on a workflow diagram, compare figures across reports, or connect textbook concepts to the questions that test them.
 
-> **62/62 on the same 34-PDF, 1,945-page PageIndex OSS benchmark material.** PageIndex-level
-> document QA is built into a local, multi-format knowledge system with typed graphs, lossless
-> evidence, temporal policy reasoning, structured ledgers, and lifecycle repair. The score is
-> directional because the answer and judge models differ from PageIndex's published matrix.
-> [Benchmark and capability comparison →](docs/BENCHMARK.md)
+## Quick start
 
----
-
-## Why llm-wiki
-
-| | RAG | llm-wiki |
-|---|-----|----------|
-| **Approach** | Retrieve → Synthesize → Discard | Compile → Structure → Persist |
-| **Knowledge** | Ephemeral, re-derived each query | Cumulative, compounds over time |
-| **Cross-references** | None | Automatic entity linking + typed edges |
-| **Contradictions** | Silent | Detected, flagged, resolved |
-| **Staleness** | Manual cleanup | Automatic confidence decay + supersession |
-| **Structure** | Flat chunks | Typed pages (concepts, techniques, models, events...) |
-| **Search Speed** | 200–500ms (embedding API + vector DB) | **~41ms** (BM25 + metadata + graph, in-process) |
-
-> *"The bottleneck in knowledge base maintenance isn't reading, isn't thinking — it's bookkeeping. LLMs don't fatigue, don't forget, and can touch 15 files at once."* — Andrej Karpathy
-
-## Quick Start
+Install with Python 3.10 or newer. Run the Wiki commands from the directory where you want to keep the knowledge base.
 
 ```bash
-pip install -e .
-wiki config --init        # create wiki_config.yaml
-wiki init                 # initialize .wiki/
-wiki compile paper.md     # Agent reads source → structured pages
-wiki query "What is X?"   # search → synthesize → answer with citations
+git clone https://github.com/lgwanai/llm-wiki-skill.git
+cd llm-wiki-skill
+python -m pip install -e .
 ```
 
-Agent compile/query mode is the default and does not require an API key. Configure a
-provider only when you explicitly want the optional `--mode llm` path.
-
-**Typical commands:**
-
 ```bash
-wiki compile ./documents/policy.pdf
-wiki compile ./documents/project-plan.pdf
-wiki compile ./knowledge-sources/ --depth 1
-wiki query "Which reimbursement policy is currently effective?"
-wiki query "Which milestone blocks implementation in the Gantt chart?"
-wiki query "Which swimlane step hands work to Finance?" --debug-search
-```
-
-See the task-oriented [usage guide](docs/USAGE.md) for initialization, multimodal
-compilation, temporal queries, visual retrieval, maintenance, OKF, ledger, and benchmark commands.
-It contains explanations and commands without fabricated command output.
-
-## Install as Claude Code Skill
-
-llm-wiki works standalone **and** as a Claude Code skill for hands-free knowledge management:
-
-```bash
-# 1. Clone and install
-git clone https://github.com/lgwanai/llm-wiki-skill.git ~/.claude/skills/llm-wiki
-cd ~/.claude/skills/llm-wiki
-pip install -e .
-
-# 2. Register the skill
-mkdir -p ~/.claude/skills
-cp ~/.claude/skills/llm-wiki/SKILL.md ~/.claude/skills/llm-wiki-skill.md
-
-# 3. Configure
 wiki config --init
-vim wiki_config.yaml  # set provider + API key
 wiki init
+wiki status
+wiki compile ./handbook.md --mode agent
+# Complete and verify the generated worklist in your Agent.
+wiki query "What are the exceptions in the handbook?" --no-synthesis
+wiki query "What are the exceptions in the handbook?"
 ```
 
-> After activation, Claude auto-detects wiki intents — "remember this", "add to wiki", "what do we know about X" — and invokes the skill automatically.
+Replace `./handbook.md` with your source. In Agent mode, the last command returns an evidence packet for the assistant to answer and verify. For terminal-only document compilation and answer synthesis, configure a model and pass `--mode llm` to each command. From the checkout, `python scripts/wiki.py` is also a CLI entry point.
 
-## Confidence metadata compatibility
+### Install as an Agent skill
 
-Confidence values are normalized before graph scoring, quality checks, contradiction detection,
-entity reinforcement, bulk statistics/deletion, and resolution-report formatting. Numeric values
-and numeric strings are accepted; legacy labels map to `high: 0.9`, `medium: 0.5`, and `low: 0.3`.
-Valid zero is preserved, and finite values are clamped to `[0, 1]`. Missing or invalid values,
-including booleans, NaN, and infinity, use each operation's default. Bulk deletion uses `1.0`
-for unrecognized confidence values to avoid treating unknown metadata as low confidence.
-
-Existing graph indexes containing string confidence values can be queried without rebuilding.
-New graph entities and edges produced by the updated builders, extractor, and session pipeline
-store numeric confidence values. Regression coverage is in
-[`tests/test_confidence.py`](tests/test_confidence.py).
-
-Knowledge confidence, query relevance, and a model's confidence in its own decision are distinct
-signals. The optional reranker currently supports FlagEmbedding. **Laya-MLX is an evaluation
-candidate, not an integrated backend**: any future adapter should score short query/evidence
-pairs separately, preserve the native retrieval fallback, and demonstrate gains on representative
-Chinese queries before affecting production ranking. No Laya accuracy improvement is claimed.
-
-## Search Performance
-
-llm-wiki keeps a fast lexical/graph baseline with no embedding calls or remote vector DB round-trips. Optional local Zvec retrieval and reranking trade extra latency for semantic recall:
-
-| Pipeline | Search Latency | Components |
-|----------|---------------|------------|
-| **llm-wiki baseline** | **~41ms avg*** | BM25F + metadata + graph + DuckDB (in-process) |
-| **llm-wiki semantic** | machine/model dependent | Baseline + embedded Zvec HNSW + optional reranker |
-| RAG (chunk+embed) | 200–500ms | Embedding API + vector DB |
-| GraphRAG | 500ms–2s | Community detection + LLM summarization |
-
-> \*The historical 41ms result is retained as a baseline, not a guarantee. Run the included benchmark on your own wiki; it now reports P50/P95 latency alongside recall and leakage metrics.
-
-### Retrieval completeness and accuracy
-
-Compile preserves canonical pages and also materializes atomic claims from explicit claim metadata,
-Key Facts, normal table rows, key/value fields, and bound footnotes. Each claim retains modality,
-conditions, exceptions, audience, jurisdiction, effective interval, source location, and known
-source authority. Query parses these same dimensions into a structured retrieval plan.
-
-Query uses claim-level retrieval plus field-weighted BM25F over Concept ID, title, tags, description,
-key facts, headings, and body. A dedicated visual stream indexes multimodal descriptions of axes,
-series, nodes, edges, lanes, handoffs, timelines, tasks, and dependencies. Claims, metadata, BM25F,
-visual, graph, ledger, and optional vector results are combined with intent-aware weighted reciprocal-rank fusion. Each stream over-fetches
-candidates before scope/status filtering, so filtering does not silently starve the
-final result count. Evidence-driven multi-hop retrieval decomposes compound questions into
-answer subgoals, follows only the most relevant concept links, tracks path confidence, and
-stops when the required evidence is covered (three hops by default). Coverage-aware top-k
-selection avoids returning several near-duplicate pages while omitting one side of a comparison.
-Long concepts remain intact in OKF storage; heading-bounded virtual sections receive their own
-BM25 signal so an exact fact near the end of a page can rescue its canonical parent page.
-
-Time-sensitive policy queries use effective-time semantics instead of a simple newest/status
-filter. Compiled rules may declare inclusive `effective_from`, exclusive `effective_until`, and
-`supersedes` / `superseded_by` links. For a current query, the rule active now ranks first while a
-future replacement is retained as an upcoming-change notice; an explicit date reconstructs the
-rule applicable at that time. Missing dates remain unknown, and publication time, `timestamp`,
-`generated.at`, or `stale_after` are never treated as legal/business effective dates.
-
-Agents must call `wiki query` or `scripts/query.py`; they must not create temporary
-Python/Shell/SQL search code or scan `.wiki/` manually. The official query command applies
-ranking, graph, ledger, scope, lifecycle, multi-hop, and evidence-selection rules together.
-
-DuckDB ledger matching executes over all declared columns and all rows instead of a
-fixed Python sample. Independent graph, ledger, and vector streams run concurrently.
-Search indexes are content-aware and invalidate when any nested OKF concept changes.
-Metadata search consumes canonical `aliases`, `keywords`, `questions`, and tags. Education graph
-queries use typed edges such as `tests`, `depends_on`, `has_example`, and `confuses_with`, with a
-bounded two-hop traversal for question → knowledge point → prerequisite paths.
-
-Cross-language expansion is local and model-free. It first learns phrase mappings from bilingual
-titles, aliases, keywords, tags, and questions already present in the Wiki, then applies a small
-operations/education fallback glossary. Project-specific mappings can be added without code:
-
-```yaml
-# .wiki/query_lexicon.yaml
-terms:
-  熔断窗口: circuit breaker window
-  证据保留: [evidence retention, audit evidence retention]
-```
-
-Optional local semantic retrieval and reranking:
-
-```yaml
-query:
-  max_results: 8
-  parallel_search: true
-  search_streams: raw,claim,metadata,bm25,visual,graph,ledger,vector
-  cross_language_expansion: true
-  multi_hop_enabled: true
-  multi_hop_max_hops: 3
-  verify_answers: true
-
-embeddings:
-  enabled: true
-  backend: zvec
-  model_source: modelscope
-  index_path: graph/zvec
-
-reranker:
-  enabled: false
-  backend: flagembedding
-  model: BAAI/bge-reranker-v2-m3
-  candidate_count: 20
-```
-
-Install only the optional layer you use: `pip install -e '.[vector]'` or
-`pip install -e '.[rerank]'`. If it is disabled or unavailable, query falls back to
-the native retrieval path.
-
-## Self-Looping Maintenance & Doctor
-
-**Dream** auto-optimizes your wiki from query logs. **Doctor** lets you report issues and auto-fixes them.
+Clone or link the complete repository as a single skill directory, with `SKILL.md`, `scripts/`, `templates/`, and `references/` together. For Codex, put it under `~/.codex/skills/llm-wiki` (or under your configured Codex home). For Claude Code, use `~/.claude/skills/llm-wiki`. For example, to install for Codex from a fresh clone:
 
 ```bash
-# Dream — self-looping optimization (4 phases, directly modifies content)
-wiki dream --foreground          # auto-merge duplicates, enrich metadata
-                                 # git snapshots + quality gating + rollback
-
-# Doctor — report issues and auto-repair
-wiki doctor "专家评审组信息不完整，缺少成员名单"   # natural language feedback
-wiki doctor --check coursepl-专家评审组            # diagnostic check
-wiki doctor --recompile .wiki/source/doc.md        # recompile source
-wiki doctor --re-ocr .wiki/source/slides.pptx      # re-OCR + recompile
-wiki doctor --list                                 # outstanding issues
+mkdir -p ~/.codex/skills
+git clone https://github.com/lgwanai/llm-wiki-skill.git ~/.codex/skills/llm-wiki
+python -m pip install -e ~/.codex/skills/llm-wiki
 ```
 
-| Feature | Mechanism |
-|---------|-----------|
-| **Git snapshots** | Auto-commit before every modification in `.wiki/.git` — safe rollback |
-| **Quality gating** | 3-dimension search assessment (rank/density/coverage) — auto-rollback if degraded |
-| **Experience store** | SHA256-deduped lessons learned → loaded as context in future runs |
-| **Doctor workflow** | classify (regex) → diagnose (wiki search) → repair (8 strategies) → verify → persist |
+Open the assistant in your knowledge-base project. In Codex, ask `$llm-wiki` to add a source and answer a question against it. The skill guides the assistant through completing the worklist and verifying the final answer. Repo-local session hooks for Codex and Claude Code are optional. [Skill instructions](SKILL.md) · [Automation reference](references/automation.md)
 
-## Content-Aware Domain Experts
+### Model and OCR requirements
 
-Compile does not force every source through a fixed chunking recipe. It reads the
-document first, identifies its domain and intended retrieval tasks, then combines up
-to three relevant expert lenses. Page count, fact count, and entity/concept ratio are
-driven by the source rather than fixed quotas.
+| Workflow | Resources |
+|---|---|
+| **Local retrieval** | `wiki query --no-synthesis` returns ranked evidence without an answer model. The default retrieval configuration uses local indexes. |
+| **Agent mode (default)** | Uses the current assistant's model connection. The CLI prepares compile worklists and query evidence packets for that assistant. Images and unresolved chart or diagram relationships need an assistant with image input and a configured OCR path for text extraction. |
+| **Standalone LLM mode** | Uses the configured model service. Confirm the API endpoint, model ID, access, quota, and any required API key. Reference the key through an environment variable in `wiki_config.yaml`. Ollama requires a running service and an installed model. |
+| **OCR** | Requires a ready backend with its runtime and model weights, or a configured vision endpoint for the standalone OCR API backend. OCR has its own configuration. |
 
-Built-in expert coverage includes:
+For standalone LLM mode, run `wiki config --check` after editing the model settings. It checks local prerequisites without contacting the provider. Run `ocr list --check` and `ocr --doctor` to inspect OCR readiness. [Configuration guide](CONFIGURATION.md) · [Usage guide](docs/USAGE.md)
 
-- Legal/regulatory compliance, sales and marketing policy, finance/accounting
-- Operations, product management, software architecture, and project management
-- HR, procurement/supply chain, manufacturing/quality, risk/internal audit
-- Academic research, curriculum design, textbook/exam learning, education, healthcare, and customer service
-- Corporate strategy and data/metric governance
-
-For example, regulations retain article numbering, operative language, applicability,
-exceptions, effective dates, and cross-references. Commercial policies retain region,
-audience, channel, time window, thresholds, exclusions, approvals, and settlement
-conditions. Academic documents retain definitions, formulas, assumptions, derivations,
-evidence, limitations, and citations. Textbooks compile into linked knowledge-point pages;
-exam questions preserve stems, answers, solutions, scoring evidence, tested concepts, and
-common mistakes, with bidirectional question—knowledge-point links. Every study knowledge
-point records the original filename plus one or more pages/page ranges, and keeps relevant
-figures from cited and adjacent pages. Knowledge is merged across page/chunk boundaries;
-uncertain locations are marked for verification instead of suppressing the concept.
-Mixed or unfamiliar sources can combine lenses
-or infer a more suitable specialist dynamically.
-
-Incremental compilation resolves canonical concept titles and aliases before writing. New evidence
-is fused into the existing page; if semantic fusion is unavailable, a lossless fallback retains both
-sources instead of overwriting either one. For textbooks and exam papers, post-processing verifies
-that every recognized question links to its textbook knowledge points and that each knowledge-point
-page contains the reverse question link, so both directions are materialized in the graph.
-
-## Native Open Knowledge Format (OKF) Storage
-
-llm-wiki stores knowledge natively as Google Knowledge Catalog's
-[Open Knowledge Format v0.1 Draft](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
-bundle. `.wiki/pages/` is the bundle root; every non-reserved Markdown file is
-an OKF concept, and its bundle-relative path is its Concept ID.
+With the model service configured, run the standalone path as follows. A PDF with unresolved page evidence can still return a worklist for visual review.
 
 ```bash
-# Validate an OKF bundle
-wiki okf validate path/to/bundle
-
-# Merge another OKF bundle directly into the native bundle
-wiki okf import path/to/bundle
-wiki okf import path/to/bundle --force
-
-# Copy the native bundle for distribution (no format conversion)
-wiki okf export path/to/output-bundle
-wiki okf export path/to/output-bundle --force
-
-# One-time in-place migration from legacy llm-wiki metadata
-wiki okf migrate
+wiki config --check
+wiki compile ./handbook.md --mode llm
+wiki query "What are the exceptions in the handbook?" --mode llm
 ```
 
-Compile writes OKF `type`, `title`, `description`, optional `resource`, `tags`, and
-`timestamp` directly. Search and query derive identity from paths and read those fields
-without a compatibility mapping. Relationships use standard Markdown links. Import
-preserves hierarchy, bodies, reserved files, unknown types, broken links, and extension
-fields. Time-sensitive rules additionally use `effective_from`, `effective_until`,
-`supersedes`, and `superseded_by`. Export validates and copies the bundle as-is.
+## Compile sources into reusable knowledge
 
-## Benchmark
+| Source | Evidence and structure captured |
+|---|---|
+| **Markdown, text, HTML files, code, and transcripts** | Headings, facts, definitions, snippets, and links between concepts. Compile accepts individual files, recursive directories, inline text, and standard input. |
+| **PDF** | Reads the native text layer and layout first. When layout is clear, it can preserve code indentation, join continued tables across pages, distinguish adjacent tables, and associate simple chart values with labels. Pages with gaps are rendered for local OCR or sent for Agent review. |
+| **PowerPoint** | For editable `.pptx` files, extracts available native shape connections, decision branches, table cells, and chart values. Slides with embedded raster content can combine native and rendered/OCR evidence at the same slide number. |
+| **Word and EPUB** | Word uses page rendering where available. Legacy `.doc` may require LibreOffice or macOS `textutil` for conversion. EPUB follows the book's reading order, retains chapter and section locators, and extracts referenced images. |
+| **Screenshots, scans, and images** | OCR extracts text, formulas, and tables. A vision-capable Agent inspects visual relationships such as arrow direction, lanes and handoffs, task dependencies, axes, and series. Reviewed observations can be attached as searchable evidence with a reference to the original image. |
+| **Spreadsheets and CSV** | Compile worksheet or file content as source material, or use `wiki ledger import` for row-level storage and SQL queries. |
 
-We evaluate the **complete product pipeline**—compile, retrieve, synthesize, and verify—on the
-same material as PageIndex OSS Benchmark.
+Compilation can apply domain-specific extraction guidance for policy and compliance, operations, engineering, finance, academic research, and education. A policy page can retain article numbers, operative language, scope, exceptions, and effective dates. A research page can link definitions, formulas, assumptions, findings, and limitations. A textbook and its exam papers can form bidirectional links between knowledge points and questions. Linked concepts can carry relationships such as `depends_on`, `tests`, `contradicts`, and `supersedes`.
 
-| System/configuration | Correct | Accuracy |
-|---|---:|---:|
-| PageIndex · gpt-5.6-luna/high | 60/62 | 96.8% |
-| PageIndex · gpt-5.6-terra/medium | 61/62 | 98.4% |
-| PageIndex · gpt-5.6-terra/high | **62/62** | **100.0%** |
-| PageIndex · gpt-5.6-sol/medium | **62/62** | **100.0%** |
-| **llm-wiki · directional run** | **62/62** | **100.0%** |
+Concept pages and original evidence serve different lookup needs. The compiler can materialize atomic claims from facts, cells, key/value fields, and footnotes while preserving their context. The evidence index also searches extracted source text directly by page, slide, or EPUB section, so a field omitted from a concept summary can still be retrieved. Matched visual records can include the persisted image and its source locator.
 
-The benchmark demonstrates PageIndex-level document-QA accuracy. llm-wiki then extends that
-foundation into a living knowledge system: local OCR and multi-format ingestion, lossless evidence,
-typed graphs, temporal policy applicability, DuckDB ledgers, and repairable lifecycle management.
-Because the model and judge configurations differ, the score shows the same measured ceiling rather
-than a strict model-for-model win.
+### Revisions and publication
 
-→ [Benchmark, capability comparison, and reproducibility details](docs/BENCHMARK.md)
+Source identity is derived from the file path, so two files with the same name in different directories can be compiled independently. Moving or renaming a source creates a new identity. Unchanged inputs can be skipped. Use `--force` to recompile and `--dry-run` to preview the work.
 
-## OCR Backends
-
-Seven pluggable OCR engines. PaddleOCR-VL-1.6 is the default on Apple Silicon:
-PP-DocLayoutV3 provides layout and reading order while MLX-VLM accelerates the
-official full-precision 0.9B recognition model.
-
-| Backend | Engine | Highlights | HW | Size |
-|---------|--------|-----------|-----|------|
-| `paddlevl` ★ | PaddleOCR-VL-1.6 + MLX-VLM | Structured Markdown, text, formulas, tables, charts, seals | Apple Silicon | ~1.9 GB |
-| `ovis` | OvisOCR2 MLX 4-bit | Markdown, LaTeX math, validated model-grounded figure crops | Apple Silicon | ~625 MB |
-| `mineru` | MinerU 3.4.4 | Formula→LaTeX, table→HTML, multi-column, header/footer removal | CPU | ~2 GB |
-| `deepseek` | DeepSeek-OCR-2 | Vision-Language OCR, document understanding | GPU/MPS/CPU | ~6.3 GB |
-| `logics` | Logics-Parsing-v2 | Qwen3VL multimodal document parsing | GPU/MPS/CPU | ~8.4 GB |
-| `paddle` | PaddleOCR 3.5 | 109 languages, deskew, document orientation | CPU | ~100 MB |
-| `api` | OpenAI-compatible | Any vision-LLM endpoint, zero local model | API | — |
+Agent compilation stages draft pages and uses a worklist to track source coverage. Drafts carry source locators and supporting excerpts. Verification publishes the pages and evidence together. Standalone LLM compilation publishes after its staged run succeeds. If a run is incomplete or interrupted, queries continue to use the last published revision. Prior evidence and compiled copies are retained under `.wiki/source/evidence/`.
 
 ```bash
-# Install once, then use from any directory
-pipx install -e .
+wiki compile ./documents/ --depth 1
+wiki compile ./documents/release-plan.pptx --force
+wiki compile --text "Approval expires after 90 days." --name approval-notes
+```
+
+[Publication and worklist commands](docs/CLI.md#source-versions-and-publication) · [Visual evidence](references/visual-evidence.md) · [Document and image examples](evals/media_workflows/README.md)
+
+## Search, answer, and verify
+
+Default local retrieval combines **raw source evidence, atomic claims, metadata, BM25F, structured visuals, the knowledge graph, and DuckDB ledgers**. It weights each stream by query intent and merges results with reciprocal rank fusion. Long pages remain intact in storage, while heading-bounded sections get their own lexical retrieval signals. Chinese and English queries use local tokenization and can expand with bilingual aliases and a project glossary at `.wiki/query_lexicon.yaml`.
+
+- **Answer across documents.** Multi-hop retrieval breaks compound questions into subgoals and follows relevant links. It stops when evidence covers the subgoals, no useful links remain, or it reaches the hop limit. The default is three hops.
+- **Resolve policy applicability.** Current queries favor the active rule and can surface scheduled replacements. Historical queries evaluate the requested date against `effective_from` (inclusive) and `effective_until` (exclusive). Missing applicability dates remain unknown.
+- **Inspect exact values and visual evidence.** Search can surface a particular page, chart, table row, or footnote. Where structured chart evidence uniquely identifies the required series and values, some totals and proportions can be computed directly.
+- **Verify before reuse.** In Agent mode, the query task supplies a local verification command for the answer draft. LLM mode checks the generated answer directly. Verification checks support for citations, explicit permissions or prohibitions, exact amounts and units, and date applicability. An unsupported or conflicting claim blocks `--file-back` even if regular answer verification is disabled.
+- **Resolve follow-up questions.** `--conversation-stdin` accepts up to six user/assistant pairs as JSON. The configured model resolves references in the current question before retrieval. The newly retrieved evidence supports the answer.
+- **Choose an output.** Retrieve evidence only, synthesize an answer with citations, or select Markdown, a comparison table, a timeline, Marp slides, JSON, or a relationship graph.
+
+```bash
+wiki query "Which reimbursement policy applied on 2025-07-01?"
+wiki query "Which milestone blocks the rollout in the Gantt chart?"
+wiki query "Compare the thresholds in the two regional policies" --format table
+wiki query "Where does the workflow hand off to Finance?" --no-synthesis --debug-search
+wiki query "Summarize the approved escalation process" --file-back
+```
+
+Optional semantic search uses embedded Zvec and an embedding model. Install with `python -m pip install -e '.[vector]'`, enable `embeddings`, and add `vector` to `query.search_streams`. Optional FlagEmbedding reranking uses `python -m pip install -e '.[rerank]'` and `reranker.enabled`. The native retrieval streams remain available when these layers are disabled or unavailable. [Hybrid retrieval](references/hybrid-search.md) · [Answer verification commands](docs/CLI.md#answer-evidence-verification)
+
+## Query and manage structured tables
+
+Tables discovered during compilation can be inspected with `wiki table list` and `wiki table show <table>`. Use `wiki ledger` to maintain structured records in DuckDB. It can import CSV/Excel, create tables with typed columns, insert rows in batches, update schemas, search across tables, and export to CSV. Ledger results can also contribute evidence to general Wiki queries.
+
+```bash
+wiki ledger import ./data/projects.xlsx
+wiki ledger list
+wiki ledger show projects
+wiki ledger sql "SELECT * FROM projects WHERE budget > 500000"
+wiki ledger ask projects "Which projects exceed the budget threshold?"
+```
+
+Use the table and field names in your data. `wiki ledger sql` is read-only. `wiki ledger ask` and `wiki table ask` use the configured model. `wiki ledger context` provides schema and function context for an Agent to generate SQL. [Ledger commands](docs/CLI.md#ledger) · [SQL function reference](references/sql-functions.md)
+
+## Maintain and share the Wiki
+
+| Task | Entry point | Behavior |
+|---|---|---|
+| Inspect the Wiki | `wiki status`, `wiki search doctor` | Shows Wiki counts and checks retrieval indexes. |
+| Check and repair | `wiki lint`, `wiki lint --auto-heal` | Reports orphan pages, broken links, stale content, and contradictions. Auto-heal applies available repairs. |
+| Investigate a specific issue | `wiki doctor "The regional exception is missing"` | Records the issue, searches for evidence, and applies an appropriate strategy such as recompile, re-OCR, metadata repair, or flagging for review. |
+| Improve using query history | `wiki dream --foreground` | Updates metadata, audits query history, and can merge duplicates or enrich pages. It evaluates changes against retrieval quality and uses Git snapshots for rollback. |
+| Retain useful session knowledge | `wiki consolidate`, session digest workflow | Supports memory consolidation and confidence decay. Session crystallization turns decisions, findings, and lessons into searchable pages. |
+| Share curated knowledge | `wiki export`, `wiki import`, `wiki okf` | Exchanges compiled pages and attachments as Wiki ZIPs or OKF bundles. |
+
+Confidence metadata supports decay and reinforcement over time. Existing pages and graph records can still use legacy `high`, `medium`, and `low` labels. Contradictions and supersession links preserve the context for reviewing conflicting or replaced knowledge. [Knowledge lifecycle](references/lifecycle.md)
+
+### Storage and portability
+
+`.wiki/pages/` is a native [Open Knowledge Format v0.1 draft](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle. Each concept is Markdown with YAML frontmatter and a Concept ID derived from its path relative to the bundle root. Standard Markdown links connect concepts. The source evidence, graph indexes, and ledger database live in separate directories. Set `LLM_WIKI_DIR` to use a different Wiki and `LLM_WIKI_CONFIG` to select a configuration file.
+
+```text
+.wiki/
+├── pages/            OKF concept pages, session digests, and linked assets
+├── source/evidence/  Extracted source records, manifests, and revisions
+├── graph/            Typed relationships and retrieval indexes
+├── ledger/           DuckDB structured tables
+├── schema.md         Wiki page and entity conventions
+└── audit.json        Compile audit entries
+```
+
+```bash
+wiki export team-wiki.zip
+wiki export onboarding.zip --module modules/onboarding --page concepts/access
+wiki okf validate onboarding.zip
+wiki import onboarding.zip
+wiki okf export ./exports/team-okf
+```
+
+ZIP sharing preserves paths and metadata for compiled pages and their included attachments. Full exports include session pages. Use repeatable `--module` and `--page` options to share a subset and include related concepts explicitly. Export archives cover the compiled bundle. Raw evidence history, runtime configuration, and the DuckDB database stay in the originating Wiki. Import skips identical files and reports conflicts before merging. `wiki okf` also imports and validates directories and migrates legacy page metadata. [Sharing walkthrough](docs/USAGE.md#13-分享知识库和知识模块)
+
+### Data handling
+
+The Wiki and default retrieval indexes live on disk. New text snapshots and extracted evidence redact recognized credential patterns. The original image pixels can still display sensitive content. A remote assistant, standalone model, or API OCR backend may receive the source or retrieved excerpts it needs for the operation. Review the selected mode, attachments, and bundle contents before working with or sharing sensitive material. [Privacy and governance](references/privacy-governance.md)
+
+## OCR as a standalone tool
+
+`ocr` also runs outside a Wiki. Choose a backend based on the source and the available hardware or model endpoint.
+
+| Backend | Engine and typical use |
+|---|---|
+| `paddlevl` | Default. PaddleOCR-VL-1.6 with MLX on Apple Silicon, for layout and structured document parsing. |
+| `ovis` | OvisOCR2 on MLX, with Markdown, math, and figure extraction. |
+| `mineru` | MinerU for page layout, tables, and formulas. |
+| `deepseek` | DeepSeek-OCR-2 for vision-based document parsing. |
+| `logics` | Logics-Parsing-v2 for multimodal document parsing. |
+| `paddle` | PaddleOCR PP-OCRv5 for multilingual text recognition. |
+| `api` | A configured OpenAI-compatible vision endpoint. |
+
+```bash
 ocr list --check
-ocr use paddlevl
-
-# PaddleOCR-VL-1.6 (default, Apple Silicon)
 ocr --doctor
-ocr paper.pdf --smoke-pages 3
-ocr paper.pdf
-
-# One-run override (does not change the default)
-ocr paper.pdf --backend mineru
-ocr paper.pdf --backend deepseek
-ocr paper.pdf --backend logics
-ocr paper.pdf --backend paddle
-ocr paper.pdf --backend api
-
-# Batch directory
+ocr handbook.pdf --smoke-pages 3
+ocr handbook.pdf -o ./parsed/
 ocr --batch ./pdfs/
-
-# PDF/Word/PPT → page images + OCR → compile pipeline
-ocr paper.pdf -o .wiki/source/paper/
-wiki compile .wiki/source/paper/paper.md
 ```
 
-`ocr --doctor` is the authoritative preflight. For the default backend it
-reports the dedicated Python interpreter, Paddle/MLX versions, layout model, and
-local full-precision VLM path. `--smoke-pages N` processes exactly the first N
-pages without requiring callers to activate the isolated virtual environment.
+An OCR run writes Markdown and a manifest with source identity, requested and parsed pages, coverage, and references to extracted assets where available. Use `ocr use <backend>` to set the default, `--backend <backend>` for one run, and `ocr config` to manage settings in `~/.config/ocr/config.yaml`. The CLI is also available via `python -m ocr` or `wiki ocr`. [OCR configuration](CONFIGURATION.md#ocr) · [OCR commands](docs/CLI.md#ocr)
 
-Every document run writes `<source>_ocr_manifest.json` next to the Markdown. The
-manifest records the source hash, runtime, requested and parsed pages, coverage,
-content-list path, referenced images, and elapsed time. Agents should use this file
-as the success contract. Use `--json` when machine-readable command output is needed.
+## Evaluation and further reading
 
-Local images referenced by OCR Markdown are copied into `.wiki/pages/assets/` during
-compile. OCR remains the text extractor; the Agent independently inspects charts,
-flowcharts, swimlanes, Gantt charts, architecture/sequence diagrams, timelines, maps,
-and matrices with native multimodal capability. Compile stores a type-specific `visuals`
-record and the exact original asset. Visual retrieval searches that structure and query
-results return the matched original image together with its source concept. OvisOCR2 crop tags are normalized
-to Markdown images and its adapter emits `*_content_list.json`; when that Markdown is
-compiled, llm-wiki restores `## Page N` boundaries and source image captions for
-page-accurate provenance. Agent-mode task completion then attaches images from the
-exact cited pages (plus adjacent-page context) and verifies that every local target exists.
+- **Long-document QA.** The repository reports **62/62** on the same 34 PDFs, 1,945 pages, and 62 questions used by the PageIndex OSS benchmark. The answer and judge models differ, so treat this as a directional result on that material. [Benchmark and reproducibility details](docs/BENCHMARK.md)
+- **Multimodal evidence.** The document benchmark distinguishes native PowerPoint extraction, PDF layout recovery, OCR-only images, and images with reviewed visual observations. [Media workflow results](evals/media_workflows/README.md)
+- **Mixed-source QA.** The mixed Wiki evaluation measures evidence recall, citation support, correct abstention, and local verification for same-named sources, policy revisions, and distractors. [Mixed Wiki evaluation](evals/p1_mixed_wiki/README.md)
 
-The standalone configuration is `~/.config/ocr/config.yaml` (override with
-`OCR_CONFIG`). Use `ocr config show`, `ocr config get KEY`, and
-`ocr config set MODEL.options.KEY VALUE` to configure each model independently.
-The same interface is available as `python -m ocr`, `python -m ocr.cli`, `wiki ocr`, and
-`llm-wiki-ocr`.
-The default model is `<user-home>/.paddlex/official_models/PaddleOCR-VL-1.6`;
-the isolated runtime is `<workspace>/PaddleOCR-VL-1.6-MLX/.venv`.
-Legacy backend models remain supported under this repository's `models/` directory.
+Run your own JSONL cases with `wiki benchmark <cases.jsonl> --method retrieval`. It reports recall, ranking quality, coverage across subgoals, and P50/P95 retrieval latency. `--method both` adds local RAGAS-style scores over supplied or extractive answers. [Benchmark commands](docs/CLI.md#benchmark)
 
-EPUB files enter the compile pipeline directly: `wiki compile textbook.epub`. Chapters
-are converted to Markdown in OPF spine order and saved under
-`.wiki/source/epub_markdown/`; cover and in-chapter images are extracted, their Markdown
-references are rewritten to persistent local assets, and chapter/section locators are
-retained for source tracing when fixed page numbers do not exist.
+| Reference | What it covers |
+|---|---|
+| [Usage guide](docs/USAGE.md) | Task-oriented workflows and copyable commands |
+| [CLI reference](docs/CLI.md) | Options, worklists, evidence checks, and document format handling |
+| [Configuration](CONFIGURATION.md) | Model, OCR, retrieval, and embedding settings |
+| [Architecture and lifecycle](docs/ARCHITECTURE.md) | Storage, retrieval, and knowledge maintenance |
+| [Agent skill](SKILL.md) | Agent workflows for compiling, answering, maintaining, and sharing |
 
-Legacy Word `.doc` files are supported directly: `wiki compile handbook.doc`. llm-wiki
-first uses LibreOffice for page-faithful PDF rendering. If rendering is unavailable, it
-converts a read-only copy to `.docx` with LibreOffice or macOS `textutil`, caches the
-result by source hash under `.wiki/source/converted_documents/`, and sends the DOCX—not
-the unsupported binary DOC—to MarkItDown. When rendering succeeds, every page image is
-retained for visual verification while native DOCX structure is used instead of OCR.
-Re-ingesting the same file reuses the cache.
-
-## Configuration
-
-All settings in `wiki_config.yaml`. Create with `wiki config --init`.
-
-```yaml
-# ── LLM (API key required only for --mode llm) ──
-llm:
-  provider: deepseek           # deepseek | openai | ollama | custom
-  api_key: ${DEEPSEEK_API_KEY}
-  model: deepseek-v4-flash
-
-# ── Search ──
-query:
-  max_results: 8
-  parallel_search: true
-  search_streams: raw,claim,metadata,bm25,visual,graph,ledger
-  multi_hop_enabled: true
-  multi_hop_max_hops: 3
-  verify_answers: true
-
-# ── Optional: semantic vector search ──
-embeddings:
-  enabled: false                # pip install -e '.[vector]'
-  backend: zvec
-  model_source: modelscope
-  index_path: graph/zvec
-
-# ── Optional: cross-encoder reranker ──
-reranker:
-  enabled: false                # pip install -e '.[rerank]'
-  backend: flagembedding
-  model: BAAI/bge-reranker-v2-m3
-  candidate_count: 20
-```
-
-OCR settings are intentionally separate from `wiki_config.yaml`; manage them
-with `ocr use` and `ocr config` so the same default is used inside and outside a Wiki.
-
-> `wiki_config.yaml` is gitignored. Environment variables (`${VAR}`) are expanded on load.
-
-## Core Capabilities
-
-| Capability | Description |
-|-----------|-------------|
-| **Compile** | Agent reads sources, decides source type, writes schema-compliant wiki pages and graph |
-| **Domain Experts** | Content-driven multi-expert compilation for legal, finance, operations, product, academic, training, and other domains |
-| **Query** | BM25F + metadata + structured visual evidence + graph + complete DuckDB ledger search + optional Zvec/reranker → evidence-selected Agent synthesis |
-| **Multimodal figures** | OCR text + Agent-native chart/diagram interpretation + searchable structure + original-image answer display |
-| **Native OKF v0.1** | Compile, store, search, validate, merge, migrate, and distribute one canonical OKF bundle |
-| **Lint** | Health scanning + auto-heal: contradictions, stale claims, orphans, broken links |
-| **Lifecycle** | Ebbinghaus decay, confidence scoring, contradiction detection, supersession |
-| **Memory Tiers** | Working → Episodic → Semantic → Procedural, automatic consolidation |
-| **Ledger** | Structured table management with natural language → SQL (DuckDB) |
-| **Multi-lingual** | Chinese/English dual retrieval engine (jieba + Porter stemming) |
-| **Dream (Auto)** | Self-looping query-driven optimization with git snapshots, quality gating, and experience accumulation |
-| **Doctor** | User feedback diagnosis + repair: classify → search → fix → verify |
-| **Audit** | Immutable audit trail for every operation |
-
-## Documentation
-
-| Document | Content |
-|----------|---------|
-| [Usage Guide](docs/USAGE.md) | Task-oriented commands for compile, query, visual evidence, temporal rules, maintenance, OKF, ledgers, and benchmarks |
-| [Configuration](CONFIGURATION.md) | LLM, retrieval, OCR, embeddings, and reranker settings |
-| [Architecture & Lifecycle](docs/ARCHITECTURE.md) | 3-layer design, 10-stage knowledge lifecycle |
-| [Benchmark Details](docs/BENCHMARK.md) | PageIndex same-material comparison, architecture, results |
-| [CLI Reference](docs/CLI.md) | Complete command reference |
-| [Improvement Plan](docs/IMPROVEMENT_PLAN.md) | Future roadmap and enhancement proposals |
-
-## Project Structure
-
-```
-llm-wiki-skill/
-├── scripts/           # Python automation (~30 scripts)
-│   ├── wiki.py        # Unified CLI
-│   ├── compile_v2.py  # LLM source → wiki compiler
-│   ├── query.py       # Wiki-native search + answer synthesis
-│   ├── search.py      # Metadata/BM25F/visual/graph search and weighted fusion
-│   ├── zvec_backend.py # Optional embedded vector index over OKF concepts
-│   ├── rerank.py      # Optional cross-encoder reranking
-│   ├── lint.py        # Health scan + auto-heal
-│   ├── dream.py       # Self-looping maintenance (4-phase, auto mode)
-│   ├── doctor.py       # User feedback diagnosis + auto-repair
-│   ├── okf.py          # OKF v0.1 validation, import, and export
-│   ├── ledger.py      # Structured table management (DuckDB)
-│   └── ...
-├── .wiki/             # Wiki data (LLM-generated)
-│   ├── pages/         # Native OKF bundle root (concepts + index.md + log.md)
-│   ├── graph/         # entities.json, edges.json, optional embeddings
-│   ├── ledger/        # ledger.duckdb database
-│   └── source/        # Original source files (immutable)
-├── .claude/hooks/     # Automation hooks (optional)
-├── tests/             # Test suite (400 tests)
-├── templates/         # Page templates
-└── references/        # Deep-dive docs
-```
-
-## Design
-
-Based on [Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) and [Rohit's v2 extension](https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2). 100% compliant with both specifications.
-
-| Principle | Implementation |
-|-----------|---------------|
-| 3-layer architecture (Source→Wiki→Schema) | `source/` + `pages/` + `schema.md`/`wiki_config.yaml` |
-| Ingest → Pages → Index → Log | `compile_v2.py` full pipeline |
-| Same-name entity protection | Auto-prefix + concept aggregation pages |
-| Query → Search → Synthesize → File-back | `query.py` + `--file-back` + 6 output formats |
-| Lint → Auto-heal | `lint.py --auto-heal` |
-| 12 typed relationships | `uses`, `depends_on`, `extends`, `contradicts`, `supersedes`... |
-| Ebbinghaus forgetting curve | 6 entity half-lives (arch: 260d, bug: 20d...) |
-| Memory consolidation | working → episodic → semantic → procedural |
-| Privacy filtering | 5 sensitive patterns filtered before LLM sends |
-| Dream self-looping | git snapshots + quality gating + rollback + SHA256-deduped experiences |
-| Doctor diagnosis | regex classify → wiki search → strategy repair → verify → persist |
-
-## License
-
-MIT
+Inspired by [Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) and [Rohit's v2 extension](https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2). Released under the [MIT License](LICENSE).

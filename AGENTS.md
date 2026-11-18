@@ -14,9 +14,19 @@ This project uses **GSD** (Get Shit Done) for structured development. Key comman
 - `/gsd-execute-phase <N>` — Execute a phase
 - `/gsd-settings` — Adjust workflow preferences
 
+### AI resource readiness
+
+At the start of work that integrates a model or Agent, tell the user what AI
+resources the flow needs and who supplies them. Confirm the host Agent is
+available for Agent mode. For standalone model calls, surface the endpoint,
+model ID, and API key requirements before implementation or ingestion. Reuse an
+existing confirmed connection. Ask users to configure credentials through an
+environment variable or secret store and report any access or quota constraints
+before committing to the workflow.
+
 ## Current State
 
-All 7 phases complete. 44/50 tests passing (6 skipped pending lazy WIKI_DIR init). Production-ready.
+All 7 project phases are complete. Run `python -m pytest -q` for the current test status.
 
 Key scripts: `wiki.py` (CLI), `compile_v2.py` (LLM compile pipeline), `query.py` (search + answer).
 

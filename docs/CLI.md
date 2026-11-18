@@ -13,6 +13,8 @@ temporal queries, visual retrieval, maintenance, OKF, and ledgers, see
 | `wiki config --init` | Create default wiki_config.yaml |
 | `wiki config --check` | Validate configuration |
 | `wiki status` | Wiki statistics |
+| `wiki export <zip> [--module <dir>] [--page <id>] [--force]` | Package the compiled wiki or selected pages and attachments |
+| `wiki import <zip> [--force]` | Merge a shared ZIP into the current wiki |
 | `wiki compile <file-or-dir>` | Compile sources → wiki pages (Agent mode by default) |
 | `wiki compile <file-or-dir> --mode llm` | Compile via configured LLM provider |
 | `wiki compile <dir> --depth 1` | Limit directory recursion depth |
@@ -55,8 +57,7 @@ python scripts/query.py --verify-agent-answer TASK.json < draft.md
 ```
 
 LLM mode verifies the model's answer directly. Both paths check citations,
-explicit permission and prohibition, exact values and units, and applicability
-at the date requested in the question.
+explicit permission and prohibition, and exact numerical values and units.
 An unsupported or conflicting claim blocks `--file-back` even when
 `query.verify_answers` is disabled. The verifier uses local rules and returns
 the conflicting clause or values for review.
@@ -95,6 +96,31 @@ temporary storage. Rendered images still show their original pixels. Existing
 unversioned evidence remains readable, and files already written by earlier
 versions are unchanged.
 
+## Native and reviewed document evidence
+
+- Editable `.pptx` files use native shape connections, tables, and chart values
+  when available. Mixed slides add rendered/OCR evidence at the same slide
+  number. Set `LLM_WIKI_PPTX_OCR=1` to request an optical-only pass.
+- PDF compilation reads native text and layout first. It renders pages with
+  likely gaps and uses the configured OCR backend when its local runtime and
+  weights can be verified. If local OCR is unavailable, returns insufficient
+  text, or leaves visual relationships unresolved, the original pages go to
+  an Agent worklist. This also applies when the caller requests `--mode llm`.
+  Attach reviewed observations for those pages before completing the worklist.
+  The legacy `--pdf-text-layer` flag remains accepted and follows the same checks.
+- For an image or slide whose relationships need visual inspection, write
+  reviewed observations under `## Page N` or `## Slide N` headings and attach
+  them to the source's generated evidence manifest:
+
+  ```bash
+  python -m scripts.raw_evidence attach-visual MANIFEST NOTES.md --wiki-dir .wiki
+  ```
+
+  Observations are indexed separately from the unchanged extracted original.
+  Reattach observations after reingesting the source. Only include relationships
+  and values verified against the original image. See the
+  [multimodal benchmark](../evals/media_workflows/README.md) for examples.
+
 ## Dream (Self-Looping Maintenance)
 
 | Command | Description |
@@ -117,9 +143,9 @@ versions are unchanged.
 
 | Command | Description |
 |---------|-------------|
-| `wiki okf validate <bundle>` | Validate OKF bundle compliance |
-| `wiki okf import <bundle>` | Merge external OKF bundle |
-| `wiki okf export <path>` | Export wiki as OKF bundle |
+| `wiki okf validate <bundle>` | Validate an OKF directory or ZIP |
+| `wiki okf import <bundle>` | Merge an OKF directory or ZIP |
+| `wiki okf export <path>` | Export an OKF directory or a shareable `.zip` |
 | `wiki okf migrate` | Migrate legacy metadata to OKF v0.1 |
 
 ## Benchmark

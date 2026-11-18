@@ -267,7 +267,39 @@ wiki doctor --list
 wiki doctor --check concepts/refund-policy
 ```
 
-## 13. OKF 校验、导入和导出
+## 13. 分享知识库和知识模块
+
+打包整个已编译的知识库：
+
+```bash
+wiki export team-wiki.zip
+```
+
+要反复分享同一主题，可以把符合 OKF 格式的 Markdown 页面放在
+`.wiki/pages/modules/onboarding/` 下。导出时用 `--module` 指定相对于
+`pages/` 的目录，用 `--page` 补充其他目录中的页面。两个选项都可以重复使用。
+
+```bash
+wiki export onboarding.zip --module modules/onboarding --page concepts/access
+```
+
+模块包会保留所选目录中的附件，以及所选页面引用的 Wiki 内本地附件。
+跨目录链接如果指向其他知识页，可以用 `--page` 把该页面一同打包。
+ZIP 打包的是已编译的知识页及附件。全量导出包含会话知识页。
+
+将 ZIP 文件发给对方。对方在自己的知识库项目中运行：
+
+```bash
+wiki okf validate onboarding.zip
+wiki import onboarding.zip
+wiki query "新人如何申请访问权限？" --no-synthesis
+```
+
+导入按原相对路径合并。内容相同的文件自动跳过。如果同一路径已有不同内容，
+命令会列出冲突并停止整个导入。确认需要替换后，可以运行
+`wiki import onboarding.zip --force`。可以使用 `LLM_WIKI_DIR` 指定收件方的库。
+
+### OKF 目录交换
 
 校验一个 OKF v0.1 bundle：
 
