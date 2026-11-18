@@ -1,0 +1,4933 @@
+{
+  "corpus_sha256": "039769d6d95c52829bc3ea806a6fbc69918d4ea07f61d672d4bc4b0afb7d02bf",
+  "runtime_files_sha256": {
+    "query.py": "f426af83eedcc4fad3962770cf9688bbea21f9c1ac11f27590cef16b694eebe2",
+    "raw_evidence.py": "b6a65c02edafab4c9b5500f853f0c5ecc0440347f13899bfb7715efa478f7f59",
+    "compile_v2.py": "6a2ba09f198c394e25ed49f3af7ab55d84ec60b4ff4a29bf9c7abd676371f4ab",
+    "query_temporal.py": "0f67079c37758281e5cb4739f18f2e4690570c71d15691d2824dd4c47c68de29",
+    "answer_evidence.py": "b5eab174846a5350a9aec04b8ea7d622d89ef3fc8da3a0097b9f3279597f2670"
+  },
+  "source_inventory": {
+    "ridge": {
+      "path": "青榫站/交接手册.md",
+      "source_id": "6f899f2802b3b4cafe2d4e80",
+      "source_version": "4debbb04d315519cf71122d15f47949738105ac2fde4863243f11e8fceb65360",
+      "physical_pages": 2
+    },
+    "coast": {
+      "path": "晚苇站/交接手册.md",
+      "source_id": "70609168e601b7e21d436c25",
+      "source_version": "cf96b5c697c35c8e3cddb7c76fa3c9e2479c61b4be0d600f2ee5b0d6e98762df",
+      "physical_pages": 2
+    },
+    "drill": {
+      "path": "演练/交接手册.md",
+      "source_id": "157e6a7b0e4448ead048acb0",
+      "source_version": "19c272504c4aa3e6a93cf26ef0ac12aa95d3c4deaf8864ea619694ad2cc9279e",
+      "physical_pages": 1
+    },
+    "old": {
+      "path": "回传规则/杉涟回传-甲.md",
+      "source_id": "ecb927320aba5d2b9fd09d47",
+      "source_version": "8994432ae02954935604308e6b00c4c0a389de9ae7401425e97a468ef5d006ca",
+      "physical_pages": 2
+    },
+    "new": {
+      "path": "回传规则/杉涟回传-乙.md",
+      "source_id": "3b71e80eef30c6828ba67130",
+      "source_version": "1851a2275f4040a715c4291da6619a56a376132d5be9088a7737387097113f76",
+      "physical_pages": 2
+    },
+    "future": {
+      "path": "回传规则/杉涟回传-丙.md",
+      "source_id": "5abc548bc9ebcd67d1d104ac",
+      "source_version": "b0d3489f18764b237e1b7078bcfd87a3ee1243da8599f5469a70cc770f54cab6",
+      "physical_pages": 1
+    },
+    "relay": {
+      "path": "工程/relay-handoff.md",
+      "source_id": "5ca5a6ccbc9a7b1bc7471742",
+      "source_version": "465ded955309afda481036a0dbc192b8403234056239b4477760d3dc7ceea042",
+      "physical_pages": 2
+    },
+    "rehearsal": {
+      "path": "工程/relay-rehearsal.md",
+      "source_id": "8a537211569af3c54ba3cd4b",
+      "source_version": "79bfac5d5d11aa5e195a7c14791abb020fcfb5acf9a7c5cb03976f4d57cd2c72",
+      "physical_pages": 1
+    },
+    "wax": {
+      "path": "采购/蜡桥验收备忘.md",
+      "source_id": "d8b2514928dc55ffaedb641d",
+      "source_version": "a5d91437bd4d821979c9d71408a1e127df0b48c1c0de6c17013e642bc069816e",
+      "physical_pages": 2
+    },
+    "pack": {
+      "path": "采购/货架抽检说明.md",
+      "source_id": "908e8e6a14253b87d447e1a3",
+      "source_version": "bbd05b5269cf24f3fc10228b7b5c4dc1881f9a6656cfecab9b9964b2f2431217",
+      "physical_pages": 1
+    },
+    "market": {
+      "path": "场馆/a-fen-market.md",
+      "source_id": "1c9c7fb9fb7d333f38b2a48a",
+      "source_version": "1052365c16a1517146a3bb323a1b0c0d8614cb2ff9180cae2898e0e936989020",
+      "physical_pages": 1
+    },
+    "workshop": {
+      "path": "场馆/z-tidal-workshop.md",
+      "source_id": "787a780ea79d3b787263ab39",
+      "source_version": "55e030f9deecd7d02e6c38e009eb7023a4bb9b961a9290825b526953f2e5a88e",
+      "physical_pages": 1
+    },
+    "quay": {
+      "path": "场馆/鹭湾外借台.md",
+      "source_id": "7267f1c2834ef81be5f488b5",
+      "source_version": "74a38ce19ef95e68b28d89526753e3e18bdc1386c0777e0506b23c2465017f90",
+      "physical_pages": 1
+    }
+  },
+  "timed_rounds_per_arm": 5,
+  "ablation": "Disable only raw_evidence._deterministic_answer_hints in this process",
+  "synthesis": "Current host Agent, one draft per case per arm, same-session batches",
+  "arms": {
+    "on": {
+      "core": {
+        "questions": 24,
+        "hit_at_1": [
+          16,
+          18
+        ],
+        "evidence_recall": [
+          21,
+          21
+        ],
+        "complete_evidence_at_5": [
+          18,
+          18
+        ],
+        "citation_support": [
+          21,
+          21
+        ],
+        "correct_refusals": [
+          6,
+          6
+        ],
+        "false_refusals": [
+          0,
+          18
+        ],
+        "fully_supported_answers": [
+          18,
+          18
+        ],
+        "hint_triggered": 0,
+        "hint_exposed": 0,
+        "local_retrieval": {
+          "n": 120,
+          "p50_ms": 25.104,
+          "p95_ms": 33.446
+        },
+        "verifier_pass_on_fully_supported": [
+          18,
+          18
+        ],
+        "local_verification": {
+          "n": 18,
+          "p50_ms": 0.278,
+          "p95_ms": 3.284
+        }
+      },
+      "control": {
+        "questions": 3,
+        "hit_at_1": [
+          2,
+          2
+        ],
+        "evidence_recall": [
+          2,
+          2
+        ],
+        "complete_evidence_at_5": [
+          2,
+          2
+        ],
+        "citation_support": [
+          2,
+          2
+        ],
+        "correct_refusals": [
+          1,
+          1
+        ],
+        "false_refusals": [
+          0,
+          2
+        ],
+        "fully_supported_answers": [
+          2,
+          2
+        ],
+        "hint_triggered": 2,
+        "hint_exposed": 2,
+        "local_retrieval": {
+          "n": 15,
+          "p50_ms": 16.75,
+          "p95_ms": 25.521
+        },
+        "verifier_pass_on_fully_supported": [
+          2,
+          2
+        ],
+        "local_verification": {
+          "n": 2,
+          "p50_ms": 0.179,
+          "p95_ms": 0.183
+        }
+      },
+      "by_group": {
+        "同名文件": {
+          "questions": 6,
+          "hit_at_1": [
+            6,
+            6
+          ],
+          "evidence_recall": [
+            7,
+            7
+          ],
+          "complete_evidence_at_5": [
+            6,
+            6
+          ],
+          "citation_support": [
+            7,
+            7
+          ],
+          "correct_refusals": [
+            0,
+            0
+          ],
+          "false_refusals": [
+            0,
+            6
+          ],
+          "fully_supported_answers": [
+            6,
+            6
+          ],
+          "hint_triggered": 0,
+          "hint_exposed": 0,
+          "local_retrieval": {
+            "n": 30,
+            "p50_ms": 23.914,
+            "p95_ms": 27.639
+          },
+          "verifier_pass_on_fully_supported": [
+            6,
+            6
+          ],
+          "local_verification": {
+            "n": 6,
+            "p50_ms": 0.165,
+            "p95_ms": 0.979
+          }
+        },
+        "新旧规则": {
+          "questions": 6,
+          "hit_at_1": [
+            6,
+            6
+          ],
+          "evidence_recall": [
+            7,
+            7
+          ],
+          "complete_evidence_at_5": [
+            6,
+            6
+          ],
+          "citation_support": [
+            7,
+            7
+          ],
+          "correct_refusals": [
+            0,
+            0
+          ],
+          "false_refusals": [
+            0,
+            6
+          ],
+          "fully_supported_answers": [
+            6,
+            6
+          ],
+          "hint_triggered": 0,
+          "hint_exposed": 0,
+          "local_retrieval": {
+            "n": 30,
+            "p50_ms": 27.958,
+            "p95_ms": 38.714
+          },
+          "verifier_pass_on_fully_supported": [
+            6,
+            6
+          ],
+          "local_verification": {
+            "n": 6,
+            "p50_ms": 2.347,
+            "p95_ms": 3.284
+          }
+        },
+        "干扰页": {
+          "questions": 6,
+          "hit_at_1": [
+            4,
+            6
+          ],
+          "evidence_recall": [
+            7,
+            7
+          ],
+          "complete_evidence_at_5": [
+            6,
+            6
+          ],
+          "citation_support": [
+            7,
+            7
+          ],
+          "correct_refusals": [
+            0,
+            0
+          ],
+          "false_refusals": [
+            0,
+            6
+          ],
+          "fully_supported_answers": [
+            6,
+            6
+          ],
+          "hint_triggered": 0,
+          "hint_exposed": 0,
+          "local_retrieval": {
+            "n": 30,
+            "p50_ms": 21.874,
+            "p95_ms": 31.387
+          },
+          "verifier_pass_on_fully_supported": [
+            6,
+            6
+          ],
+          "local_verification": {
+            "n": 6,
+            "p50_ms": 0.242,
+            "p95_ms": 0.596
+          }
+        },
+        "无答案": {
+          "questions": 6,
+          "hit_at_1": [
+            0,
+            0
+          ],
+          "evidence_recall": [
+            0,
+            0
+          ],
+          "complete_evidence_at_5": [
+            0,
+            0
+          ],
+          "citation_support": [
+            0,
+            0
+          ],
+          "correct_refusals": [
+            6,
+            6
+          ],
+          "false_refusals": [
+            0,
+            0
+          ],
+          "fully_supported_answers": [
+            0,
+            0
+          ],
+          "hint_triggered": 0,
+          "hint_exposed": 0,
+          "local_retrieval": {
+            "n": 30,
+            "p50_ms": 21.908,
+            "p95_ms": 27.692
+          },
+          "verifier_pass_on_fully_supported": [
+            0,
+            0
+          ],
+          "local_verification": {}
+        },
+        "问句规则探针": {
+          "questions": 3,
+          "hit_at_1": [
+            2,
+            2
+          ],
+          "evidence_recall": [
+            2,
+            2
+          ],
+          "complete_evidence_at_5": [
+            2,
+            2
+          ],
+          "citation_support": [
+            2,
+            2
+          ],
+          "correct_refusals": [
+            1,
+            1
+          ],
+          "false_refusals": [
+            0,
+            2
+          ],
+          "fully_supported_answers": [
+            2,
+            2
+          ],
+          "hint_triggered": 2,
+          "hint_exposed": 2,
+          "local_retrieval": {
+            "n": 15,
+            "p50_ms": 16.75,
+            "p95_ms": 25.521
+          },
+          "verifier_pass_on_fully_supported": [
+            2,
+            2
+          ],
+          "local_verification": {
+            "n": 2,
+            "p50_ms": 0.179,
+            "p95_ms": 0.183
+          }
+        }
+      },
+      "by_language": {
+        "中文": {
+          "questions": 13,
+          "hit_at_1": [
+            10,
+            10
+          ],
+          "evidence_recall": [
+            10,
+            10
+          ],
+          "complete_evidence_at_5": [
+            10,
+            10
+          ],
+          "citation_support": [
+            10,
+            10
+          ],
+          "correct_refusals": [
+            3,
+            3
+          ],
+          "false_refusals": [
+            0,
+            10
+          ],
+          "fully_supported_answers": [
+            10,
+            10
+          ],
+          "hint_triggered": 0,
+          "hint_exposed": 0,
+          "local_retrieval": {
+            "n": 65,
+            "p50_ms": 24.454,
+            "p95_ms": 29.934
+          },
+          "verifier_pass_on_fully_supported": [
+            10,
+            10
+          ],
+          "local_verification": {
+            "n": 10,
+            "p50_ms": 0.788,
+            "p95_ms": 3.284
+          }
+        },
+        "混合": {
+          "questions": 11,
+          "hit_at_1": [
+            6,
+            8
+          ],
+          "evidence_recall": [
+            11,
+            11
+          ],
+          "complete_evidence_at_5": [
+            8,
+            8
+          ],
+          "citation_support": [
+            11,
+            11
+          ],
+          "correct_refusals": [
+            3,
+            3
+          ],
+          "false_refusals": [
+            0,
+            8
+          ],
+          "fully_supported_answers": [
+            8,
+            8
+          ],
+          "hint_triggered": 0,
+          "hint_exposed": 0,
+          "local_retrieval": {
+            "n": 55,
+            "p50_ms": 25.356,
+            "p95_ms": 33.993
+          },
+          "verifier_pass_on_fully_supported": [
+            8,
+            8
+          ],
+          "local_verification": {
+            "n": 8,
+            "p50_ms": 0.242,
+            "p95_ms": 3.252
+          }
+        }
+      },
+      "agent_batch_wall_seconds": null,
+      "rows": [
+        {
+          "id": "S01",
+          "question": "青榫站正式《交接手册》规定，工单录音要保留多少天？",
+          "group": "同名文件",
+          "language": "中文",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "留存",
+              "doc": "ridge",
+              "page": 1,
+              "value": "40 天",
+              "excerpt": "留存期限为 40 天"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:48.820685+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-6f899f2802b3b4cafe2d4e80-99c91aaf3c1d4c8b993d5a7cf28d475b/pages/page-0001",
+              "doc": "ridge",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-157e6a7b0e4448ead048acb0-8014dd56309e4e409995ea484555d33f/pages/page-0001",
+              "doc": "drill",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "留存",
+              "value": "40 天",
+              "citation": 1,
+              "text": "青榫站工单录音留存期限为 40 天。",
+              "supported": true,
+              "cited_origin": [
+                "ridge",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            22.6109,
+            23.6757,
+            22.1838,
+            21.9736,
+            22.2921
+          ],
+          "local_verify_ms": 0.9786,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "S02",
+          "question": "晚苇站正式《交接手册》的工单录音留存期限是多久？",
+          "group": "同名文件",
+          "language": "中文",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "留存",
+              "doc": "coast",
+              "page": 1,
+              "value": "29 天",
+              "excerpt": "留存期限为 29 天"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:48.624504+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-70609168e601b7e21d436c25-4caad886c973419b8fe75aae7d455f28/pages/page-0001",
+              "doc": "coast",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-157e6a7b0e4448ead048acb0-8014dd56309e4e409995ea484555d33f/pages/page-0001",
+              "doc": "drill",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "留存",
+              "value": "29 天",
+              "citation": 1,
+              "text": "晚苇站工单录音留存期限为 29 天。",
+              "supported": true,
+              "cited_origin": [
+                "coast",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            26.0383,
+            26.2828,
+            25.1684,
+            25.5875,
+            25.6942
+          ],
+          "local_verify_ms": 0.164,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "S03",
+          "question": "请比较青榫站与晚苇站正式《交接手册》的 night shift 交接袋接收组。",
+          "group": "同名文件",
+          "language": "混合",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "青榫站",
+              "doc": "ridge",
+              "page": 2,
+              "value": "枚鹭组",
+              "excerpt": "夜班纸质交接袋由枚鹭组接收"
+            },
+            {
+              "slot": "晚苇站",
+              "doc": "coast",
+              "page": 2,
+              "value": "苇窗组",
+              "excerpt": "夜班纸质交接袋由苇窗组接收"
+            }
+          ],
+          "evidence_hits": 2,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:48.129727+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-6f899f2802b3b4cafe2d4e80-99c91aaf3c1d4c8b993d5a7cf28d475b/pages/page-0002",
+              "doc": "ridge",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-70609168e601b7e21d436c25-4caad886c973419b8fe75aae7d455f28/pages/page-0002",
+              "doc": "coast",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/coast-p2",
+              "doc": "coast",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/drill-p1",
+              "doc": "drill",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 5,
+              "id": "concepts/ridge-p2",
+              "doc": "ridge",
+              "page": 2,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "青榫站",
+              "value": "枚鹭组",
+              "citation": 1,
+              "text": "青榫站夜班纸质交接袋由枚鹭组接收。",
+              "supported": true,
+              "cited_origin": [
+                "ridge",
+                2
+              ]
+            },
+            {
+              "slot": "晚苇站",
+              "value": "苇窗组",
+              "citation": 2,
+              "text": "晚苇站夜班纸质交接袋由苇窗组接收。",
+              "supported": true,
+              "cited_origin": [
+                "coast",
+                2
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            27.9985,
+            27.639,
+            27.4726,
+            27.3671,
+            27.0004
+          ],
+          "local_verify_ms": 0.2213,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "S04",
+          "question": "正式工作中，青榫站工单录音可以发往站外协作群吗？",
+          "group": "同名文件",
+          "language": "中文",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "规定",
+              "doc": "ridge",
+              "page": 1,
+              "value": "禁止",
+              "excerpt": "禁止将工单录音发往站外协作群"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:48.903625+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-6f899f2802b3b4cafe2d4e80-99c91aaf3c1d4c8b993d5a7cf28d475b/pages/page-0001",
+              "doc": "ridge",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-70609168e601b7e21d436c25-4caad886c973419b8fe75aae7d455f28/pages/page-0001",
+              "doc": "coast",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/ridge-p1",
+              "doc": "ridge",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/coast-p1",
+              "doc": "coast",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "规定",
+              "value": "禁止",
+              "citation": 1,
+              "text": "青榫站禁止将工单录音发往站外协作群。",
+              "supported": true,
+              "cited_origin": [
+                "ridge",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            24.5914,
+            26.9241,
+            24.4537,
+            24.2416,
+            24.153
+          ],
+          "local_verify_ms": 0.166,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "S05",
+          "question": "晚苇站工单录音能发进已备案的站外协作群吗？",
+          "group": "同名文件",
+          "language": "中文",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "规定",
+              "doc": "coast",
+              "page": 1,
+              "value": "允许",
+              "excerpt": "允许将工单录音发往已备案的站外协作群"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:48.279398+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-70609168e601b7e21d436c25-4caad886c973419b8fe75aae7d455f28/pages/page-0001",
+              "doc": "coast",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-6f899f2802b3b4cafe2d4e80-99c91aaf3c1d4c8b993d5a7cf28d475b/pages/page-0001",
+              "doc": "ridge",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/coast-p1",
+              "doc": "coast",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "规定",
+              "value": "允许",
+              "citation": 1,
+              "text": "晚苇站允许将工单录音发往已备案的站外协作群。",
+              "supported": true,
+              "cited_origin": [
+                "coast",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            21.102,
+            20.7783,
+            20.0179,
+            20.5881,
+            20.1004
+          ],
+          "local_verify_ms": 0.1307,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "S06",
+          "question": "青榫站的工单录音争议，申诉窗口多少天？",
+          "group": "同名文件",
+          "language": "中文",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "申诉",
+              "doc": "ridge",
+              "page": 1,
+              "value": "87 天",
+              "excerpt": "申诉窗口为 87 天"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:48.459369+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-6f899f2802b3b4cafe2d4e80-99c91aaf3c1d4c8b993d5a7cf28d475b/pages/page-0001",
+              "doc": "ridge",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-70609168e601b7e21d436c25-4caad886c973419b8fe75aae7d455f28/pages/page-0001",
+              "doc": "coast",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "申诉",
+              "value": "87 天",
+              "citation": 1,
+              "text": "青榫站工单录音争议申诉窗口为 87 天。",
+              "supported": true,
+              "cited_origin": [
+                "ridge",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            17.886,
+            19.0209,
+            18.1766,
+            18.1483,
+            17.9472
+          ],
+          "local_verify_ms": 0.1344,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "T01",
+          "question": "截至2026-06-25，杉涟缓冲包回传宽限是多少分钟？",
+          "group": "新旧规则",
+          "language": "中文",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "宽限",
+              "doc": "old",
+              "page": 1,
+              "value": "13 分钟",
+              "excerpt": "回传宽限为 13 分钟"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-06-24T16:00:00+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "concepts/shuilian-old-p1",
+              "doc": "old",
+              "page": 1,
+              "temporal": "active"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-ecb927320aba5d2b9fd09d47-86359bd3ea054b0a9a10402aa9711253/pages/page-0001",
+              "doc": "old",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "source/evidence/source-5abc548bc9ebcd67d1d104ac-3057653dedd54233a97c2ae215d1d5f8/pages/page-0001",
+              "doc": "future",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/shuilian-new-p1",
+              "doc": "new",
+              "page": 1,
+              "temporal": "scheduled"
+            },
+            {
+              "ref": 5,
+              "id": "concepts/shuilian-future-p1",
+              "doc": "future",
+              "page": 1,
+              "temporal": "scheduled"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "宽限",
+              "value": "13 分钟",
+              "citation": 1,
+              "text": "截至 2026-06-25，甲版规定杉涟缓冲包回传宽限为 13 分钟。",
+              "supported": true,
+              "cited_origin": [
+                "old",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            32.5293,
+            38.714,
+            29.9344,
+            29.7923,
+            30.1566
+          ],
+          "local_verify_ms": 3.2842,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "T02",
+          "question": "As of 2026-09-03，杉涟缓冲包的回传 grace period 是多少分钟？",
+          "group": "新旧规则",
+          "language": "混合",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "宽限",
+              "doc": "new",
+              "page": 1,
+              "value": "26 分钟",
+              "excerpt": "回传宽限为 26 分钟"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-09-02T16:00:00+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "concepts/shuilian-new-p1",
+              "doc": "new",
+              "page": 1,
+              "temporal": "active"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-ecb927320aba5d2b9fd09d47-86359bd3ea054b0a9a10402aa9711253/pages/page-0001",
+              "doc": "old",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "source/evidence/source-5abc548bc9ebcd67d1d104ac-3057653dedd54233a97c2ae215d1d5f8/pages/page-0001",
+              "doc": "future",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/shuilian-future-p1",
+              "doc": "future",
+              "page": 1,
+              "temporal": "scheduled"
+            },
+            {
+              "ref": 5,
+              "id": "concepts/shuilian-old-p1",
+              "doc": "old",
+              "page": 1,
+              "temporal": "expired"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "宽限",
+              "value": "26 分钟",
+              "citation": 1,
+              "text": "截至 2026-09-03，乙版规定杉涟缓冲包回传宽限为 26 分钟。",
+              "supported": true,
+              "cited_origin": [
+                "new",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            34.3706,
+            43.3428,
+            33.8202,
+            33.7229,
+            33.9933
+          ],
+          "local_verify_ms": 3.2517,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "T03",
+          "question": "截至2026-12-15，杉涟缓冲包回传规则给多少分钟宽限？",
+          "group": "新旧规则",
+          "language": "中文",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "宽限",
+              "doc": "future",
+              "page": 1,
+              "value": "46 分钟",
+              "excerpt": "回传宽限为 46 分钟"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-12-14T16:00:00+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "concepts/shuilian-future-p1",
+              "doc": "future",
+              "page": 1,
+              "temporal": "active"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-ecb927320aba5d2b9fd09d47-86359bd3ea054b0a9a10402aa9711253/pages/page-0001",
+              "doc": "old",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "source/evidence/source-5abc548bc9ebcd67d1d104ac-3057653dedd54233a97c2ae215d1d5f8/pages/page-0001",
+              "doc": "future",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/shuilian-new-p1",
+              "doc": "new",
+              "page": 1,
+              "temporal": "expired"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "宽限",
+              "value": "46 分钟",
+              "citation": 1,
+              "text": "截至 2026-12-15，丙版规定杉涟缓冲包回传宽限为 46 分钟。",
+              "supported": true,
+              "cited_origin": [
+                "future",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            27.4816,
+            28.106,
+            26.9498,
+            27.4778,
+            26.909
+          ],
+          "local_verify_ms": 2.3626,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "T04",
+          "question": "在2026-06-25，能把杉涟缓冲包发到已备案的外部分拣点吗？",
+          "group": "新旧规则",
+          "language": "中文",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "规定",
+              "doc": "old",
+              "page": 1,
+              "value": "禁止",
+              "excerpt": "禁止将杉涟缓冲包发往外部分拣点"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-06-24T16:00:00+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "concepts/shuilian-old-p1",
+              "doc": "old",
+              "page": 1,
+              "temporal": "active"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-3b71e80eef30c6828ba67130-6e396bc7a5ba475abf541de6059b5e34/pages/page-0001",
+              "doc": "new",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "source/evidence/source-ecb927320aba5d2b9fd09d47-86359bd3ea054b0a9a10402aa9711253/pages/page-0001",
+              "doc": "old",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/shuilian-new-p1",
+              "doc": "new",
+              "page": 1,
+              "temporal": "scheduled"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "规定",
+              "value": "禁止",
+              "citation": 1,
+              "text": "2026-06-25 适用甲版，禁止将杉涟缓冲包发往外部分拣点。",
+              "supported": true,
+              "cited_origin": [
+                "old",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            28.6251,
+            27.7293,
+            26.2476,
+            26.8945,
+            26.8614
+          ],
+          "local_verify_ms": 2.3189,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "T05",
+          "question": "在2026-09-03，杉涟缓冲包能发到已备案的外部分拣点吗？",
+          "group": "新旧规则",
+          "language": "中文",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "规定",
+              "doc": "new",
+              "page": 1,
+              "value": "允许",
+              "excerpt": "允许将杉涟缓冲包发往已备案的外部分拣点"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-09-02T16:00:00+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "concepts/shuilian-new-p1",
+              "doc": "new",
+              "page": 1,
+              "temporal": "active"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-3b71e80eef30c6828ba67130-6e396bc7a5ba475abf541de6059b5e34/pages/page-0001",
+              "doc": "new",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "source/evidence/source-ecb927320aba5d2b9fd09d47-86359bd3ea054b0a9a10402aa9711253/pages/page-0001",
+              "doc": "old",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/shuilian-old-p1",
+              "doc": "old",
+              "page": 1,
+              "temporal": "expired"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "规定",
+              "value": "允许",
+              "citation": 1,
+              "text": "2026-09-03 适用乙版，允许将杉涟缓冲包发往已备案的外部分拣点。",
+              "supported": true,
+              "cited_origin": [
+                "new",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            28.3112,
+            27.809,
+            25.9227,
+            26.0888,
+            25.8517
+          ],
+          "local_verify_ms": 2.3317,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "T06",
+          "question": "对比杉涟甲版和乙版，验收摘要的 retention 各是多少天？",
+          "group": "新旧规则",
+          "language": "混合",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "甲版",
+              "doc": "old",
+              "page": 2,
+              "value": "165 天",
+              "excerpt": "留存期限为 165 天"
+            },
+            {
+              "slot": "乙版",
+              "doc": "new",
+              "page": 2,
+              "value": "133 天",
+              "excerpt": "留存期限为 133 天"
+            }
+          ],
+          "evidence_hits": 2,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:47.958157+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-ecb927320aba5d2b9fd09d47-86359bd3ea054b0a9a10402aa9711253/pages/page-0002",
+              "doc": "old",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-3b71e80eef30c6828ba67130-6e396bc7a5ba475abf541de6059b5e34/pages/page-0002",
+              "doc": "new",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/shuilian-new-p2",
+              "doc": "new",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/shuilian-old-p2",
+              "doc": "old",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 5,
+              "id": "concepts/shuilian-new-p1",
+              "doc": "new",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "甲版",
+              "value": "165 天",
+              "citation": 1,
+              "text": "杉涟甲版的验收摘要留存期限为 165 天。",
+              "supported": true,
+              "cited_origin": [
+                "old",
+                2
+              ]
+            },
+            {
+              "slot": "乙版",
+              "value": "133 天",
+              "citation": 2,
+              "text": "杉涟乙版的验收摘要留存期限为 133 天。",
+              "supported": true,
+              "cited_origin": [
+                "new",
+                2
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            28.6221,
+            28.2237,
+            26.2691,
+            26.9544,
+            26.8772
+          ],
+          "local_verify_ms": 0.3183,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "D01",
+          "question": "岬星生产环境的 Relay Gate，fallback queue 的队列名是什么？",
+          "group": "干扰页",
+          "language": "混合",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "队列",
+              "doc": "relay",
+              "page": 2,
+              "value": "TIDE-EMBER",
+              "excerpt": "fallback queue 为 TIDE-EMBER"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": false,
+          "as_of": "2026-11-18T17:45:47.940123+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/relay-handoff-5ca5a6ccbc9a7b1bc7471742-54f21af6090b4f00a1c5cf326af0778c/pages/page-0001",
+              "doc": "relay",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/relay-rehearsal-8a537211569af3c54ba3cd4b-9e65ab6d4ba4420490fecbd673ca9f0c/pages/page-0001",
+              "doc": "rehearsal",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/relay-p2",
+              "doc": "relay",
+              "page": 2,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "队列",
+              "value": "TIDE-EMBER",
+              "citation": 3,
+              "text": "岬星生产环境的 Relay Gate fallback queue 为 TIDE-EMBER。",
+              "supported": true,
+              "cited_origin": [
+                "relay",
+                2
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            17.9335,
+            17.3126,
+            16.4045,
+            16.619,
+            16.8195
+          ],
+          "local_verify_ms": 0.1658,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "D02",
+          "question": "岬星 Starling Relay 在 production 是否允许 auto-retry DUP-4？",
+          "group": "干扰页",
+          "language": "混合",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "规定",
+              "doc": "relay",
+              "page": 1,
+              "value": "禁止",
+              "excerpt": "生产环境禁止自动重试 DUP-4"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:48.157797+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/relay-handoff-5ca5a6ccbc9a7b1bc7471742-54f21af6090b4f00a1c5cf326af0778c/pages/page-0001",
+              "doc": "relay",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/relay-rehearsal-8a537211569af3c54ba3cd4b-9e65ab6d4ba4420490fecbd673ca9f0c/pages/page-0001",
+              "doc": "rehearsal",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/relay-p1",
+              "doc": "relay",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/rehearsal-p1",
+              "doc": "rehearsal",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "规定",
+              "value": "禁止",
+              "citation": 1,
+              "text": "岬星生产环境禁止自动重试 DUP-4。",
+              "supported": true,
+              "cited_origin": [
+                "relay",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            31.3869,
+            31.2927,
+            28.8792,
+            28.9208,
+            28.8585
+          ],
+          "local_verify_ms": 0.2599,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "D03",
+          "question": "岬星 Relay Gate 正常 ACK 落哪条队列，DLQ 又要等多久才人工转发？",
+          "group": "干扰页",
+          "language": "混合",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "正常队列",
+              "doc": "relay",
+              "page": 1,
+              "value": "TIDE-SLATE",
+              "excerpt": "正常 ACK 进入 TIDE-SLATE"
+            },
+            {
+              "slot": "等待",
+              "doc": "relay",
+              "page": 2,
+              "value": "20 分钟",
+              "excerpt": "DLQ 保持 20 分钟"
+            }
+          ],
+          "evidence_hits": 2,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:48.804621+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/relay-handoff-5ca5a6ccbc9a7b1bc7471742-54f21af6090b4f00a1c5cf326af0778c/pages/page-0002",
+              "doc": "relay",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/relay-handoff-5ca5a6ccbc9a7b1bc7471742-54f21af6090b4f00a1c5cf326af0778c/pages/page-0001",
+              "doc": "relay",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "正常队列",
+              "value": "TIDE-SLATE",
+              "citation": 2,
+              "text": "岬星 Relay Gate 的正常 ACK 进入 TIDE-SLATE。",
+              "supported": true,
+              "cited_origin": [
+                "relay",
+                1
+              ]
+            },
+            {
+              "slot": "等待",
+              "value": "20 分钟",
+              "citation": 1,
+              "text": "岬星 Relay Gate 在 DLQ 保持 20 分钟后才人工转发。",
+              "supported": true,
+              "cited_origin": [
+                "relay",
+                2
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            16.0149,
+            19.3338,
+            16.2417,
+            16.4654,
+            16.3947
+          ],
+          "local_verify_ms": 0.2958,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "D04",
+          "question": "正式流程里，蜡桥导轨采购验收的 final approver 是谁？",
+          "group": "干扰页",
+          "language": "混合",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "批准人",
+              "doc": "wax",
+              "page": 1,
+              "value": "乔弦",
+              "excerpt": "final approver 为乔弦"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:48.353043+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-d8b2514928dc55ffaedb641d-698996ea3ef5446fbe5ab493fddf0e41/pages/page-0001",
+              "doc": "wax",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-908e8e6a14253b87d447e1a3-d384b1d2e01b46649a39c013aaeaf97d/pages/page-0001",
+              "doc": "pack",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/wax-p1",
+              "doc": "wax",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "批准人",
+              "value": "乔弦",
+              "citation": 1,
+              "text": "蜡桥导轨采购验收的 final approver 是乔弦。",
+              "supported": true,
+              "cited_origin": [
+                "wax",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            25.6986,
+            28.0287,
+            24.6568,
+            25.0387,
+            24.414
+          ],
+          "local_verify_ms": 0.1635,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "D05",
+          "question": "正式验收时，蜡桥导轨的 pallet checksum 用哪个算法？",
+          "group": "干扰页",
+          "language": "混合",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "算法",
+              "doc": "wax",
+              "page": 2,
+              "value": "Hazel-9",
+              "excerpt": "pallet checksum 算法为 Hazel-9"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": false,
+          "as_of": "2026-11-18T17:45:47.708771+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-908e8e6a14253b87d447e1a3-d384b1d2e01b46649a39c013aaeaf97d/pages/page-0001",
+              "doc": "pack",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-d8b2514928dc55ffaedb641d-698996ea3ef5446fbe5ab493fddf0e41/pages/page-0002",
+              "doc": "wax",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/wax-p2",
+              "doc": "wax",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/pack-p1",
+              "doc": "pack",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "算法",
+              "value": "Hazel-9",
+              "citation": 2,
+              "text": "正式验收的蜡桥导轨 pallet checksum 算法为 Hazel-9。",
+              "supported": true,
+              "cited_origin": [
+                "wax",
+                2
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            33.4463,
+            25.8888,
+            24.9322,
+            25.4707,
+            24.7625
+          ],
+          "local_verify_ms": 0.2242,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "D06",
+          "question": "潮桥工坊借具窗口周二几点停止借具？",
+          "group": "干扰页",
+          "language": "中文",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "结束时间",
+              "doc": "workshop",
+              "page": 1,
+              "value": "7.40pm",
+              "excerpt": "Monday to Thursday: 10.00am–7.40pm"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:48.650605+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/z-tidal-workshop-787a780ea79d3b787263ab39-266e692a6802443c9925a7a799caaa0e/pages/page-0001",
+              "doc": "workshop",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/a-fen-market-1c9c7fb9fb7d333f38b2a48a-56948a77f63349d0b9bf7ddb8b155056/pages/page-0001",
+              "doc": "market",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/workshop-p1",
+              "doc": "workshop",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "结束时间",
+              "value": "7.40pm",
+              "citation": 1,
+              "text": "潮桥工坊借具窗口周二在周一至周四的营业时段内，7.40pm 停止借具。",
+              "supported": true,
+              "cited_origin": [
+                "workshop",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            15.3022,
+            15.6445,
+            15.4963,
+            14.6645,
+            15.5226
+          ],
+          "local_verify_ms": 0.5964,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "N01",
+          "question": "青榫站《交接手册》规定的工单录音加密算法是什么？",
+          "group": "无答案",
+          "language": "中文",
+          "control": false,
+          "answerable": false,
+          "expected": [],
+          "evidence_hits": 0,
+          "hit_at_1": false,
+          "as_of": "2026-11-18T17:45:48.039359+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-6f899f2802b3b4cafe2d4e80-99c91aaf3c1d4c8b993d5a7cf28d475b/pages/page-0001",
+              "doc": "ridge",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-157e6a7b0e4448ead048acb0-8014dd56309e4e409995ea484555d33f/pages/page-0001",
+              "doc": "drill",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "refuse",
+          "reason": "青榫站正式手册未说明工单录音的加密算法。",
+          "claims": [],
+          "fully_supported": false,
+          "correct_refusal": true,
+          "retrieval_times_ms": [
+            23.6567,
+            23.0858,
+            21.7407,
+            22.0889,
+            22.0759
+          ],
+          "local_verify_ms": null,
+          "local_verify_status": null,
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "N02",
+          "question": "岬星 Relay Gate 生产环境的 PagerDuty escalation phone 是什么？",
+          "group": "无答案",
+          "language": "混合",
+          "control": false,
+          "answerable": false,
+          "expected": [],
+          "evidence_hits": 0,
+          "hit_at_1": false,
+          "as_of": "2026-11-18T17:45:48.564690+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/relay-handoff-5ca5a6ccbc9a7b1bc7471742-54f21af6090b4f00a1c5cf326af0778c/pages/page-0001",
+              "doc": "relay",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/relay-rehearsal-8a537211569af3c54ba3cd4b-9e65ab6d4ba4420490fecbd673ca9f0c/pages/page-0001",
+              "doc": "rehearsal",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/relay-p1",
+              "doc": "relay",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "refuse",
+          "reason": "生产交接材料未提供 PagerDuty 升级联系电话。",
+          "claims": [],
+          "fully_supported": false,
+          "correct_refusal": true,
+          "retrieval_times_ms": [
+            16.752,
+            17.5297,
+            16.613,
+            17.0934,
+            17.0194
+          ],
+          "local_verify_ms": null,
+          "local_verify_status": null,
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "N03",
+          "question": "截至2025-11-01，杉涟缓冲包回传宽限是多少分钟？",
+          "group": "无答案",
+          "language": "中文",
+          "control": false,
+          "answerable": false,
+          "expected": [],
+          "evidence_hits": 0,
+          "hit_at_1": false,
+          "as_of": "2025-10-31T16:00:00+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-ecb927320aba5d2b9fd09d47-86359bd3ea054b0a9a10402aa9711253/pages/page-0001",
+              "doc": "old",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-5abc548bc9ebcd67d1d104ac-3057653dedd54233a97c2ae215d1d5f8/pages/page-0001",
+              "doc": "future",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/shuilian-new-p1",
+              "doc": "new",
+              "page": 1,
+              "temporal": "scheduled"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/shuilian-old-p1",
+              "doc": "old",
+              "page": 1,
+              "temporal": "scheduled"
+            }
+          ],
+          "status": "refuse",
+          "reason": "2025-11-01 早于材料列出的全部生效日期。",
+          "claims": [],
+          "fully_supported": false,
+          "correct_refusal": true,
+          "retrieval_times_ms": [
+            27.6917,
+            28.6845,
+            27.2373,
+            27.1754,
+            27.252
+          ],
+          "local_verify_ms": null,
+          "local_verify_status": null,
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "N04",
+          "question": "蜡桥导轨正式验收的 replacement unit price 是多少？",
+          "group": "无答案",
+          "language": "混合",
+          "control": false,
+          "answerable": false,
+          "expected": [],
+          "evidence_hits": 0,
+          "hit_at_1": false,
+          "as_of": "2026-11-18T17:45:48.736596+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-d8b2514928dc55ffaedb641d-698996ea3ef5446fbe5ab493fddf0e41/pages/page-0001",
+              "doc": "wax",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-908e8e6a14253b87d447e1a3-d384b1d2e01b46649a39c013aaeaf97d/pages/page-0001",
+              "doc": "pack",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/wax-p1",
+              "doc": "wax",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "source/evidence/source-d8b2514928dc55ffaedb641d-698996ea3ef5446fbe5ab493fddf0e41/pages/page-0002",
+              "doc": "wax",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 5,
+              "id": "concepts/wax-p2",
+              "doc": "wax",
+              "page": 2,
+              "temporal": "undated"
+            }
+          ],
+          "status": "refuse",
+          "reason": "采购验收材料提供了批准人和校验算法，未提供替换单价。",
+          "claims": [],
+          "fully_supported": false,
+          "correct_refusal": true,
+          "retrieval_times_ms": [
+            25.6872,
+            25.3558,
+            24.9961,
+            25.2522,
+            25.5022
+          ],
+          "local_verify_ms": null,
+          "local_verify_status": null,
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "N05",
+          "question": "晚苇站白班负责人实名是什么？",
+          "group": "无答案",
+          "language": "中文",
+          "control": false,
+          "answerable": false,
+          "expected": [],
+          "evidence_hits": 0,
+          "hit_at_1": false,
+          "as_of": "2026-11-18T17:45:48.885107+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-70609168e601b7e21d436c25-4caad886c973419b8fe75aae7d455f28/pages/page-0002",
+              "doc": "coast",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-70609168e601b7e21d436c25-4caad886c973419b8fe75aae7d455f28/pages/page-0001",
+              "doc": "coast",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/coast-p2",
+              "doc": "coast",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/coast-p1",
+              "doc": "coast",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 5,
+              "id": "concepts/drill-p1",
+              "doc": "drill",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "refuse",
+          "reason": "晚苇站材料只提供接收组名称，未提供白班负责人的实名。",
+          "claims": [],
+          "fully_supported": false,
+          "correct_refusal": true,
+          "retrieval_times_ms": [
+            18.4642,
+            18.6182,
+            17.84,
+            17.9522,
+            17.6627
+          ],
+          "local_verify_ms": null,
+          "local_verify_status": null,
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "N06",
+          "question": "潮桥工坊借具窗口 Sunday 开放时段到几点？",
+          "group": "无答案",
+          "language": "混合",
+          "control": false,
+          "answerable": false,
+          "expected": [],
+          "evidence_hits": 0,
+          "hit_at_1": false,
+          "as_of": "2026-11-18T17:45:47.832973+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/z-tidal-workshop-787a780ea79d3b787263ab39-266e692a6802443c9925a7a799caaa0e/pages/page-0001",
+              "doc": "workshop",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/a-fen-market-1c9c7fb9fb7d333f38b2a48a-56948a77f63349d0b9bf7ddb8b155056/pages/page-0001",
+              "doc": "market",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/workshop-p1",
+              "doc": "workshop",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "refuse",
+          "reason": "潮桥工坊资料列了周一至周五的时间，未列周日开放时段。",
+          "claims": [],
+          "fully_supported": false,
+          "correct_refusal": true,
+          "retrieval_times_ms": [
+            23.7304,
+            17.5422,
+            16.7758,
+            17.2378,
+            16.967
+          ],
+          "local_verify_ms": null,
+          "local_verify_status": null,
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "C01",
+          "question": "潮桥工坊借具窗口的 Tuesday close 时间是什么？",
+          "group": "问句规则探针",
+          "language": "混合",
+          "control": true,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "结束时间",
+              "doc": "workshop",
+              "page": 1,
+              "value": "7.40pm",
+              "excerpt": "Monday to Thursday: 10.00am–7.40pm"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:48.063094+00:00",
+          "hint_kinds": [
+            "weekday_closing_time"
+          ],
+          "hint_exposed": true,
+          "visible_hints": [
+            {
+              "ref": 1,
+              "doc": "workshop",
+              "statement": "- weekday_closing_time: 7.40pm (Tuesday is within the Monday-to-Thursday hours range)"
+            }
+          ],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/z-tidal-workshop-787a780ea79d3b787263ab39-266e692a6802443c9925a7a799caaa0e/pages/page-0001",
+              "doc": "workshop",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/a-fen-market-1c9c7fb9fb7d333f38b2a48a-56948a77f63349d0b9bf7ddb8b155056/pages/page-0001",
+              "doc": "market",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/workshop-p1",
+              "doc": "workshop",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "结束时间",
+              "value": "7.40pm",
+              "citation": 1,
+              "text": "潮桥工坊借具窗口周二 7.40pm 关门。",
+              "supported": true,
+              "cited_origin": [
+                "workshop",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            18.4794,
+            19.7623,
+            16.7503,
+            17.6687,
+            17.9414
+          ],
+          "local_verify_ms": 0.1827,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "C02",
+          "question": "枯蒲集市器材窗口的 Tuesday close 时间是什么？",
+          "group": "问句规则探针",
+          "language": "混合",
+          "control": true,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "结束时间",
+              "doc": "market",
+              "page": 1,
+              "value": "2.15pm",
+              "excerpt": "Monday to Thursday: 9.00am–2.15pm"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:47.626666+00:00",
+          "hint_kinds": [
+            "weekday_closing_time"
+          ],
+          "hint_exposed": true,
+          "visible_hints": [
+            {
+              "ref": 1,
+              "doc": "market",
+              "statement": "- weekday_closing_time: 2.15pm (Tuesday is within the Monday-to-Thursday hours range)"
+            }
+          ],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/a-fen-market-1c9c7fb9fb7d333f38b2a48a-56948a77f63349d0b9bf7ddb8b155056/pages/page-0001",
+              "doc": "market",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/z-tidal-workshop-787a780ea79d3b787263ab39-266e692a6802443c9925a7a799caaa0e/pages/page-0001",
+              "doc": "workshop",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/market-p1",
+              "doc": "market",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "结束时间",
+              "value": "2.15pm",
+              "citation": 1,
+              "text": "枯蒲集市器材窗口周二 2.15pm 关门。",
+              "supported": true,
+              "cited_origin": [
+                "market",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            25.5207,
+            18.5012,
+            17.0236,
+            16.5096,
+            16.7106
+          ],
+          "local_verify_ms": 0.1762,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "C03",
+          "question": "鹭湾外借台 Tuesday close 时间是什么？",
+          "group": "问句规则探针",
+          "language": "混合",
+          "control": true,
+          "answerable": false,
+          "expected": [],
+          "evidence_hits": 0,
+          "hit_at_1": false,
+          "as_of": "2026-11-18T17:45:48.337253+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-7267f1c2834ef81be5f488b5-21014b39a3a7450d916e2d6acada4f50/pages/page-0001",
+              "doc": "quay",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/a-fen-market-1c9c7fb9fb7d333f38b2a48a-56948a77f63349d0b9bf7ddb8b155056/pages/page-0001",
+              "doc": "market",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/quay-p1",
+              "doc": "quay",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "refuse",
+          "reason": "鹭湾外借台的须知只说明预约和归还流程，未给周二关门时间。",
+          "claims": [],
+          "fully_supported": false,
+          "correct_refusal": true,
+          "retrieval_times_ms": [
+            15.7245,
+            16.43,
+            15.3336,
+            15.7191,
+            15.1919
+          ],
+          "local_verify_ms": null,
+          "local_verify_status": null,
+          "local_verify_reasons": {}
+        }
+      ]
+    },
+    "off": {
+      "core": {
+        "questions": 24,
+        "hit_at_1": [
+          16,
+          18
+        ],
+        "evidence_recall": [
+          21,
+          21
+        ],
+        "complete_evidence_at_5": [
+          18,
+          18
+        ],
+        "citation_support": [
+          21,
+          21
+        ],
+        "correct_refusals": [
+          6,
+          6
+        ],
+        "false_refusals": [
+          0,
+          18
+        ],
+        "fully_supported_answers": [
+          18,
+          18
+        ],
+        "hint_triggered": 0,
+        "hint_exposed": 0,
+        "local_retrieval": {
+          "n": 120,
+          "p50_ms": 25.128,
+          "p95_ms": 33.704
+        },
+        "verifier_pass_on_fully_supported": [
+          18,
+          18
+        ],
+        "local_verification": {
+          "n": 18,
+          "p50_ms": 0.203,
+          "p95_ms": 3.093
+        }
+      },
+      "control": {
+        "questions": 3,
+        "hit_at_1": [
+          2,
+          2
+        ],
+        "evidence_recall": [
+          2,
+          2
+        ],
+        "complete_evidence_at_5": [
+          2,
+          2
+        ],
+        "citation_support": [
+          2,
+          2
+        ],
+        "correct_refusals": [
+          1,
+          1
+        ],
+        "false_refusals": [
+          0,
+          2
+        ],
+        "fully_supported_answers": [
+          2,
+          2
+        ],
+        "hint_triggered": 0,
+        "hint_exposed": 0,
+        "local_retrieval": {
+          "n": 15,
+          "p50_ms": 16.856,
+          "p95_ms": 29.845
+        },
+        "verifier_pass_on_fully_supported": [
+          2,
+          2
+        ],
+        "local_verification": {
+          "n": 2,
+          "p50_ms": 0.166,
+          "p95_ms": 0.167
+        }
+      },
+      "by_group": {
+        "同名文件": {
+          "questions": 6,
+          "hit_at_1": [
+            6,
+            6
+          ],
+          "evidence_recall": [
+            7,
+            7
+          ],
+          "complete_evidence_at_5": [
+            6,
+            6
+          ],
+          "citation_support": [
+            7,
+            7
+          ],
+          "correct_refusals": [
+            0,
+            0
+          ],
+          "false_refusals": [
+            0,
+            6
+          ],
+          "fully_supported_answers": [
+            6,
+            6
+          ],
+          "hint_triggered": 0,
+          "hint_exposed": 0,
+          "local_retrieval": {
+            "n": 30,
+            "p50_ms": 23.722,
+            "p95_ms": 28.515
+          },
+          "verifier_pass_on_fully_supported": [
+            6,
+            6
+          ],
+          "local_verification": {
+            "n": 6,
+            "p50_ms": 0.144,
+            "p95_ms": 0.195
+          }
+        },
+        "新旧规则": {
+          "questions": 6,
+          "hit_at_1": [
+            6,
+            6
+          ],
+          "evidence_recall": [
+            7,
+            7
+          ],
+          "complete_evidence_at_5": [
+            6,
+            6
+          ],
+          "citation_support": [
+            7,
+            7
+          ],
+          "correct_refusals": [
+            0,
+            0
+          ],
+          "false_refusals": [
+            0,
+            6
+          ],
+          "fully_supported_answers": [
+            6,
+            6
+          ],
+          "hint_triggered": 0,
+          "hint_exposed": 0,
+          "local_retrieval": {
+            "n": 30,
+            "p50_ms": 27.932,
+            "p95_ms": 34.609
+          },
+          "verifier_pass_on_fully_supported": [
+            6,
+            6
+          ],
+          "local_verification": {
+            "n": 6,
+            "p50_ms": 2.269,
+            "p95_ms": 3.093
+          }
+        },
+        "干扰页": {
+          "questions": 6,
+          "hit_at_1": [
+            4,
+            6
+          ],
+          "evidence_recall": [
+            7,
+            7
+          ],
+          "complete_evidence_at_5": [
+            6,
+            6
+          ],
+          "citation_support": [
+            7,
+            7
+          ],
+          "correct_refusals": [
+            0,
+            0
+          ],
+          "false_refusals": [
+            0,
+            6
+          ],
+          "fully_supported_answers": [
+            6,
+            6
+          ],
+          "hint_triggered": 0,
+          "hint_exposed": 0,
+          "local_retrieval": {
+            "n": 30,
+            "p50_ms": 23.572,
+            "p95_ms": 29.375
+          },
+          "verifier_pass_on_fully_supported": [
+            6,
+            6
+          ],
+          "local_verification": {
+            "n": 6,
+            "p50_ms": 0.199,
+            "p95_ms": 0.224
+          }
+        },
+        "无答案": {
+          "questions": 6,
+          "hit_at_1": [
+            0,
+            0
+          ],
+          "evidence_recall": [
+            0,
+            0
+          ],
+          "complete_evidence_at_5": [
+            0,
+            0
+          ],
+          "citation_support": [
+            0,
+            0
+          ],
+          "correct_refusals": [
+            6,
+            6
+          ],
+          "false_refusals": [
+            0,
+            0
+          ],
+          "fully_supported_answers": [
+            0,
+            0
+          ],
+          "hint_triggered": 0,
+          "hint_exposed": 0,
+          "local_retrieval": {
+            "n": 30,
+            "p50_ms": 21.689,
+            "p95_ms": 27.614
+          },
+          "verifier_pass_on_fully_supported": [
+            0,
+            0
+          ],
+          "local_verification": {}
+        },
+        "问句规则探针": {
+          "questions": 3,
+          "hit_at_1": [
+            2,
+            2
+          ],
+          "evidence_recall": [
+            2,
+            2
+          ],
+          "complete_evidence_at_5": [
+            2,
+            2
+          ],
+          "citation_support": [
+            2,
+            2
+          ],
+          "correct_refusals": [
+            1,
+            1
+          ],
+          "false_refusals": [
+            0,
+            2
+          ],
+          "fully_supported_answers": [
+            2,
+            2
+          ],
+          "hint_triggered": 0,
+          "hint_exposed": 0,
+          "local_retrieval": {
+            "n": 15,
+            "p50_ms": 16.856,
+            "p95_ms": 29.845
+          },
+          "verifier_pass_on_fully_supported": [
+            2,
+            2
+          ],
+          "local_verification": {
+            "n": 2,
+            "p50_ms": 0.166,
+            "p95_ms": 0.167
+          }
+        }
+      },
+      "by_language": {
+        "中文": {
+          "questions": 13,
+          "hit_at_1": [
+            10,
+            10
+          ],
+          "evidence_recall": [
+            10,
+            10
+          ],
+          "complete_evidence_at_5": [
+            10,
+            10
+          ],
+          "citation_support": [
+            10,
+            10
+          ],
+          "correct_refusals": [
+            3,
+            3
+          ],
+          "false_refusals": [
+            0,
+            10
+          ],
+          "fully_supported_answers": [
+            10,
+            10
+          ],
+          "hint_triggered": 0,
+          "hint_exposed": 0,
+          "local_retrieval": {
+            "n": 65,
+            "p50_ms": 24.713,
+            "p95_ms": 30.6
+          },
+          "verifier_pass_on_fully_supported": [
+            10,
+            10
+          ],
+          "local_verification": {
+            "n": 10,
+            "p50_ms": 0.181,
+            "p95_ms": 3.093
+          }
+        },
+        "混合": {
+          "questions": 11,
+          "hit_at_1": [
+            6,
+            8
+          ],
+          "evidence_recall": [
+            11,
+            11
+          ],
+          "complete_evidence_at_5": [
+            8,
+            8
+          ],
+          "citation_support": [
+            11,
+            11
+          ],
+          "correct_refusals": [
+            3,
+            3
+          ],
+          "false_refusals": [
+            0,
+            8
+          ],
+          "fully_supported_answers": [
+            8,
+            8
+          ],
+          "hint_triggered": 0,
+          "hint_exposed": 0,
+          "local_retrieval": {
+            "n": 55,
+            "p50_ms": 25.343,
+            "p95_ms": 34.147
+          },
+          "verifier_pass_on_fully_supported": [
+            8,
+            8
+          ],
+          "local_verification": {
+            "n": 8,
+            "p50_ms": 0.205,
+            "p95_ms": 2.966
+          }
+        }
+      },
+      "agent_batch_wall_seconds": null,
+      "rows": [
+        {
+          "id": "S01",
+          "question": "青榫站正式《交接手册》规定，工单录音要保留多少天？",
+          "group": "同名文件",
+          "language": "中文",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "留存",
+              "doc": "ridge",
+              "page": 1,
+              "value": "40 天",
+              "excerpt": "留存期限为 40 天"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:48.843382+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-6f899f2802b3b4cafe2d4e80-99c91aaf3c1d4c8b993d5a7cf28d475b/pages/page-0001",
+              "doc": "ridge",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-157e6a7b0e4448ead048acb0-8014dd56309e4e409995ea484555d33f/pages/page-0001",
+              "doc": "drill",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "留存",
+              "value": "40 天",
+              "citation": 1,
+              "text": "青榫站正式手册规定工单录音留存 40 天。",
+              "supported": true,
+              "cited_origin": [
+                "ridge",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            23.0418,
+            23.5455,
+            22.6208,
+            22.3011,
+            22.2266
+          ],
+          "local_verify_ms": 0.152,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "S02",
+          "question": "晚苇站正式《交接手册》的工单录音留存期限是多久？",
+          "group": "同名文件",
+          "language": "中文",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "留存",
+              "doc": "coast",
+              "page": 1,
+              "value": "29 天",
+              "excerpt": "留存期限为 29 天"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:48.598626+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-70609168e601b7e21d436c25-4caad886c973419b8fe75aae7d455f28/pages/page-0001",
+              "doc": "coast",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-157e6a7b0e4448ead048acb0-8014dd56309e4e409995ea484555d33f/pages/page-0001",
+              "doc": "drill",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "留存",
+              "value": "29 天",
+              "citation": 1,
+              "text": "晚苇站正式手册规定工单录音留存 29 天。",
+              "supported": true,
+              "cited_origin": [
+                "coast",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            25.8123,
+            28.5146,
+            25.1316,
+            25.2355,
+            25.3688
+          ],
+          "local_verify_ms": 0.1339,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "S03",
+          "question": "请比较青榫站与晚苇站正式《交接手册》的 night shift 交接袋接收组。",
+          "group": "同名文件",
+          "language": "混合",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "青榫站",
+              "doc": "ridge",
+              "page": 2,
+              "value": "枚鹭组",
+              "excerpt": "夜班纸质交接袋由枚鹭组接收"
+            },
+            {
+              "slot": "晚苇站",
+              "doc": "coast",
+              "page": 2,
+              "value": "苇窗组",
+              "excerpt": "夜班纸质交接袋由苇窗组接收"
+            }
+          ],
+          "evidence_hits": 2,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:48.101305+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-6f899f2802b3b4cafe2d4e80-99c91aaf3c1d4c8b993d5a7cf28d475b/pages/page-0002",
+              "doc": "ridge",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-70609168e601b7e21d436c25-4caad886c973419b8fe75aae7d455f28/pages/page-0002",
+              "doc": "coast",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/coast-p2",
+              "doc": "coast",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/drill-p1",
+              "doc": "drill",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 5,
+              "id": "concepts/ridge-p2",
+              "doc": "ridge",
+              "page": 2,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "青榫站",
+              "value": "枚鹭组",
+              "citation": 1,
+              "text": "青榫站的夜班交接袋由枚鹭组接收。",
+              "supported": true,
+              "cited_origin": [
+                "ridge",
+                2
+              ]
+            },
+            {
+              "slot": "晚苇站",
+              "value": "苇窗组",
+              "citation": 2,
+              "text": "晚苇站的夜班交接袋由苇窗组接收。",
+              "supported": true,
+              "cited_origin": [
+                "coast",
+                2
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            28.3407,
+            28.8209,
+            26.606,
+            27.0974,
+            26.5259
+          ],
+          "local_verify_ms": 0.1951,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "S04",
+          "question": "正式工作中，青榫站工单录音可以发往站外协作群吗？",
+          "group": "同名文件",
+          "language": "中文",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "规定",
+              "doc": "ridge",
+              "page": 1,
+              "value": "禁止",
+              "excerpt": "禁止将工单录音发往站外协作群"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:48.928293+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-6f899f2802b3b4cafe2d4e80-99c91aaf3c1d4c8b993d5a7cf28d475b/pages/page-0001",
+              "doc": "ridge",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-70609168e601b7e21d436c25-4caad886c973419b8fe75aae7d455f28/pages/page-0001",
+              "doc": "coast",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/ridge-p1",
+              "doc": "ridge",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/coast-p1",
+              "doc": "coast",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "规定",
+              "value": "禁止",
+              "citation": 1,
+              "text": "青榫站正式手册禁止将工单录音发往站外协作群。",
+              "supported": true,
+              "cited_origin": [
+                "ridge",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            24.743,
+            26.9434,
+            23.8986,
+            24.4307,
+            24.7132
+          ],
+          "local_verify_ms": 0.1522,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "S05",
+          "question": "晚苇站工单录音能发进已备案的站外协作群吗？",
+          "group": "同名文件",
+          "language": "中文",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "规定",
+              "doc": "coast",
+              "page": 1,
+              "value": "允许",
+              "excerpt": "允许将工单录音发往已备案的站外协作群"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:48.300568+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-70609168e601b7e21d436c25-4caad886c973419b8fe75aae7d455f28/pages/page-0001",
+              "doc": "coast",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-6f899f2802b3b4cafe2d4e80-99c91aaf3c1d4c8b993d5a7cf28d475b/pages/page-0001",
+              "doc": "ridge",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/coast-p1",
+              "doc": "coast",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "规定",
+              "value": "允许",
+              "citation": 1,
+              "text": "晚苇站允许把工单录音发往已备案的站外协作群。",
+              "supported": true,
+              "cited_origin": [
+                "coast",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            20.5966,
+            21.8724,
+            19.7923,
+            20.2421,
+            20.2808
+          ],
+          "local_verify_ms": 0.1296,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "S06",
+          "question": "青榫站的工单录音争议，申诉窗口多少天？",
+          "group": "同名文件",
+          "language": "中文",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "申诉",
+              "doc": "ridge",
+              "page": 1,
+              "value": "87 天",
+              "excerpt": "申诉窗口为 87 天"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:48.477300+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-6f899f2802b3b4cafe2d4e80-99c91aaf3c1d4c8b993d5a7cf28d475b/pages/page-0001",
+              "doc": "ridge",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-70609168e601b7e21d436c25-4caad886c973419b8fe75aae7d455f28/pages/page-0001",
+              "doc": "coast",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "申诉",
+              "value": "87 天",
+              "citation": 1,
+              "text": "青榫站手册规定工单录音的申诉窗口为 87 天。",
+              "supported": true,
+              "cited_origin": [
+                "ridge",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            18.383,
+            19.7363,
+            18.0931,
+            17.5001,
+            17.5619
+          ],
+          "local_verify_ms": 0.136,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "T01",
+          "question": "截至2026-06-25，杉涟缓冲包回传宽限是多少分钟？",
+          "group": "新旧规则",
+          "language": "中文",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "宽限",
+              "doc": "old",
+              "page": 1,
+              "value": "13 分钟",
+              "excerpt": "回传宽限为 13 分钟"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-06-24T16:00:00+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "concepts/shuilian-old-p1",
+              "doc": "old",
+              "page": 1,
+              "temporal": "active"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-ecb927320aba5d2b9fd09d47-86359bd3ea054b0a9a10402aa9711253/pages/page-0001",
+              "doc": "old",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "source/evidence/source-5abc548bc9ebcd67d1d104ac-3057653dedd54233a97c2ae215d1d5f8/pages/page-0001",
+              "doc": "future",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/shuilian-new-p1",
+              "doc": "new",
+              "page": 1,
+              "temporal": "scheduled"
+            },
+            {
+              "ref": 5,
+              "id": "concepts/shuilian-future-p1",
+              "doc": "future",
+              "page": 1,
+              "temporal": "scheduled"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "宽限",
+              "value": "13 分钟",
+              "citation": 1,
+              "text": "2026-06-25 适用甲版，杉涟缓冲包回传宽限为 13 分钟。",
+              "supported": true,
+              "cited_origin": [
+                "old",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            33.2276,
+            34.6092,
+            30.0757,
+            30.6002,
+            30.1604
+          ],
+          "local_verify_ms": 3.0934,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "T02",
+          "question": "As of 2026-09-03，杉涟缓冲包的回传 grace period 是多少分钟？",
+          "group": "新旧规则",
+          "language": "混合",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "宽限",
+              "doc": "new",
+              "page": 1,
+              "value": "26 分钟",
+              "excerpt": "回传宽限为 26 分钟"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-09-02T16:00:00+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "concepts/shuilian-new-p1",
+              "doc": "new",
+              "page": 1,
+              "temporal": "active"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-ecb927320aba5d2b9fd09d47-86359bd3ea054b0a9a10402aa9711253/pages/page-0001",
+              "doc": "old",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "source/evidence/source-5abc548bc9ebcd67d1d104ac-3057653dedd54233a97c2ae215d1d5f8/pages/page-0001",
+              "doc": "future",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/shuilian-future-p1",
+              "doc": "future",
+              "page": 1,
+              "temporal": "scheduled"
+            },
+            {
+              "ref": 5,
+              "id": "concepts/shuilian-old-p1",
+              "doc": "old",
+              "page": 1,
+              "temporal": "expired"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "宽限",
+              "value": "26 分钟",
+              "citation": 1,
+              "text": "2026-09-03 适用乙版，杉涟缓冲包回传宽限为 26 分钟。",
+              "supported": true,
+              "cited_origin": [
+                "new",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            34.3898,
+            48.9527,
+            33.7037,
+            33.8427,
+            34.1472
+          ],
+          "local_verify_ms": 2.9665,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "T03",
+          "question": "截至2026-12-15，杉涟缓冲包回传规则给多少分钟宽限？",
+          "group": "新旧规则",
+          "language": "中文",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "宽限",
+              "doc": "future",
+              "page": 1,
+              "value": "46 分钟",
+              "excerpt": "回传宽限为 46 分钟"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-12-14T16:00:00+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "concepts/shuilian-future-p1",
+              "doc": "future",
+              "page": 1,
+              "temporal": "active"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-ecb927320aba5d2b9fd09d47-86359bd3ea054b0a9a10402aa9711253/pages/page-0001",
+              "doc": "old",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "source/evidence/source-5abc548bc9ebcd67d1d104ac-3057653dedd54233a97c2ae215d1d5f8/pages/page-0001",
+              "doc": "future",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/shuilian-new-p1",
+              "doc": "new",
+              "page": 1,
+              "temporal": "expired"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "宽限",
+              "value": "46 分钟",
+              "citation": 1,
+              "text": "2026-12-15 适用丙版，杉涟缓冲包回传宽限为 46 分钟。",
+              "supported": true,
+              "cited_origin": [
+                "future",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            27.8413,
+            27.3994,
+            27.1814,
+            26.9329,
+            27.0787
+          ],
+          "local_verify_ms": 2.256,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "T04",
+          "question": "在2026-06-25，能把杉涟缓冲包发到已备案的外部分拣点吗？",
+          "group": "新旧规则",
+          "language": "中文",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "规定",
+              "doc": "old",
+              "page": 1,
+              "value": "禁止",
+              "excerpt": "禁止将杉涟缓冲包发往外部分拣点"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-06-24T16:00:00+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "concepts/shuilian-old-p1",
+              "doc": "old",
+              "page": 1,
+              "temporal": "active"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-3b71e80eef30c6828ba67130-6e396bc7a5ba475abf541de6059b5e34/pages/page-0001",
+              "doc": "new",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "source/evidence/source-ecb927320aba5d2b9fd09d47-86359bd3ea054b0a9a10402aa9711253/pages/page-0001",
+              "doc": "old",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/shuilian-new-p1",
+              "doc": "new",
+              "page": 1,
+              "temporal": "scheduled"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "规定",
+              "value": "禁止",
+              "citation": 1,
+              "text": "2026-06-25 有效的甲版禁止将杉涟缓冲包发往外部分拣点。",
+              "supported": true,
+              "cited_origin": [
+                "old",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            29.1715,
+            28.0225,
+            26.0285,
+            26.385,
+            26.1867
+          ],
+          "local_verify_ms": 2.2718,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "T05",
+          "question": "在2026-09-03，杉涟缓冲包能发到已备案的外部分拣点吗？",
+          "group": "新旧规则",
+          "language": "中文",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "规定",
+              "doc": "new",
+              "page": 1,
+              "value": "允许",
+              "excerpt": "允许将杉涟缓冲包发往已备案的外部分拣点"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-09-02T16:00:00+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "concepts/shuilian-new-p1",
+              "doc": "new",
+              "page": 1,
+              "temporal": "active"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-3b71e80eef30c6828ba67130-6e396bc7a5ba475abf541de6059b5e34/pages/page-0001",
+              "doc": "new",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "source/evidence/source-ecb927320aba5d2b9fd09d47-86359bd3ea054b0a9a10402aa9711253/pages/page-0001",
+              "doc": "old",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/shuilian-old-p1",
+              "doc": "old",
+              "page": 1,
+              "temporal": "expired"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "规定",
+              "value": "允许",
+              "citation": 1,
+              "text": "2026-09-03 适用乙版，允许将杉涟缓冲包发往已备案的外部分拣点。",
+              "supported": true,
+              "cited_origin": [
+                "new",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            34.5848,
+            28.7255,
+            26.1375,
+            26.454,
+            26.4668
+          ],
+          "local_verify_ms": 2.267,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "T06",
+          "question": "对比杉涟甲版和乙版，验收摘要的 retention 各是多少天？",
+          "group": "新旧规则",
+          "language": "混合",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "甲版",
+              "doc": "old",
+              "page": 2,
+              "value": "165 天",
+              "excerpt": "留存期限为 165 天"
+            },
+            {
+              "slot": "乙版",
+              "doc": "new",
+              "page": 2,
+              "value": "133 天",
+              "excerpt": "留存期限为 133 天"
+            }
+          ],
+          "evidence_hits": 2,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:47.986851+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-ecb927320aba5d2b9fd09d47-86359bd3ea054b0a9a10402aa9711253/pages/page-0002",
+              "doc": "old",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-3b71e80eef30c6828ba67130-6e396bc7a5ba475abf541de6059b5e34/pages/page-0002",
+              "doc": "new",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/shuilian-new-p2",
+              "doc": "new",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/shuilian-old-p2",
+              "doc": "old",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 5,
+              "id": "concepts/shuilian-new-p1",
+              "doc": "new",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "甲版",
+              "value": "165 天",
+              "citation": 1,
+              "text": "甲版规定杉涟验收摘要留存 165 天。",
+              "supported": true,
+              "cited_origin": [
+                "old",
+                2
+              ]
+            },
+            {
+              "slot": "乙版",
+              "value": "133 天",
+              "citation": 2,
+              "text": "乙版规定杉涟验收摘要留存 133 天。",
+              "supported": true,
+              "cited_origin": [
+                "new",
+                2
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            28.4337,
+            27.463,
+            26.88,
+            26.9556,
+            26.8766
+          ],
+          "local_verify_ms": 0.247,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "D01",
+          "question": "岬星生产环境的 Relay Gate，fallback queue 的队列名是什么？",
+          "group": "干扰页",
+          "language": "混合",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "队列",
+              "doc": "relay",
+              "page": 2,
+              "value": "TIDE-EMBER",
+              "excerpt": "fallback queue 为 TIDE-EMBER"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": false,
+          "as_of": "2026-11-18T17:45:47.922746+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/relay-handoff-5ca5a6ccbc9a7b1bc7471742-54f21af6090b4f00a1c5cf326af0778c/pages/page-0001",
+              "doc": "relay",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/relay-rehearsal-8a537211569af3c54ba3cd4b-9e65ab6d4ba4420490fecbd673ca9f0c/pages/page-0001",
+              "doc": "rehearsal",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/relay-p2",
+              "doc": "relay",
+              "page": 2,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "队列",
+              "value": "TIDE-EMBER",
+              "citation": 3,
+              "text": "岬星 Relay Gate 的 fallback queue 为 TIDE-EMBER。",
+              "supported": true,
+              "cited_origin": [
+                "relay",
+                2
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            17.3298,
+            18.6553,
+            16.9645,
+            16.7219,
+            16.5379
+          ],
+          "local_verify_ms": 0.1324,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "D02",
+          "question": "岬星 Starling Relay 在 production 是否允许 auto-retry DUP-4？",
+          "group": "干扰页",
+          "language": "混合",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "规定",
+              "doc": "relay",
+              "page": 1,
+              "value": "禁止",
+              "excerpt": "生产环境禁止自动重试 DUP-4"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:48.189298+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/relay-handoff-5ca5a6ccbc9a7b1bc7471742-54f21af6090b4f00a1c5cf326af0778c/pages/page-0001",
+              "doc": "relay",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/relay-rehearsal-8a537211569af3c54ba3cd4b-9e65ab6d4ba4420490fecbd673ca9f0c/pages/page-0001",
+              "doc": "rehearsal",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/relay-p1",
+              "doc": "relay",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/rehearsal-p1",
+              "doc": "rehearsal",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "规定",
+              "value": "禁止",
+              "citation": 1,
+              "text": "岬星 Starling Relay 的生产环境禁止自动重试 DUP-4。",
+              "supported": true,
+              "cited_origin": [
+                "relay",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            32.0801,
+            29.375,
+            28.618,
+            28.8824,
+            28.6918
+          ],
+          "local_verify_ms": 0.2244,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "D03",
+          "question": "岬星 Relay Gate 正常 ACK 落哪条队列，DLQ 又要等多久才人工转发？",
+          "group": "干扰页",
+          "language": "混合",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "正常队列",
+              "doc": "relay",
+              "page": 1,
+              "value": "TIDE-SLATE",
+              "excerpt": "正常 ACK 进入 TIDE-SLATE"
+            },
+            {
+              "slot": "等待",
+              "doc": "relay",
+              "page": 2,
+              "value": "20 分钟",
+              "excerpt": "DLQ 保持 20 分钟"
+            }
+          ],
+          "evidence_hits": 2,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:48.787808+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/relay-handoff-5ca5a6ccbc9a7b1bc7471742-54f21af6090b4f00a1c5cf326af0778c/pages/page-0002",
+              "doc": "relay",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/relay-handoff-5ca5a6ccbc9a7b1bc7471742-54f21af6090b4f00a1c5cf326af0778c/pages/page-0001",
+              "doc": "relay",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "正常队列",
+              "value": "TIDE-SLATE",
+              "citation": 2,
+              "text": "岬星 Relay Gate 的正常 ACK 进入 TIDE-SLATE。",
+              "supported": true,
+              "cited_origin": [
+                "relay",
+                1
+              ]
+            },
+            {
+              "slot": "等待",
+              "value": "20 分钟",
+              "citation": 1,
+              "text": "on-call 在 DLQ 保持 20 分钟后才人工转发。",
+              "supported": true,
+              "cited_origin": [
+                "relay",
+                2
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            16.7722,
+            22.4394,
+            16.4485,
+            16.5484,
+            16.5851
+          ],
+          "local_verify_ms": 0.2149,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "D04",
+          "question": "正式流程里，蜡桥导轨采购验收的 final approver 是谁？",
+          "group": "干扰页",
+          "language": "混合",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "批准人",
+              "doc": "wax",
+              "page": 1,
+              "value": "乔弦",
+              "excerpt": "final approver 为乔弦"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:48.378825+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-d8b2514928dc55ffaedb641d-698996ea3ef5446fbe5ab493fddf0e41/pages/page-0001",
+              "doc": "wax",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-908e8e6a14253b87d447e1a3-d384b1d2e01b46649a39c013aaeaf97d/pages/page-0001",
+              "doc": "pack",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/wax-p1",
+              "doc": "wax",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "批准人",
+              "value": "乔弦",
+              "citation": 1,
+              "text": "正式验收的 final approver 为乔弦。",
+              "supported": true,
+              "cited_origin": [
+                "wax",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            25.2988,
+            27.3187,
+            24.7053,
+            24.7823,
+            24.9995
+          ],
+          "local_verify_ms": 0.1202,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "D05",
+          "question": "正式验收时，蜡桥导轨的 pallet checksum 用哪个算法？",
+          "group": "干扰页",
+          "language": "混合",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "算法",
+              "doc": "wax",
+              "page": 2,
+              "value": "Hazel-9",
+              "excerpt": "pallet checksum 算法为 Hazel-9"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": false,
+          "as_of": "2026-11-18T17:45:47.682157+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-908e8e6a14253b87d447e1a3-d384b1d2e01b46649a39c013aaeaf97d/pages/page-0001",
+              "doc": "pack",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-d8b2514928dc55ffaedb641d-698996ea3ef5446fbe5ab493fddf0e41/pages/page-0002",
+              "doc": "wax",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/wax-p2",
+              "doc": "wax",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/pack-p1",
+              "doc": "pack",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "算法",
+              "value": "Hazel-9",
+              "citation": 2,
+              "text": "蜡桥导轨正式采购验收的 pallet checksum 算法是 Hazel-9。",
+              "supported": true,
+              "cited_origin": [
+                "wax",
+                2
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            26.506,
+            25.3433,
+            24.7123,
+            25.421,
+            24.9431
+          ],
+          "local_verify_ms": 0.1874,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "D06",
+          "question": "潮桥工坊借具窗口周二几点停止借具？",
+          "group": "干扰页",
+          "language": "中文",
+          "control": false,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "结束时间",
+              "doc": "workshop",
+              "page": 1,
+              "value": "7.40pm",
+              "excerpt": "Monday to Thursday: 10.00am–7.40pm"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:48.665959+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/z-tidal-workshop-787a780ea79d3b787263ab39-266e692a6802443c9925a7a799caaa0e/pages/page-0001",
+              "doc": "workshop",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/a-fen-market-1c9c7fb9fb7d333f38b2a48a-56948a77f63349d0b9bf7ddb8b155056/pages/page-0001",
+              "doc": "market",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/workshop-p1",
+              "doc": "workshop",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "结束时间",
+              "value": "7.40pm",
+              "citation": 1,
+              "text": "潮桥工坊借具窗口周一至周四 7.40pm 停止开放，周二适用该时段。",
+              "supported": true,
+              "cited_origin": [
+                "workshop",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            15.0914,
+            16.1968,
+            14.9413,
+            14.9442,
+            15.1251
+          ],
+          "local_verify_ms": 0.2107,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "N01",
+          "question": "青榫站《交接手册》规定的工单录音加密算法是什么？",
+          "group": "无答案",
+          "language": "中文",
+          "control": false,
+          "answerable": false,
+          "expected": [],
+          "evidence_hits": 0,
+          "hit_at_1": false,
+          "as_of": "2026-11-18T17:45:48.015360+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-6f899f2802b3b4cafe2d4e80-99c91aaf3c1d4c8b993d5a7cf28d475b/pages/page-0001",
+              "doc": "ridge",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-157e6a7b0e4448ead048acb0-8014dd56309e4e409995ea484555d33f/pages/page-0001",
+              "doc": "drill",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "refuse",
+          "reason": "青榫站正式手册没有工单录音的加密算法。",
+          "claims": [],
+          "fully_supported": false,
+          "correct_refusal": true,
+          "retrieval_times_ms": [
+            23.9208,
+            22.715,
+            21.8767,
+            21.935,
+            21.5008
+          ],
+          "local_verify_ms": null,
+          "local_verify_status": null,
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "N02",
+          "question": "岬星 Relay Gate 生产环境的 PagerDuty escalation phone 是什么？",
+          "group": "无答案",
+          "language": "混合",
+          "control": false,
+          "answerable": false,
+          "expected": [],
+          "evidence_hits": 0,
+          "hit_at_1": false,
+          "as_of": "2026-11-18T17:45:48.581489+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/relay-handoff-5ca5a6ccbc9a7b1bc7471742-54f21af6090b4f00a1c5cf326af0778c/pages/page-0001",
+              "doc": "relay",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/relay-rehearsal-8a537211569af3c54ba3cd4b-9e65ab6d4ba4420490fecbd673ca9f0c/pages/page-0001",
+              "doc": "rehearsal",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/relay-p1",
+              "doc": "relay",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "refuse",
+          "reason": "岬星 Relay Gate 生产手册未给出 PagerDuty escalation phone。",
+          "claims": [],
+          "fully_supported": false,
+          "correct_refusal": true,
+          "retrieval_times_ms": [
+            17.0664,
+            17.516,
+            16.6423,
+            16.8139,
+            16.743
+          ],
+          "local_verify_ms": null,
+          "local_verify_status": null,
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "N03",
+          "question": "截至2025-11-01，杉涟缓冲包回传宽限是多少分钟？",
+          "group": "无答案",
+          "language": "中文",
+          "control": false,
+          "answerable": false,
+          "expected": [],
+          "evidence_hits": 0,
+          "hit_at_1": false,
+          "as_of": "2025-10-31T16:00:00+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-ecb927320aba5d2b9fd09d47-86359bd3ea054b0a9a10402aa9711253/pages/page-0001",
+              "doc": "old",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-5abc548bc9ebcd67d1d104ac-3057653dedd54233a97c2ae215d1d5f8/pages/page-0001",
+              "doc": "future",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/shuilian-new-p1",
+              "doc": "new",
+              "page": 1,
+              "temporal": "scheduled"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/shuilian-old-p1",
+              "doc": "old",
+              "page": 1,
+              "temporal": "scheduled"
+            }
+          ],
+          "status": "refuse",
+          "reason": "检索到的甲乙丙三个版本在 2025-11-01 均未生效。",
+          "claims": [],
+          "fully_supported": false,
+          "correct_refusal": true,
+          "retrieval_times_ms": [
+            27.3375,
+            28.7544,
+            26.9485,
+            27.6139,
+            27.2394
+          ],
+          "local_verify_ms": null,
+          "local_verify_status": null,
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "N04",
+          "question": "蜡桥导轨正式验收的 replacement unit price 是多少？",
+          "group": "无答案",
+          "language": "混合",
+          "control": false,
+          "answerable": false,
+          "expected": [],
+          "evidence_hits": 0,
+          "hit_at_1": false,
+          "as_of": "2026-11-18T17:45:48.762361+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-d8b2514928dc55ffaedb641d-698996ea3ef5446fbe5ab493fddf0e41/pages/page-0001",
+              "doc": "wax",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-908e8e6a14253b87d447e1a3-d384b1d2e01b46649a39c013aaeaf97d/pages/page-0001",
+              "doc": "pack",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/wax-p1",
+              "doc": "wax",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "source/evidence/source-d8b2514928dc55ffaedb641d-698996ea3ef5446fbe5ab493fddf0e41/pages/page-0002",
+              "doc": "wax",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 5,
+              "id": "concepts/wax-p2",
+              "doc": "wax",
+              "page": 2,
+              "temporal": "undated"
+            }
+          ],
+          "status": "refuse",
+          "reason": "正式采购验收备忘没有提供蜡桥导轨的替换单价。",
+          "claims": [],
+          "fully_supported": false,
+          "correct_refusal": true,
+          "retrieval_times_ms": [
+            25.3713,
+            25.5124,
+            24.8953,
+            25.5478,
+            25.124
+          ],
+          "local_verify_ms": null,
+          "local_verify_status": null,
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "N05",
+          "question": "晚苇站白班负责人实名是什么？",
+          "group": "无答案",
+          "language": "中文",
+          "control": false,
+          "answerable": false,
+          "expected": [],
+          "evidence_hits": 0,
+          "hit_at_1": false,
+          "as_of": "2026-11-18T17:45:48.866487+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-70609168e601b7e21d436c25-4caad886c973419b8fe75aae7d455f28/pages/page-0002",
+              "doc": "coast",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/source-70609168e601b7e21d436c25-4caad886c973419b8fe75aae7d455f28/pages/page-0001",
+              "doc": "coast",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/coast-p2",
+              "doc": "coast",
+              "page": 2,
+              "temporal": "undated"
+            },
+            {
+              "ref": 4,
+              "id": "concepts/coast-p1",
+              "doc": "coast",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 5,
+              "id": "concepts/drill-p1",
+              "doc": "drill",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "refuse",
+          "reason": "交接手册只给出晚苇站白班接收组，未给负责人的姓名。",
+          "claims": [],
+          "fully_supported": false,
+          "correct_refusal": true,
+          "retrieval_times_ms": [
+            18.5245,
+            18.4214,
+            18.1146,
+            17.6955,
+            18.1125
+          ],
+          "local_verify_ms": null,
+          "local_verify_status": null,
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "N06",
+          "question": "潮桥工坊借具窗口 Sunday 开放时段到几点？",
+          "group": "无答案",
+          "language": "混合",
+          "control": false,
+          "answerable": false,
+          "expected": [],
+          "evidence_hits": 0,
+          "hit_at_1": false,
+          "as_of": "2026-11-18T17:45:47.805544+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/z-tidal-workshop-787a780ea79d3b787263ab39-266e692a6802443c9925a7a799caaa0e/pages/page-0001",
+              "doc": "workshop",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/a-fen-market-1c9c7fb9fb7d333f38b2a48a-56948a77f63349d0b9bf7ddb8b155056/pages/page-0001",
+              "doc": "market",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/workshop-p1",
+              "doc": "workshop",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "refuse",
+          "reason": "潮桥工坊只列了周一至周四和周五的时间，没有周日时段。",
+          "claims": [],
+          "fully_supported": false,
+          "correct_refusal": true,
+          "retrieval_times_ms": [
+            27.3924,
+            17.9036,
+            16.9633,
+            16.9153,
+            16.9515
+          ],
+          "local_verify_ms": null,
+          "local_verify_status": null,
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "C01",
+          "question": "潮桥工坊借具窗口的 Tuesday close 时间是什么？",
+          "group": "问句规则探针",
+          "language": "混合",
+          "control": true,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "结束时间",
+              "doc": "workshop",
+              "page": 1,
+              "value": "7.40pm",
+              "excerpt": "Monday to Thursday: 10.00am–7.40pm"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:48.081661+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/z-tidal-workshop-787a780ea79d3b787263ab39-266e692a6802443c9925a7a799caaa0e/pages/page-0001",
+              "doc": "workshop",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/a-fen-market-1c9c7fb9fb7d333f38b2a48a-56948a77f63349d0b9bf7ddb8b155056/pages/page-0001",
+              "doc": "market",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/workshop-p1",
+              "doc": "workshop",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "结束时间",
+              "value": "7.40pm",
+              "citation": 1,
+              "text": "潮桥工坊借具窗口周二 7.40pm 停止开放。",
+              "supported": true,
+              "cited_origin": [
+                "workshop",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            19.5592,
+            20.5346,
+            17.0153,
+            17.307,
+            17.3465
+          ],
+          "local_verify_ms": 0.1671,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "C02",
+          "question": "枯蒲集市器材窗口的 Tuesday close 时间是什么？",
+          "group": "问句规则探针",
+          "language": "混合",
+          "control": true,
+          "answerable": true,
+          "expected": [
+            {
+              "slot": "结束时间",
+              "doc": "market",
+              "page": 1,
+              "value": "2.15pm",
+              "excerpt": "Monday to Thursday: 9.00am–2.15pm"
+            }
+          ],
+          "evidence_hits": 1,
+          "hit_at_1": true,
+          "as_of": "2026-11-18T17:45:47.652249+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/a-fen-market-1c9c7fb9fb7d333f38b2a48a-56948a77f63349d0b9bf7ddb8b155056/pages/page-0001",
+              "doc": "market",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/z-tidal-workshop-787a780ea79d3b787263ab39-266e692a6802443c9925a7a799caaa0e/pages/page-0001",
+              "doc": "workshop",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/market-p1",
+              "doc": "market",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "answer",
+          "reason": "",
+          "claims": [
+            {
+              "slot": "结束时间",
+              "value": "2.15pm",
+              "citation": 1,
+              "text": "枯蒲集市器材窗口周二闭馆时间为 2.15pm。",
+              "supported": true,
+              "cited_origin": [
+                "market",
+                1
+              ]
+            }
+          ],
+          "fully_supported": true,
+          "correct_refusal": false,
+          "retrieval_times_ms": [
+            29.8453,
+            17.9338,
+            16.8476,
+            16.856,
+            16.6379
+          ],
+          "local_verify_ms": 0.1647,
+          "local_verify_status": "pass",
+          "local_verify_reasons": {}
+        },
+        {
+          "id": "C03",
+          "question": "鹭湾外借台 Tuesday close 时间是什么？",
+          "group": "问句规则探针",
+          "language": "混合",
+          "control": true,
+          "answerable": false,
+          "expected": [],
+          "evidence_hits": 0,
+          "hit_at_1": false,
+          "as_of": "2026-11-18T17:45:48.321219+00:00",
+          "hint_kinds": [],
+          "hint_exposed": false,
+          "visible_hints": [],
+          "top": [
+            {
+              "ref": 1,
+              "id": "source/evidence/source-7267f1c2834ef81be5f488b5-21014b39a3a7450d916e2d6acada4f50/pages/page-0001",
+              "doc": "quay",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 2,
+              "id": "source/evidence/a-fen-market-1c9c7fb9fb7d333f38b2a48a-56948a77f63349d0b9bf7ddb8b155056/pages/page-0001",
+              "doc": "market",
+              "page": 1,
+              "temporal": "undated"
+            },
+            {
+              "ref": 3,
+              "id": "concepts/quay-p1",
+              "doc": "quay",
+              "page": 1,
+              "temporal": "undated"
+            }
+          ],
+          "status": "refuse",
+          "reason": "鹭湾外借台的资料只有预约取件和归还流程，未说明每天何时关门。",
+          "claims": [],
+          "fully_supported": false,
+          "correct_refusal": true,
+          "retrieval_times_ms": [
+            15.9748,
+            16.3701,
+            15.0714,
+            15.158,
+            15.0382
+          ],
+          "local_verify_ms": null,
+          "local_verify_status": null,
+          "local_verify_reasons": {}
+        }
+      ]
+    }
+  }
+}

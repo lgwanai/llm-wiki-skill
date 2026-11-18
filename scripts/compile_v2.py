@@ -16,8 +16,10 @@ import tempfile
 import traceback
 from collections.abc import Callable
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import RLock
 from typing import Any
 
 import yaml
@@ -49,9 +51,22 @@ from config import (
     get_ocr_config,
     get_vision_skill_config,
     get_wiki_dir,
+    model_connection_issues,
 )
 from epub import epub_to_markdown
+from source_versions import (
+    active_source,
+    atomic_bytes,
+    json_bytes,
+    publication_view,
+    publish_changes,
+    source_id_for,
+    strip_secrets,
+)
 from table_extract import persist_page_tables
+
+_LLM_WORKSPACE: ContextVar[dict[str, str] | None] = ContextVar("compile_workspace", default=None)
+_COMPILE_LOCK = RLock()
 
 
 def _log_exc(msg: str = ""):
@@ -64,19 +79,9 @@ def _log_exc(msg: str = ""):
         print(f"  [WARN] {_tb.format_exc()}", file=sys.stderr)
 
 
-SECRET_PATTERNS: list[tuple[str, str]] = [
-    (r"(?:sk|pk|rk)-(?:[a-zA-Z0-9]{20,})", "[REDACTED: API key]"),
-    (r"(?:ghp|gho|ghu|ghs|ghr)_[a-zA-Z0-9]{36,}", "[REDACTED: GitHub token]"),
-    (
-        r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----.*?-----END (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----",
-        "[REDACTED: Private key]",
-    ),
-    (r"password\s*[=:]\s*\S+", "password=[REDACTED]"),
-]
 CONTACT_PATTERNS: list[tuple[str, str]] = [
     (r"[\w\.-]+@[\w\.-]+\.\w{2,}", "[REDACTED: Email]"),
 ]
-SENSITIVE_PATTERNS = SECRET_PATTERNS + CONTACT_PATTERNS
 
 KEYWORD_RELATION_MAP = [
     # English patterns
@@ -858,14 +863,8 @@ Avoid generic descriptions like "this is an image of a diagram" — be specific 
 
 
 def strip_sensitive(content: str) -> str:
-    for pattern, replacement in SENSITIVE_PATTERNS:
-        content = re.sub(pattern, replacement, content, flags=re.DOTALL)
-    return content
-
-
-def strip_secrets(content: str) -> str:
-    """Remove credentials while retaining source facts such as public contacts."""
-    for pattern, replacement in SECRET_PATTERNS:
+    content = strip_secrets(content)
+    for pattern, replacement in CONTACT_PATTERNS:
         content = re.sub(pattern, replacement, content, flags=re.DOTALL)
     return content
 
@@ -938,39 +937,67 @@ def _readonly_working_copy(source_path: Path):
                 raise integrity_error
 
 
+def _private_input_dir() -> Path:
+    """Store binary inspection copies outside the wiki and its backups."""
+    uid = getattr(os, "getuid", lambda: 0)()
+    root = Path(tempfile.gettempdir()).resolve() / f"llm-wiki-inputs-{uid}"
+    root.mkdir(mode=0o700, exist_ok=True)
+    if root.is_symlink() or (os.name != "nt" and root.stat().st_uid != uid):
+        raise RuntimeError("Agent input cache must be owned by the current user")
+    project = hashlib.sha256(str(WIKI_DIR.resolve()).encode()).hexdigest()[:24]
+    return root / project
+
+
+def _source_identity(path: Path) -> str:
+    """Keep the original source identity when a directory task delegates a snapshot."""
+    resolved = path.resolve()
+    for root in (WIKI_DIR.resolve() / "source" / "agent_inputs", _private_input_dir()):
+        if resolved.is_relative_to(root):
+            parts = resolved.relative_to(root).parts
+            if len(parts) == 3 and re.fullmatch(r"[a-f0-9]{24}", parts[0]):
+                return parts[0]
+    return source_id_for(resolved, WIKI_DIR)
+
+
 def _agent_source_snapshot(source_path: Path) -> Path:
-    """Create an immutable, content-addressed input copy for Agent execution.
-
-    Agent tasks must never point an execution-capable Agent at the user's only
-    copy.  Keeping the snapshot under ``.wiki/source/agent_inputs`` also makes
-    the task reproducible after the original is moved.
-    """
+    """Store a redacted text snapshot or a private binary inspection copy."""
     source_path = source_path.resolve()
-    digest = _file_sha256(source_path)
-    snapshot_dir = WIKI_DIR / "source" / "agent_inputs" / digest[:16]
-    snapshot_dir.mkdir(parents=True, exist_ok=True)
-    snapshot_path = snapshot_dir / source_path.name
+    source_id = _source_identity(source_path)
+    if is_text_source(source_path):
+        try:
+            data = strip_secrets(source_path.read_bytes().decode("utf-8")).encode("utf-8")
+        except UnicodeDecodeError:
+            data = None
+    else:
+        data = None
 
+    if data is None:
+        root = _private_input_dir()
+        digest = _file_sha256(source_path)
+    else:
+        root = WIKI_DIR / "source" / "agent_inputs"
+        digest = hashlib.sha256(data).hexdigest()
+    snapshot_path = root / source_id / digest / source_path.name
     if snapshot_path.exists():
         if _file_sha256(snapshot_path) != digest:
             raise RuntimeError(f"Agent source snapshot hash mismatch: {snapshot_path}")
-        snapshot_path.chmod(0o444)
         return snapshot_path
 
-    fd, temporary_name = tempfile.mkstemp(
-        prefix=f".{source_path.name}.", suffix=".tmp", dir=snapshot_dir
-    )
-    os.close(fd)
-    temporary = Path(temporary_name)
-    try:
-        shutil.copy2(source_path, temporary)
-        if _file_sha256(temporary) != digest:
-            raise RuntimeError(f"Agent source snapshot copy failed verification: {source_path}")
-        temporary.chmod(0o444)
-        os.replace(temporary, snapshot_path)
-    finally:
-        if temporary.exists():
-            temporary.unlink()
+    if data is not None:
+        atomic_bytes(snapshot_path, data)
+        snapshot_path.chmod(0o444)
+    else:
+        snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+        fd, temporary = tempfile.mkstemp(prefix=".input-", dir=snapshot_path.parent)
+        os.close(fd)
+        try:
+            shutil.copyfile(source_path, temporary)
+            if _file_sha256(Path(temporary)) != digest:
+                raise RuntimeError(f"Agent source snapshot copy failed verification: {source_path}")
+            os.chmod(temporary, 0o400)
+            os.replace(temporary, snapshot_path)
+        finally:
+            Path(temporary).unlink(missing_ok=True)
     return snapshot_path
 
 
@@ -2613,7 +2640,7 @@ def _run_markitdown(source_path: Path) -> str:
 def _legacy_doc_to_markdown(source_path: Path) -> tuple[str, str, Path]:
     """Convert legacy Word to cached DOCX, then extract structured Markdown."""
     digest = _file_sha256(source_path)
-    cache_dir = WIKI_DIR / "source" / "converted_documents" / digest[:16]
+    cache_dir = _private_input_dir() / "converted_documents" / digest[:16]
     cached_docx = cache_dir / f"{source_path.stem}.docx"
     pipeline = "cached-docx"
 
@@ -2660,7 +2687,7 @@ def _read_epub_for_compile(source_path: Path) -> str:
     """Convert EPUB to Markdown while materializing all referenced images."""
     media_key = _source_media_key(source_path)
     assets_dir = WIKI_DIR / "source" / "epub_assets" / media_key
-    content = epub_to_markdown(source_path, assets_dir)
+    content = strip_secrets(epub_to_markdown(source_path, assets_dir))
     markdown_dir = WIKI_DIR / "source" / "epub_markdown" / media_key
     markdown_dir.mkdir(parents=True, exist_ok=True)
     markdown_path = markdown_dir / f"{source_path.stem}.md"
@@ -3082,6 +3109,9 @@ def create_agent_compile_task(
     }
 
     raw_evidence_manifest: dict[str, Any] | None = None
+    source_id = _source_identity(path) if path.is_file() else None
+    with publication_view(WIKI_DIR):
+        base_revision = active_source(WIKI_DIR, source_id).get("revision", "") if source_id else ""
     if path.is_dir():
         try:
             sources = iter_source_files(path, max_depth=depth)
@@ -3114,12 +3144,11 @@ def create_agent_compile_task(
         source_name = path.name
         source_hint = "directory"
     else:
+        task_source_path = path if dry_run else _agent_source_snapshot(path)
         if dry_run:
             with _readonly_working_copy(path) as snapshot_path:
                 content, readable = _read_agent_visible_source(snapshot_path)
-            task_source_path = path
         else:
-            task_source_path = _agent_source_snapshot(path)
             content, readable = _read_agent_visible_source(task_source_path)
         if readable and path.suffix.lower() in {".md", ".markdown"}:
             # The immutable Markdown snapshot intentionally excludes sibling
@@ -3133,14 +3162,6 @@ def create_agent_compile_task(
                 # OvisOCR2 may add absolute bbox crop references. Persist them
                 # into pages/assets just like the captured source page images.
                 content = _persist_source_image_references(content, path)
-        if readable and content and not dry_run:
-            from raw_evidence import persist_raw_evidence
-
-            raw_evidence_manifest = persist_raw_evidence(
-                strip_secrets(content),
-                source_name=path.name,
-                wiki_dir=WIKI_DIR,
-            )
         readable_content = strip_sensitive(content) if readable else ""
         source_entries = f"- `{task_source_path}`"
         source_name = path.name
@@ -3163,6 +3184,20 @@ def create_agent_compile_task(
     run_dir = task_dir / f"compile-{timestamp}-{safe_name}"
     task_path = run_dir / "task.md"
     todo_path = run_dir / "todolist.json"
+    staged_pages = run_dir / "pages"
+    if not dry_run and path.is_file():
+        from raw_evidence import persist_raw_evidence
+
+        staged_pages.mkdir(parents=True, exist_ok=True)
+        raw_evidence_manifest = persist_raw_evidence(
+            content if readable and content else f"# {path.name}\n\nSource requires direct inspection.\n",
+            source_name=path.name,
+            wiki_dir=WIKI_DIR,
+            source_id=source_id,
+            source_version=sha256_file(task_source_path),
+            staged=True,
+            base_revision=base_revision,
+        )
     todo_items: list[dict[str, Any]] = []
 
     if path.is_dir():
@@ -3175,6 +3210,7 @@ def create_agent_compile_task(
                     "artifact_path": str(snapshot),
                     "artifact_sha256": sha256_file(snapshot),
                     "source_bytes": snapshot.stat().st_size,
+                    "source_id": _source_identity(snapshot),
                 }
             )
     elif readable:
@@ -3226,6 +3262,7 @@ def create_agent_compile_task(
                         "visual_schema_version": 1,
                     }
                 )
+            item["source_citation"] = f"compile:{source_id}:{item['artifact_sha256']}"
             todo_items.append(item)
     else:
         todo_items.append(
@@ -3237,6 +3274,7 @@ def create_agent_compile_task(
                 "artifact_sha256": sha256_file(task_source_path),
                 "source_bytes": task_source_path.stat().st_size,
                 "requires_direct_inspection": True,
+                "source_citation": f"compile:{source_id}:{sha256_file(task_source_path)}",
             }
         )
 
@@ -3249,6 +3287,14 @@ def create_agent_compile_task(
             metadata={
                 "task_file": str(task_path),
                 "wiki_dir": str(WIKI_DIR),
+                "staged_pages": str(staged_pages) if source_id else None,
+                "source_id": source_id,
+                "source_version": raw_evidence_manifest.get("source_version") if raw_evidence_manifest else None,
+                "evidence_manifest": (
+                    str(Path(raw_evidence_manifest["raw_path"]).with_name("manifest.json"))
+                    if raw_evidence_manifest else None
+                ),
+                "directory_worklist": path.is_dir(),
                 "study_material": study_material,
                 "ordered_execution": True,
                 "publish_only_after_verification": True,
@@ -3351,6 +3397,7 @@ This task was generated in Agent mode. Do not call the configured LLM API.
 - Force overwrite: `{force}`
 - Dry run: `{dry_run}`
 - Wiki dir: `{WIKI_DIR}`
+- Staged pages: `{staged_pages}` (single-source worklist)
 - Compile timestamp (set as frontmatter `timestamp`): `{datetime.now(timezone.utc).isoformat()}`
 
 ## Agent Responsibilities
@@ -3363,12 +3410,16 @@ This task was generated in Agent mode. Do not call the configured LLM API.
 - Process exactly one task at a time in ascending `order`. Before reading a task run:
   `python {Path(__file__).resolve().parent / "compile_todo.py"} start "{todo_path}" <task-id>`
 - Read the task's complete `artifact_path`, including every heading, paragraph, list,
-  table row/cell, footnote, formula, caption, and image/page reference. If a directory
-  item is itself too large for context, invoke `compile_v2.py` on that immutable
-  snapshot to create and finish its child todo before completing the parent item.
-- Write/merge all knowledge from that task into OKF pages. Record every affected
-  Concept ID only after the task is fully represented:
-  `python {Path(__file__).resolve().parent / "compile_todo.py"} complete "{todo_path}" <task-id> --output <concept-id>`
+  table row/cell, footnote, formula, caption, and image/page reference. If a chunk is
+  too large for one read, process it in slices within the same task.
+- For a directory worklist, run Agent compile on each listed snapshot. Complete and verify
+  that child worklist, then record it on the parent with `complete --child <child-todolist>`.
+- For a single-source worklist, write OKF pages only under **Staged pages**. Use the
+  published wiki for read-only reference. Keep page IDs relative to the staging directory.
+- Each output needs a YAML frontmatter list `source_citations`. For each todo item it covers,
+  add an entry with `artifact` set to the item's exact `source_citation` and `quote` set to a
+  verbatim excerpt from its artifact. For binary inspection, the artifact ID is sufficient.
+  Keep each entry when one page covers multiple tasks. Use repeatable `--output <concept-id>`.
 - For image-bearing study materials, `complete` is an executable media gate: every
   output must cite exact source pages/EPUB sections; it then attaches images from the
   cited and adjacent pages and records their hashes. This cannot be satisfied by a
@@ -3379,7 +3430,8 @@ This task was generated in Agent mode. Do not call the configured LLM API.
 - After every item has been attempted, run:
   `python {Path(__file__).resolve().parent / "compile_todo.py"} verify "{todo_path}"`
   Verification must return `coverage_complete: true` with zero pending, in-progress,
-  failed, or blocked tasks. Only then update index/graph/audit and report success.
+  failed, or blocked tasks. Verification publishes the pages and evidence together.
+  Report success only after it confirms publication.
 - Before final verification, compare the source inventory (headings/pages/tables and
   task hashes) with compiled pages. Add remediation tasks for any uncovered content.
 
@@ -3446,9 +3498,9 @@ This task was generated in Agent mode. Do not call the configured LLM API.
 2. Decide the document's actual domain and purpose; `doc`, `article`, `code`, or
    `conversation` is only a storage hint, not the compilation strategy.
 3. Apply the matched expert lens below, then compile according to `.wiki/schema.md`.
-4. Treat `.wiki/pages/` as the native OKF v0.1 bundle. Write concept documents
-   under meaningful subdirectories and use their relative paths as Concept IDs.
-5. Update `.wiki/pages/index.md`, `.wiki/pages/log.md`, graph files, and audit files.
+4. Use the run's staged pages directory for all concept writes. The Concept ID
+   is the path relative to that directory, such as `concepts/some-topic`.
+5. Run the final todo verification to publish the concepts, index, graph and audit.
 6. If the source cannot be read, stop and ask the user for readable content.
 
 {expert_guidance}
@@ -3512,6 +3564,7 @@ This task was generated in Agent mode. Do not call the configured LLM API.
         "pages_updated": 0,
         "dry_run": dry_run,
         "raw_evidence": raw_evidence_manifest,
+        "staged_pages": str(staged_pages) if source_id and not dry_run else None,
         "message": (
             "Agent compile task created. The current Agent should execute this task; "
             "no configured LLM was called."
@@ -3643,6 +3696,10 @@ GRAPH_DIR = WIKI_DIR / "graph"
 SOURCE_IMAGES_DIR = WIKI_DIR / "source" / "images"
 
 
+def _compile_workspace_root() -> Path:
+    return PAGES_DIR.parent if _LLM_WORKSPACE.get() else WIKI_DIR
+
+
 def _slugify_okf_title(value: str) -> str:
     slug = re.sub(r"[^\w\u4e00-\u9fff.-]+", "-", value.strip().lower()).strip("-.")
     return slug or "concept"
@@ -3699,6 +3756,9 @@ def _okf_page_from_model(page_content: str, source_name: str) -> tuple[str, dict
     ):
         if raw.get(extension_key):
             metadata[extension_key] = raw[extension_key]
+    if revision := _LLM_WORKSPACE.get():
+        metadata["source_id"] = revision["source_id"]
+        metadata["source_version"] = revision["source_version"]
     if raw.get("resource"):
         metadata["resource"] = raw["resource"]
     metadata = {key: value for key, value in metadata.items() if value not in (None, "", [])}
@@ -3714,7 +3774,15 @@ def _okf_page_from_model(page_content: str, source_name: str) -> tuple[str, dict
         + "\n---\n"
         + body
     )
-    return normalized, metadata, concept_identifier, PAGES_DIR / f"{concept_identifier}.md"
+    path = PAGES_DIR / f"{concept_identifier}.md"
+    if metadata.get("source_id") and path.is_file():
+        from okf import read_markdown
+
+        prior, _, _ = read_markdown(path)
+        if _same_name_different_source(metadata, prior):
+            concept_identifier = f"{concept_identifier}-{metadata['source_id'][:12]}"
+            path = PAGES_DIR / f"{concept_identifier}.md"
+    return normalized, metadata, concept_identifier, path
 
 
 def _identity_key(value: str) -> str:
@@ -3779,6 +3847,7 @@ def _existing_concept_catalog() -> list[dict[str, Any]]:
                 "names": names,
                 "keys": {_identity_key(name) for name in names if _identity_key(name)},
                 "body": body,
+                "metadata": metadata,
             }
         )
     return catalog
@@ -3807,6 +3876,8 @@ def _resolve_existing_concept(
     incoming_type = str(metadata.get("type", "")).casefold()
     for item in catalog if catalog is not None else _existing_concept_catalog():
         if str(item.get("type", "")).lower() not in CONCEPT_LIKE_TYPES:
+            continue
+        if _same_name_different_source(metadata, item.get("metadata", {})):
             continue
         if incoming_keys & set(item.get("keys", set())):
             existing_id = str(item["id"])
@@ -3926,6 +3997,12 @@ def _refresh_fused_metadata(content: str, incoming_content: str, page_id: str) -
         return content
     if not isinstance(metadata, dict) or not isinstance(incoming, dict):
         return content
+    owners = _page_source_ids(metadata) | _page_source_ids(incoming)
+    for key in ("source_id", "source_version"):
+        if incoming.get(key):
+            metadata[key] = incoming[key]
+    if len(owners) > 1:
+        metadata["source_ids"] = sorted(owners)
     for field in (
         "tags",
         "aliases",
@@ -4040,7 +4117,7 @@ def _reconcile_compiled_pages(
     for item in canonicalized.values():
         path = Path(str(item.get("path", "")))
         if path.exists():
-            if not force:
+            if not force and not _source_replaces_page(path):
                 item["_content"] = _fuse_page_content(
                     path.read_text(encoding="utf-8"),
                     str(item.get("_content", "")),
@@ -4154,33 +4231,28 @@ def _ensure_study_bidirectional_links(pages: list[dict]) -> dict[str, Any]:
     return {"links_added": links_added, "touched_pages": list(touched.values())}
 
 
-def atomic_write(path: Path, content: str):
-    """Atomic file write (temp + rename, safe against partial writes)."""
-    tmp = path.with_suffix(".tmp")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp.write_text(content, encoding="utf-8")
-    os.replace(str(tmp), str(path))
+def atomic_write(path: Path, content: str) -> None:
+    """Atomically write compiler text after redacting credentials."""
+    atomic_bytes(path, strip_secrets(content).encode("utf-8"))
 
 
-def write_audit(operation: str, details: dict):
-    audit_file = WIKI_DIR / "audit.json"
-    audit_file.parent.mkdir(parents=True, exist_ok=True)
-
+def _audit_content(audit_file: Path, operation: str, details: dict) -> str:
     entry = {
         "operation": operation,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         **details,
     }
-
-    entries = []
-    if audit_file.exists():
-        try:
-            entries = json.loads(audit_file.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            entries = []
-
+    try:
+        entries = json.loads(audit_file.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        entries = []
     entries.append(entry)
-    audit_file.write_text(json.dumps(entries, indent=2, ensure_ascii=False), encoding="utf-8")
+    return json.dumps(entries, indent=2, ensure_ascii=False)
+
+
+def write_audit(operation: str, details: dict) -> None:
+    audit_file = _compile_workspace_root() / "audit.json"
+    atomic_write(audit_file, _audit_content(audit_file, operation, details))
 
 
 def detect_contradictions(page_id: str, new_content: str, existing_content: str) -> list:
@@ -4747,7 +4819,13 @@ def _compile_chunked(
         )
         update_index(all_pages, source_name)
         update_log(source_name, len(all_created), "compile")
-        update_graph(graph_pages, source_name)
+        removed = (
+            _prune_stale_pages({page["id"] for page in all_pages}, source_name)
+            if _LLM_WORKSPACE.get() else []
+        )
+        if removed:
+            update_index(all_pages, source_name)
+        update_graph(graph_pages, source_name, removed=set(removed))
         write_audit(
             "compile",
             {
@@ -5126,7 +5204,7 @@ Output pages separated by ===PAGE_END==="""
     updated_pages: list[dict] = []
 
     for page_content in pages:
-        page_content = page_content.strip()
+        page_content = strip_secrets(page_content.strip())
         if not page_content or not page_content.startswith("---"):
             continue
 
@@ -5214,6 +5292,34 @@ def _ensure_created_at(page_content: str, compile_date: str | None = None) -> st
     return "\n".join(lines)
 
 
+def _page_source_ids(metadata: dict) -> set[str]:
+    owners = metadata.get("source_ids")
+    values = owners if isinstance(owners, list) else []
+    return {str(value) for value in [metadata.get("source_id"), *values] if value}
+
+
+def _same_name_different_source(incoming: dict, existing: dict) -> bool:
+    source_id = incoming.get("source_id")
+    owners = _page_source_ids(existing)
+    return bool(
+        source_id and owners and source_id not in owners
+        and incoming.get("provenance") == existing.get("provenance")
+    )
+
+
+def _source_replaces_page(page_path: Path) -> bool:
+    revision = _LLM_WORKSPACE.get()
+    if not revision or not page_path.is_file():
+        return False
+    from okf import read_markdown
+
+    metadata, _, _ = read_markdown(page_path)
+    return (
+        _page_source_ids(metadata) == {revision["source_id"]}
+        and metadata.get("source_version") != revision["source_version"]
+    )
+
+
 def _get_source_pages(source_name: str) -> dict[str, dict]:
     """Return all wiki pages previously created by *source_name*.
 
@@ -5221,7 +5327,7 @@ def _get_source_pages(source_name: str) -> dict[str, dict]:
     the native OKF bundle for pages with matching provenance.
     """
     result: dict[str, dict] = {}
-    from okf import concept_id, iter_concepts
+    from okf import concept_id, iter_concepts, read_markdown
 
     for md_file in iter_concepts(PAGES_DIR):
         try:
@@ -5232,7 +5338,11 @@ def _get_source_pages(source_name: str) -> dict[str, dict]:
         if not source_match:
             continue
         page_source = source_match.group(1).strip()
-        if page_source != source_name:
+        if revision := _LLM_WORKSPACE.get():
+            metadata, _, _ = read_markdown(md_file)
+            if _page_source_ids(metadata) != {revision["source_id"]}:
+                continue
+        elif page_source != source_name:
             continue
         is_manual = page_source == "manual"
         page_id = concept_id(md_file, PAGES_DIR)
@@ -5273,33 +5383,180 @@ def _prune_stale_pages(
     return removed
 
 
+def _workspace_files(root: Path) -> dict[str, str]:
+    files = [root / "audit.json"]
+    for directory in ("pages", "ledger"):
+        files.extend((root / directory).rglob("*"))
+    files.extend(root / "graph" / name for name in ("entities.json", "edges.json"))
+    return {
+        path.relative_to(root).as_posix(): sha256_file(path)
+        for path in files
+        if path.is_file() and not path.is_relative_to(root / "pages" / "assets")
+    }
+
+
+def _copy_compile_workspace(wiki: Path, stage: Path) -> dict[str, str]:
+    """Copy the compiler's mutable state and link its immutable media."""
+    def copy_asset(source: str, destination: str) -> None:
+        try:
+            os.link(source, destination)
+        except OSError:
+            shutil.copy2(source, destination)
+
+    with publication_view(wiki):
+        for folder in ("pages", "ledger"):
+            source = wiki / folder
+            if source.is_dir():
+                shutil.copytree(
+                    source,
+                    stage / folder,
+                    ignore=lambda directory, names: {
+                        name for name in names
+                        if name.startswith(".") or name.endswith(".wal")
+                        or (Path(directory) == wiki / "pages" and name == "assets")
+                    },
+                    dirs_exist_ok=True,
+                )
+        assets = wiki / "pages" / "assets"
+        if assets.is_dir():
+            shutil.copytree(assets, stage / "pages" / "assets", copy_function=copy_asset)
+        for filename in ("audit.json", "graph/entities.json", "graph/edges.json"):
+            source = wiki / filename
+            if source.is_file():
+                destination = stage / filename
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source, destination)
+        return _workspace_files(stage)
+
+
+@contextmanager
+def _llm_compile_workspace(stage: Path, revision: dict[str, str]):
+    from ledger import ledger_workspace
+
+    global PAGES_DIR, ENTITIES_DIR, CONCEPTS_DIR, INDEX_FILE
+    previous = PAGES_DIR, ENTITIES_DIR, CONCEPTS_DIR, INDEX_FILE
+    token = _LLM_WORKSPACE.set(revision)
+    try:
+        PAGES_DIR = stage / "pages"
+        ENTITIES_DIR = PAGES_DIR / "entities"
+        CONCEPTS_DIR = PAGES_DIR / "concepts"
+        INDEX_FILE = PAGES_DIR / "index.md"
+        with ledger_workspace(stage / "ledger"):
+            yield
+    finally:
+        PAGES_DIR, ENTITIES_DIR, CONCEPTS_DIR, INDEX_FILE = previous
+        _LLM_WORKSPACE.reset(token)
+
+
+def _publish_llm(
+    wiki: Path, stage: Path, before: dict[str, str], evidence: dict, result: dict,
+) -> None:
+    from raw_evidence import evidence_publication
+
+    evidence_path = Path(evidence["raw_path"]).with_name("manifest.json")
+    outputs = sorted(set(result.get("output_ids", [])) | {page["id"] for page in result["pages"]})
+    if not outputs or any(not (stage / "pages" / f"{output}.md").is_file() for output in outputs):
+        raise ValueError("Compilation did not produce all of its recorded outputs")
+    after = _workspace_files(stage)
+    paths = {key for key, digest in after.items() if before.get(key) != digest}
+    removed = set(before) - set(after)
+
+    def prepare() -> dict[str, bytes | None]:
+        changes: dict[str, bytes | None] = evidence_publication(wiki, evidence_path, outputs)
+        for key in sorted(paths | removed):
+            live = wiki / key
+            if (sha256_file(live) if live.is_file() else None) != before.get(key):
+                raise ValueError(f"Published file changed while compiling: {key}. Retry the source.")
+            if key in removed:
+                changes[key] = None
+            elif key == "graph/entities.json":
+                entities = json.loads((stage / key).read_text(encoding="utf-8"))
+                for entity in entities.values():
+                    path = entity.get("path")
+                    if path and Path(path).is_relative_to(stage):
+                        entity["path"] = str(wiki / Path(path).relative_to(stage))
+                changes[key] = json_bytes(entities)
+            else:
+                data = (stage / key).read_bytes()
+                if key.endswith((".md", ".json")):
+                    data = strip_secrets(data.decode("utf-8")).encode("utf-8")
+                changes[key] = data
+        for output in outputs:
+            archive = evidence_path.parent / "compiled_pages" / f"{output}.md"
+            changes[archive.relative_to(wiki).as_posix()] = strip_secrets(
+                (stage / "pages" / f"{output}.md").read_text(encoding="utf-8")
+            ).encode("utf-8")
+        receipt = evidence_path.parent / "published.json"
+        changes[receipt.relative_to(wiki).as_posix()] = json_bytes({
+            "revision": evidence["revision"], "outputs": outputs,
+            "published_at": datetime.now(timezone.utc).isoformat(),
+        })
+        return changes
+
+    publish_changes(wiki, prepare)
+    for page in result["pages"]:
+        if page.get("path") and Path(page["path"]).is_relative_to(stage):
+            page["path"] = str(wiki / Path(page["path"]).relative_to(stage))
+    result["raw_evidence"] = evidence
+    result["published_revision"] = evidence["revision"]
+
+
 def compile_source(
     source_path: str, source_type: str = "doc", force: bool = False, dry_run: bool = False
 ) -> dict:
-
-    if not os.path.exists(source_path):
-        raise FileNotFoundError(f"Source not found: {source_path}")
-
     source_file = Path(source_path)
+    if not source_file.exists():
+        raise FileNotFoundError(f"Source not found: {source_path}")
     _assert_safe_source_location(source_file)
     if source_file.is_dir():
-        return compile_path(source_path, source_type=source_type, force=force)
+        return compile_path(source_path, source_type=source_type, force=force, dry_run=dry_run)
 
+    with _COMPILE_LOCK:
+        return _compile_file(source_file, source_type, force, dry_run)
+
+
+def _compile_file(source_file: Path, source_type: str, force: bool, dry_run: bool) -> dict:
+    wiki = WIKI_DIR.resolve()
+    source_id = _source_identity(source_file)
+    with publication_view(wiki):
+        base_revision = active_source(wiki, source_id).get("revision", "")
+    original_hash = sha256_file(source_file)
+    source_version = original_hash
+    if is_text_source(source_file):
+        original_text = source_file.read_bytes().decode("utf-8")
+        source_version = hashlib.sha256(strip_secrets(original_text).encode("utf-8")).hexdigest()
     content, source_name = read_source_content(source_file)
+    if sha256_file(source_file) != original_hash:
+        raise ValueError("Source changed while extracting content. Retry the source.")
     # Materialize every local image reference before the model sees the source.
     # This covers OCR Markdown (relative ``images/...`` links) as well as the
     # full-page images generated for PDF, Word, and PowerPoint documents.
     if not dry_run:
         content = _persist_source_image_references(content, source_file)
-    raw_evidence_manifest: dict[str, Any] | None = None
-    if not dry_run:
-        from raw_evidence import persist_raw_evidence
+    if dry_run:
+        return _compile_prepared_source(content, source_name, source_type, force, dry_run)
 
-        raw_evidence_manifest = persist_raw_evidence(
-            strip_secrets(content),
-            source_name=source_name,
-            wiki_dir=WIKI_DIR,
-        )
+    from raw_evidence import persist_raw_evidence
+
+    evidence = persist_raw_evidence(
+        content, source_name, wiki,
+        source_id=source_id, source_version=source_version,
+        staged=True, base_revision=base_revision,
+    )
+    runs = wiki / "compile_runs"
+    runs.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".llm-stage-", dir=runs) as temporary:
+        stage = Path(temporary)
+        baseline = _copy_compile_workspace(wiki, stage)
+        with _llm_compile_workspace(stage, evidence):
+            result = _compile_prepared_source(content, source_name, source_type, force, dry_run)
+        _publish_llm(wiki, stage, baseline, evidence, result)
+    return result
+
+
+def _compile_prepared_source(
+    content: str, source_name: str, source_type: str, force: bool, dry_run: bool,
+) -> dict:
     content = strip_sensitive(content)
 
     lang = detect_language(content)
@@ -5351,7 +5608,6 @@ def compile_source(
                 focus_desc,
                 entity_type_str,
             )
-            result["raw_evidence"] = raw_evidence_manifest
             return result
 
     if lang == "zh":
@@ -5707,11 +5963,11 @@ Output pages separated by ===PAGE_END==="""
     concept_types = CONCEPT_LIKE_TYPES
     # Track which entity IDs need concept pages (base name → list of instance IDs)
     concept_groups: dict[str, list[dict]] = {}
-    _skipped: list[int] = [0]  # mutable counter for unchanged pages
+    skipped_ids: set[str] = set()
     existing_source_pages = _get_source_pages(source_name)  # for incremental hash comparison
 
     for page_content in pages:
-        page_content = page_content.strip()
+        page_content = strip_secrets(page_content.strip())
         if not page_content or not page_content.startswith("---"):
             continue
 
@@ -5737,8 +5993,10 @@ Output pages separated by ===PAGE_END==="""
         # Persist regular Markdown tables as queryable DuckDB data. Key Facts
         # remains in the page because the retrieval pipeline reads it directly.
         if not dry_run:
+            revision = _LLM_WORKSPACE.get() or {}
             page_content, stored_tables = persist_page_tables(
-                page_content, source_name, str(entity_id)
+                page_content, source_name, str(entity_id),
+                source_id=revision.get("source_id"), revision=revision.get("revision"),
             )
             if stored_tables:
                 print(f"  Extracted tables: {', '.join(stored_tables)}", file=sys.stderr)
@@ -5770,7 +6028,7 @@ Output pages separated by ===PAGE_END==="""
                 )
                 print(f"  Conflict → prefixed: {prefixed_id}.md", file=sys.stderr)
 
-        if page_path.exists() and not force:
+        if page_path.exists() and not force and not _source_replaces_page(page_path):
             existing_content = page_path.read_text(encoding="utf-8")
             contradictions = detect_contradictions(entity_id, page_content, existing_content)
 
@@ -5810,7 +6068,7 @@ Output pages separated by ===PAGE_END==="""
                     new_hash = _content_hash(page_content)
                     old_hash = existing_source_pages.get(entity_id, {}).get("content_hash", "")
                     if new_hash == old_hash:
-                        _skipped[0] += 1
+                        skipped_ids.add(entity_id)
                         print(f"  Unchanged: {Path(page_path).name}", file=sys.stderr)
                         continue
                     atomic_write(page_path, _ensure_created_at(page_content))
@@ -5846,7 +6104,7 @@ Output pages separated by ===PAGE_END==="""
                     new_hash = _content_hash(page_content)
                     old_hash = existing_source_pages.get(entity_id, {}).get("content_hash", "")
                     if new_hash == old_hash:
-                        _skipped[0] += 1
+                        skipped_ids.add(entity_id)
                         print(f"  Unchanged: {Path(page_path).name}", file=sys.stderr)
                         continue
                     atomic_write(page_path, _ensure_created_at(page_content))
@@ -5880,7 +6138,7 @@ Output pages separated by ===PAGE_END==="""
 
     all_pages = created_pages + updated_pages
     if not all_pages:
-        if _skipped[0] and existing_source_pages:
+        if skipped_ids and existing_source_pages:
             output_ids = sorted(existing_source_pages)
             print(
                 f"  Complete: {len(output_ids)} existing page(s) were unchanged",
@@ -5890,11 +6148,10 @@ Output pages separated by ===PAGE_END==="""
                 "source": source_name,
                 "pages_created": 0,
                 "pages_updated": 0,
-                "pages_skipped": _skipped[0],
+                "pages_skipped": len(skipped_ids),
                 "pages": [],
                 "output_ids": output_ids,
                 "coverage_complete": True,
-                "raw_evidence": raw_evidence_manifest,
             }
         print(
             "  ERROR: No pages parsed from LLM response! Raw output (500 chars):", file=sys.stderr
@@ -5906,8 +6163,8 @@ Output pages separated by ===PAGE_END==="""
         )
 
     # ── Incremental: track unchanged pages ──
-    new_page_ids: set[str] = {p["id"] for p in all_pages}
-    skipped_pages = _skipped[0]
+    new_page_ids = {p["id"] for p in all_pages} | skipped_ids
+    skipped_pages = len(skipped_ids)
     pruned_pages: list[str] = []
 
     if dry_run:
@@ -6055,7 +6312,7 @@ provenance: 跨文档聚合
     )
     update_index(all_pages, source_name)
     update_log(source_name, len(created_pages), "compile")
-    update_graph(graph_pages, source_name)
+    update_graph(graph_pages, source_name, removed=set(pruned_pages))
 
     write_audit(
         "compile",
@@ -6085,7 +6342,6 @@ provenance: 跨文档聚合
         "pages": all_pages,
         "output_ids": sorted(new_page_ids),
         "coverage_complete": True,
-        "raw_evidence": raw_evidence_manifest,
         "contradictions_found": contradictions_found,
     }
 
@@ -6304,11 +6560,8 @@ def compile_path(
     }
 
 
-def update_log(source_name: str, pages_count: int, operation: str = "compile"):
+def _log_content(log_file: Path, source_name: str, pages_count: int, operation: str = "compile") -> str:
     """Update the OKF bundle log with a newest-first ISO date entry."""
-    log_file = PAGES_DIR / "log.md"
-    log_file.parent.mkdir(parents=True, exist_ok=True)
-
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     entry = (
         f"## {now}\n* **{operation.title()}**: {source_name}; {pages_count} concepts changed.\n\n"
@@ -6320,12 +6573,18 @@ def update_log(source_name: str, pages_count: int, operation: str = "compile"):
         content = "# Wiki Log\n\n"
     heading, _, rest = content.partition("\n\n")
     content = f"{heading}\n\n{entry}{rest}"
-    log_file.write_text(content, encoding="utf-8")
+    return content
 
 
-def update_graph(pages: list, source_name: str):
-    graph_dir = WIKI_DIR / "graph"
-    graph_dir.mkdir(parents=True, exist_ok=True)
+def update_log(source_name: str, pages_count: int, operation: str = "compile") -> None:
+    log_file = PAGES_DIR / "log.md"
+    atomic_write(log_file, _log_content(log_file, source_name, pages_count, operation))
+
+
+def _graph_content(
+    pages: list, source_name: str, graph_dir: Path,
+    removed: set[str] | None = None, *, replace_edges: bool = False,
+) -> tuple[dict, dict]:
 
     entities_file = graph_dir / "entities.json"
     edges_file = graph_dir / "edges.json"
@@ -6341,6 +6600,14 @@ def update_graph(pages: list, source_name: str):
     else:
         edges = []
 
+    removed = removed or set()
+    for identifier in removed:
+        entities.pop(identifier, None)
+    replaced = {page["id"] for page in pages} if replace_edges else set()
+    edges = [
+        edge for edge in edges
+        if edge["source"] not in removed | replaced and edge["target"] not in removed
+    ]
     now = datetime.now(timezone.utc).isoformat()
 
     for page in pages:
@@ -6366,11 +6633,15 @@ def update_graph(pages: list, source_name: str):
                 1.0, 0.85 + 0.05 * entities[eid]["reinforcement_count"]
             )
             entities[eid]["last_confirmed"] = now
+            entities[eid]["name"] = page["name"]
+            entities[eid]["type"] = page["type"]
+            if page.get("path"):
+                entities[eid]["path"] = page["path"]
 
     for page in pages:
         page_path = Path(page.get("path", ""))
-        if page_path.exists():
-            content = page_path.read_text(encoding="utf-8")
+        if "_content" in page or page_path.is_file():
+            content = page.get("_content") or page_path.read_text(encoding="utf-8")
             markdown_links = re.findall(r"\[[^\]]+\]\(([^)]+\.md)(?:#[^)]+)?\)", content)
 
             for target in markdown_links:
@@ -6407,27 +6678,39 @@ def update_graph(pages: list, source_name: str):
                     if not existing:
                         edges.append(edge)
 
-    entities_file.write_text(json.dumps(entities, indent=2, ensure_ascii=False), encoding="utf-8")
-    edges_file.write_text(
-        json.dumps({"edges": edges}, indent=2, ensure_ascii=False), encoding="utf-8"
+    return entities, {"edges": edges}
+
+
+def update_graph(pages: list, source_name: str, *, removed: set[str] | None = None) -> None:
+    graph_dir = _compile_workspace_root() / "graph"
+    entities, edges = _graph_content(
+        pages, source_name, graph_dir, removed, replace_edges=_LLM_WORKSPACE.get() is not None,
     )
+    atomic_bytes(graph_dir / "entities.json", json.dumps(entities, indent=2, ensure_ascii=False).encode())
+    atomic_bytes(graph_dir / "edges.json", json.dumps(edges, indent=2, ensure_ascii=False).encode())
 
 
-def update_index(pages: list, source_name: str):
-    """Regenerate the OKF progressive-disclosure root index."""
+def _index_content(
+    pages_dir: Path, updates: dict[str, dict], removed: set[str]
+) -> str:
     from okf import concept_id, iter_concepts, read_markdown
 
-    INDEX_FILE.parent.mkdir(parents=True, exist_ok=True)
-    grouped: dict[str, list[tuple[str, str, str]]] = {}
-    for path in iter_concepts(PAGES_DIR):
-        metadata, _, error = read_markdown(path)
-        if error:
+    metadata_by_id = dict(updates)
+    for path in iter_concepts(pages_dir):
+        identifier = concept_id(path, pages_dir)
+        if identifier in updates or identifier in removed:
             continue
+        metadata, _, error = read_markdown(path)
+        if not error:
+            metadata_by_id[identifier] = metadata
+
+    grouped: dict[str, list[tuple[str, str, str]]] = {}
+    for identifier, metadata in metadata_by_id.items():
         page_type = str(metadata.get("type") or "Reference")
         grouped.setdefault(page_type, []).append(
             (
-                concept_id(path, PAGES_DIR),
-                str(metadata.get("title") or path.stem),
+                identifier,
+                str(metadata.get("title") or Path(identifier).stem),
                 str(metadata.get("description") or ""),
             )
         )
@@ -6438,7 +6721,12 @@ def update_index(pages: list, source_name: str):
             suffix = f" - {description}" if description else ""
             lines.append(f"* [{title}](/{identifier}.md){suffix}")
         lines.append("")
-    atomic_write(INDEX_FILE, "\n".join(lines))
+    return "\n".join(lines)
+
+
+def update_index(pages: list, source_name: str) -> None:
+    """Regenerate the OKF progressive-disclosure root index."""
+    atomic_bytes(INDEX_FILE, _index_content(PAGES_DIR, {}, set()).encode("utf-8"))
 
 
 def _materialize_text_source(text: str, name: str | None = None) -> str:
@@ -6459,11 +6747,11 @@ def _materialize_text_source(text: str, name: str | None = None) -> str:
     path = source_dir / f"{safe}.md"
     if path.exists():
         path = source_dir / f"{safe}-{timestamp}.md"
-    path.write_text(text, encoding="utf-8")
+    atomic_bytes(path, strip_secrets(text).encode("utf-8"))
     return str(path)
 
 
-def main():
+def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(description="Wiki compilation")
@@ -6496,7 +6784,10 @@ def main():
         "--mode",
         choices=["agent", "llm"],
         default=None,
-        help="Compile mode; defaults to configured mode or agent",
+        help=(
+            "Agent uses the current AI assistant. LLM requires a configured endpoint, "
+            "model, and API key when the service requires one."
+        ),
     )
     parser.add_argument(
         "--force", action="store_true", help="Force re-compile (overwrite existing pages)"
@@ -6530,20 +6821,41 @@ def main():
         import os as _os
 
         _os.environ["LLM_WIKI_COMPILE_WORKERS"] = str(max(1, args.jobs))
-    if args.pdf_text_layer:
-        os.environ["LLM_WIKI_PDF_TEXT_LAYER"] = "1"
     if args.chunk_tokens is not None:
         os.environ["LLM_WIKI_CHUNK_TOKENS"] = str(max(4_000, args.chunk_tokens))
     config_mode = get_config().get("compile", {}).get("mode", "agent")
     mode = args.mode or config_mode or "agent"
+
+    if args.source is None and args.text is None:
+        parser.error("provide a source file/dir, --text TEXT, or - (stdin)")
+    if mode == "llm":
+        if issues := model_connection_issues():
+            print("LLM setup is required before compiling.", file=sys.stderr)
+            for issue in issues:
+                print(f"- {issue}", file=sys.stderr)
+            print("See CONFIGURATION.md and run wiki config --check.", file=sys.stderr)
+            raise SystemExit(2)
+    else:
+        print(
+            "Agent mode uses the current AI assistant. A standalone wiki API key is optional "
+            "in this mode. Run with --mode llm for unattended use with a configured model.",
+            file=sys.stderr,
+            flush=True,
+        )
+
+    if not args.dry_run:
+        try:
+            from dream import cancel_active_dream
+
+            cancel_active_dream("compile started")
+        except Exception:
+            pass
 
     # Resolve the source: raw --text, stdin ("-"), or an existing file/dir.
     if args.text is not None:
         source_path = _materialize_text_source(args.text, args.source_name)
     elif args.source == "-":
         source_path = _materialize_text_source(sys.stdin.read(), args.source_name)
-    elif args.source is None:
-        parser.error("provide a source file/dir, --text TEXT, or - (stdin)")
     else:
         source_path = args.source
 

@@ -34,6 +34,8 @@ try:
 except ImportError:
     jieba = None
 
+from source_versions import consistent_read, current_compiled_table
+
 WIKI_DIR = get_wiki_dir()
 PAGES_DIR = WIKI_DIR / "pages"
 GRAPH_DIR = WIKI_DIR / "graph"
@@ -1394,7 +1396,7 @@ def table_search(query: str, wiki_dir: str, limit: int = 10) -> list[dict]:
     conn = duckdb.connect(str(ledger_db))
 
     rows = conn.execute(
-        "SELECT actual_name, display_name, fields_json FROM _registry WHERE record_count > 0"
+        "SELECT actual_name, display_name, fields_json, description FROM _registry WHERE record_count > 0"
     ).fetchall()
 
     if not rows:
@@ -1409,7 +1411,9 @@ def table_search(query: str, wiki_dir: str, limit: int = 10) -> list[dict]:
     results: list[dict] = []
     k1, b = 1.5, 0.75
 
-    for actual_name, display_name, fields_json_str in rows:
+    for actual_name, display_name, fields_json_str, description in rows:
+        if not current_compiled_table(Path(wiki_dir), description):
+            continue
         fields = json.loads(fields_json_str)
         search_cols = [
             f["name"]
@@ -1652,6 +1656,7 @@ def eval_retrieval(eval_file: str | Path, limit: int = 5) -> dict:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+@consistent_read(lambda: WIKI_DIR)
 def _main() -> None:
     parser = argparse.ArgumentParser(description="llm-wiki Hybrid Search")
     parser.add_argument("query", nargs="?", help="Search query")

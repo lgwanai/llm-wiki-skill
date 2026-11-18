@@ -20,6 +20,7 @@ import re
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -35,8 +36,8 @@ DEFAULT_CONFIG = {
     "model": {
         "provider": "deepseek",
         "api_key": "",
-        "base_url": "https://api.deepseek.com",
-        "model": "deepseek-v4-flash",
+        "base_url": "",
+        "model": "",
         "temperature": 0.3,
         "max_tokens": 32000,
         "num_ctx": 32768,
@@ -204,29 +205,31 @@ def _normalize_config(config: dict) -> dict:
     """
     normalized = config.copy()
 
-    model = normalized.get("model", {}).copy()
-    if "llm" in normalized:
-        legacy_llm = normalized.get("llm", {})
-        if (
-            legacy_llm.get("provider")
-            and model.get("provider") == DEFAULT_CONFIG["model"]["provider"]
-        ):
-            model["provider"] = legacy_llm["provider"]
-        for key, value in legacy_llm.items():
-            if model.get(key) in (None, ""):
-                model[key] = value
-    provider = model.get("provider", "deepseek")
-    if provider == "ollama":
-        legacy = normalized.get("ollama", {})
-        for key in ("base_url", "model", "temperature", "num_ctx"):
-            if key in legacy and model.get(key) in (None, ""):
-                model[key] = legacy[key]
-    elif provider == "custom":
-        legacy = normalized.get("custom", {})
-        for key in ("base_url", "api_url", "api_key", "model"):
-            if key in legacy and model.get(key) in (None, ""):
-                model[key] = legacy[key]
-    normalized["model"] = model
+    model_section = normalized.get("model", {})
+    if isinstance(model_section, dict):
+        model = model_section.copy()
+        if "llm" in normalized:
+            legacy_llm = normalized.get("llm", {})
+            if (
+                legacy_llm.get("provider")
+                and model.get("provider") == DEFAULT_CONFIG["model"]["provider"]
+            ):
+                model["provider"] = legacy_llm["provider"]
+            for key, value in legacy_llm.items():
+                if model.get(key) in (None, ""):
+                    model[key] = value
+        provider = model.get("provider", "deepseek")
+        if provider == "ollama":
+            legacy = normalized.get("ollama", {})
+            for key in ("base_url", "model", "temperature", "num_ctx"):
+                if key in legacy and model.get(key) in (None, ""):
+                    model[key] = legacy[key]
+        elif provider == "custom":
+            legacy = normalized.get("custom", {})
+            for key in ("base_url", "api_url", "api_key", "model"):
+                if key in legacy and model.get(key) in (None, ""):
+                    model[key] = legacy[key]
+        normalized["model"] = model
 
     ocr = normalized.get("ocr", {}).copy()
     if "backend" not in ocr and "ocr_mode" in normalized:
@@ -301,9 +304,9 @@ def get_wiki_dir() -> Path:
     return _wiki_dir_cache
 
 
-def get_llm_config() -> dict:
+def get_llm_config(config: dict | None = None) -> dict:
     """Get chat model configuration with provider-specific defaults."""
-    config = get_config()
+    config = get_config() if config is None else config
     model = config.get("model", {})
     provider = model.get("provider", "deepseek")
 
@@ -316,8 +319,8 @@ def get_llm_config() -> dict:
     if provider == "ollama":
         return {
             "provider": "ollama",
-            "base_url": model.get("base_url", "http://localhost:11434"),
-            "model": model.get("model", "llama3.2"),
+            "base_url": model.get("base_url") or base_url_defaults["ollama"],
+            "model": model.get("model") or "llama3.2",
             "temperature": model.get("temperature", 0.3),
             "num_ctx": model.get("num_ctx", 32768),
             "api_key": None,
@@ -335,19 +338,21 @@ def get_llm_config() -> dict:
             "max_tokens": model.get("max_tokens", 32000),
         }
 
+    key = model.get("api_key", "")
+    key_env = {"deepseek": "DEEPSEEK_API_KEY", "openai": "OPENAI_API_KEY"}.get(provider)
     return {
         "provider": provider,
-        "base_url": model.get("base_url", base_url_defaults.get(provider, "")),
-        "api_key": model.get("api_key", ""),
-        "model": model.get("model", ""),
+        "base_url": model.get("base_url") or base_url_defaults.get(provider, ""),
+        "api_key": (key or os.environ.get(key_env, "")) if key_env else key,
+        "model": model.get("model") or ("deepseek-v4-flash" if provider == "deepseek" else ""),
         "temperature": model.get("temperature", 0.3),
         "max_tokens": model.get("max_tokens", 32000),
     }
 
 
-def get_api_url() -> str:
+def get_api_url(llm: dict | None = None) -> str:
     """Get the complete API URL for chat completions."""
-    llm = get_llm_config()
+    llm = get_llm_config() if llm is None else llm
     provider = llm.get("provider", "deepseek")
 
     if provider == "ollama":
@@ -358,6 +363,57 @@ def get_api_url() -> str:
 
     base_url = llm.get("base_url", "").rstrip("/")
     return f"{base_url}/v1/chat/completions"
+
+
+def model_connection_issues(config: dict | None = None) -> list[str]:
+    """Check model prerequisites without making a request or printing credentials."""
+    config = get_config() if config is None else config
+    model = config.get("model", {})
+    if not isinstance(model, dict):
+        return ["model: must be a mapping in wiki_config.yaml"]
+    provider = model.get("provider", "deepseek")
+    if provider not in _VALID_PROVIDERS:
+        return ["model.provider: choose deepseek, openai, ollama, or custom"]
+
+    llm = get_llm_config(config)
+    issues = []
+    name = llm["model"]
+    if not isinstance(name, str) or not name.strip() or re.search(r"\$\{?\w+", name):
+        issues.append("model.model: set a model identifier provided by your model service")
+
+    explicit_url = llm.get("api_url")
+    endpoint_field = "model.api_url" if explicit_url else "model.base_url"
+    value = explicit_url or llm["base_url"]
+    try:
+        if isinstance(value, str) and not re.search(r"\s|\$", value):
+            url = urlsplit(get_api_url(llm))
+            valid_url = (
+                url.scheme in {"http", "https"}
+                and bool(url.hostname)
+                and (url.port is None or url.port > 0)
+            )
+        else:
+            valid_url = False
+    except ValueError:
+        valid_url = False
+    if not valid_url:
+        issues.append(f"{endpoint_field}: set a valid HTTP(S) model endpoint")
+
+    key = llm.get("api_key")
+    if llm["provider"] != "ollama":
+        if isinstance(key, str) and (
+            reference := re.fullmatch(r"\$\{(\w+)\}|\$(\w+)", key.strip())
+        ):
+            env_name = reference[1] or reference[2]
+            issues.append(f"model.api_key: set the referenced {env_name} environment variable")
+        elif key is not None and not isinstance(key, str):
+            issues.append("model.api_key: use a string or an environment variable reference")
+        elif llm["provider"] in {"deepseek", "openai"} and not (key or "").strip():
+            env_name = "OPENAI_API_KEY" if llm["provider"] == "openai" else "DEEPSEEK_API_KEY"
+            issues.append(
+                f"model.api_key: set {env_name} or an environment reference in the config"
+            )
+    return issues
 
 
 def get_query_config() -> dict:
@@ -485,23 +541,10 @@ def validate_config(config: dict) -> list[str]:
         _v.check_positive("model.max_tokens", model.get("max_tokens"), "model")
 
         provider = model.get("provider", "deepseek")
-        if provider not in ("ollama",):
-            key = model.get("api_key", "")
-            if not key:
-                issues.append(
-                    f"model.api_key: required for provider '{provider}' — "
-                    f"set api_key or DEEPSEEK_API_KEY env var"
-                )
-            elif not isinstance(key, str):
-                issues.append("model.api_key: must be a string")
-            elif key.startswith("${") and key.endswith("}"):
-                # Env-var reference — check it resolves
-                env_var = key[2:-1]
-                if env_var not in os.environ:
-                    issues.append(
-                        f"model.api_key: references ${{{env_var}}} but "
-                        f"env var '{env_var}' is not set"
-                    )
+        issues.extend(
+            issue for issue in model_connection_issues(config)
+            if not issue.startswith("model.provider:")
+        )
 
         if provider == "ollama":
             _v.check_type("model.num_ctx", model.get("num_ctx"), int, "model")
@@ -587,6 +630,18 @@ def validate_config(config: dict) -> list[str]:
         "query",
         "ocr",
         "image_analysis",
+        "vision_skill",
+        # These keys are accepted by the compatibility normalizer.
+        "llm",
+        "ollama",
+        "custom",
+        "ocr_mode",
+        "paddleocr_vl",
+        "ovisocr",
+        "mineru",
+        "deepseek_ocr",
+        "logics_parsing",
+        "paddleocr",
         "reranker",
         "embeddings",
         "quality",
@@ -662,6 +717,11 @@ def print_config():
         "quality": config.get("quality", {}),
         "logging": config.get("logging", DEFAULT_CONFIG["logging"]),
     }
+    for section in ("model", "ocr", "image_analysis"):
+        compact[section] = {
+            name: "[REDACTED]" if name == "api_key" and value else value
+            for name, value in compact[section].items()
+        }
     print(json.dumps(compact, indent=2, ensure_ascii=False))
     print(f"\nWiki directory: {get_wiki_dir()}")
     print(f"API URL: {get_api_url()}")

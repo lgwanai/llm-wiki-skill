@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import zipfile
@@ -204,6 +205,7 @@ def test_agent_compile_uses_verified_snapshot_and_preserves_original(tmp_path, m
     original_mtime = source.stat().st_mtime_ns
 
     monkeypatch.setattr(compile_v2, "WIKI_DIR", wiki)
+    monkeypatch.setattr(compile_v2, "_private_input_dir", lambda: tmp_path / "private-inputs")
     monkeypatch.setattr(
         compile_v2,
         "_read_agent_visible_source",
@@ -214,9 +216,12 @@ def test_agent_compile_uses_verified_snapshot_and_preserves_original(tmp_path, m
 
     assert source.read_bytes() == original
     assert source.stat().st_mtime_ns == original_mtime
-    snapshots = list((wiki / "source" / "agent_inputs").rglob(source.name))
-    assert len(snapshots) == 1
-    snapshot = snapshots[0]
+    item = json.loads(Path(result["todo"]).read_text())["items"][0]
+    snapshot = Path(item["source_path"])
+    snapshot_root = (
+        wiki / "source" / "agent_inputs" if suffix == ".html" else tmp_path / "private-inputs"
+    )
+    assert snapshot.is_relative_to(snapshot_root)
     assert snapshot.read_bytes() == original
     task = Path(result["agent_task"]).read_text(encoding="utf-8")
     assert str(snapshot) in task
@@ -231,10 +236,11 @@ def test_agent_snapshot_absorbs_accidental_133_byte_overwrite(tmp_path, monkeypa
     original = b"irreplaceable" * 200_000
     source.write_bytes(original)
     monkeypatch.setattr(compile_v2, "WIKI_DIR", wiki)
+    monkeypatch.setattr(compile_v2, "_private_input_dir", lambda: tmp_path / "private-inputs")
     monkeypatch.setattr(compile_v2, "_read_agent_visible_source", lambda _path: ("", False))
 
     compile_v2.create_agent_compile_task(str(source))
-    snapshot = next((wiki / "source" / "agent_inputs").rglob(source.name))
+    snapshot = next((tmp_path / "private-inputs").rglob(source.name))
 
     # Simulate a misbehaving Agent/tool defeating chmod and writing its input.
     snapshot.chmod(0o600)
@@ -254,13 +260,19 @@ def test_agent_directory_task_contains_only_snapshots(tmp_path, monkeypatch):
         path.write_bytes((suffix.encode() + b"-original") * 100)
         originals.append(path)
     monkeypatch.setattr(compile_v2, "WIKI_DIR", wiki)
+    monkeypatch.setattr(compile_v2, "_private_input_dir", lambda: tmp_path / "private-inputs")
 
     result = compile_v2.create_agent_compile_task(str(sources))
     task = Path(result["agent_task"]).read_text(encoding="utf-8")
 
     for source in originals:
         assert str(source) not in task
-        snapshots = list((wiki / "source" / "agent_inputs").rglob(source.name))
+        root = (
+            wiki / "source" / "agent_inputs"
+            if source.suffix == ".html"
+            else tmp_path / "private-inputs"
+        )
+        snapshots = list(root.rglob(source.name))
         assert len(snapshots) == 1
         assert snapshots[0].read_bytes() == source.read_bytes()
 

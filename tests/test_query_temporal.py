@@ -26,6 +26,8 @@ def test_query_time_context_detects_current_and_explicit_chinese_date():
     assert current["as_of"] == now
     assert historical["mode"] == "as_of"
     assert historical["as_of"] == datetime(2025, 3, 1, tzinfo=timezone.utc)
+    dated_current = query_time_context("截至 2025 年 3 月 1 日，现行政策是什么？", now=now)
+    assert dated_current["as_of"] == historical["as_of"]
     assert query.plan_query("截至2025-03-01适用什么规则")["intent"] == "temporal_as_of"
 
 

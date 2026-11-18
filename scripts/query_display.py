@@ -131,6 +131,8 @@ def source_detail(page: dict, query: str) -> dict:
         "description": str(metadata.get("description") or metadata.get("summary") or ""),
         "snippet": read_snippet(path, query),
         "provenance": metadata.get("provenance") or metadata.get("source") or "",
+        "source_id": page.get("source_id") or metadata.get("source_id"),
+        "source_version": page.get("source_version") or metadata.get("source_version"),
         "resource": metadata.get("resource") or "",
         "relevance": page.get("score", 0),
         "retrieval_hop": page.get("retrieval_hop", 1),

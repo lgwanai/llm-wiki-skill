@@ -84,7 +84,8 @@ def query_time_context(query: str, now: datetime | None = None) -> dict[str, Any
     reference = _utc(local_reference)
     boundary_timezone = local_reference.tzinfo or timezone.utc
     lowered = query.casefold()
-    if any(term in lowered for term in CURRENT_TERMS):
+    explicit_cutoff = re.search(r"(?:截至|截止|\bas of)\s*\d{4}(?:\s*年|[-/])", lowered)
+    if not explicit_cutoff and any(term in lowered for term in CURRENT_TERMS):
         return {
             "requested": True,
             "mode": "current",
@@ -94,7 +95,7 @@ def query_time_context(query: str, now: datetime | None = None) -> dict[str, Any
         }
 
     patterns = (
-        r"(?<!\d)(\d{4})年(\d{1,2})月(\d{1,2})日",
+        r"(?<!\d)(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日",
         r"(?<!\d)(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?!\d)",
     )
     for pattern in patterns:
